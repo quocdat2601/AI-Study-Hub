@@ -1,18 +1,26 @@
 const router = require('express').Router();
-const controller = require('../controllers/subject.controller');
+const subjectController = require('../controllers/subject.controller');
+const verifyToken = require('../middleware/auth');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Subjects
+ *   description: Subject management API
+ */
 
 /**
  * @swagger
  * /api/subjects:
  *   get:
- *     summary: Subjects placeholder
+ *     summary: List all subjects (for dropdowns)
  *     tags: [Subjects]
  *     security:
  *       - bearerAuth: []
  *     responses:
- *       200:
- *         description: Subjects route placeholder
+ *       200: { description: List of subjects }
+ *       401: { description: Unauthorized }
  */
-router.get('/', controller.placeholder);
+router.get('/', verifyToken, subjectController.getAllSubjects);
 
 module.exports = router;

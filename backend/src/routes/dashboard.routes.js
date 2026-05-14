@@ -1,18 +1,26 @@
 const router = require('express').Router();
-const controller = require('../controllers/dashboard.controller');
+const dashboardController = require('../controllers/dashboard.controller');
+const verifyToken = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Dashboard
+ *   description: Student dashboard data
+ */
 
 /**
  * @swagger
  * /api/dashboard:
  *   get:
- *     summary: Dashboard placeholder
+ *     summary: Storage stats + doc counts + recent uploads
  *     tags: [Dashboard]
  *     security:
  *       - bearerAuth: []
  *     responses:
- *       200:
- *         description: Dashboard route placeholder
+ *       200: { description: Dashboard data }
  */
-router.get('/', controller.placeholder);
+router.get('/', verifyToken, requireRole('student'), dashboardController.getDashboardData);
 
 module.exports = router;

@@ -1,9 +1,17 @@
-async function placeholder(req, res, next) {
+const Subject = require('../models/subject.model');
+
+/**
+ * List all subjects
+ */
+async function getAllSubjects(req, res, next) {
   try {
-    res.json({ message: 'subject module placeholder' });
+    const subjects = await Subject.findAll();
+    res.json(subjects);
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { placeholder };
+module.exports = {
+  getAllSubjects
+};

@@ -8,6 +8,11 @@ const authRoutes = require('./routes/auth.routes');
 const documentRoutes = require('./routes/document.routes');
 const subjectRoutes = require('./routes/subject.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const userRoutes = require('./routes/user.routes');
+const bookmarkRoutes = require('./routes/bookmark.routes');
+const chatRoutes = require('./routes/chat.routes');
+const notificationRoutes = require('./routes/notification.routes');
+const adminRoutes = require('./routes/admin.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -23,9 +28,14 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/subjects', subjectRoutes);
+app.use('/api/bookmarks', bookmarkRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 
