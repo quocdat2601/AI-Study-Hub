@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth.routes');
 const documentRoutes = require('./routes/document.routes');
 const subjectRoutes = require('./routes/subject.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const adminRoutes = require('./routes/admin.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -26,6 +27,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 

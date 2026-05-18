@@ -3,7 +3,7 @@ export default function LibraryPage() {
   return (
     <main className="page">
       <h1>Document Library</h1>
-      <p>Library placeholder. Next step: document upload/list/search/filter.</p>
+      <p>Upload, search, filter, preview, bookmark, and download workflows will be added after the auth/admin slice.</p>
     </main>
   );
 }

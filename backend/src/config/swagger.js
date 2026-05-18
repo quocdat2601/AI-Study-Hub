@@ -29,6 +29,7 @@ const options = {
     tags: [
       { name: 'Health', description: 'Server and database health checks' },
       { name: 'Auth', description: 'Authentication endpoints' },
+      { name: 'Admin', description: 'Admin-only platform management' },
       { name: 'Documents', description: 'Document management' },
       { name: 'Subjects', description: 'Subject management' },
       { name: 'Dashboard', description: 'Dashboard data' },

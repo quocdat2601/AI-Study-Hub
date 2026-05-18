@@ -1,9 +1,34 @@
-async function placeholder(req, res, next) {
+const authService = require('../services/auth.service');
+
+async function register(req, res, next) {
   try {
-    res.json({ message: 'auth module placeholder' });
+    const user = await authService.register(req.body);
+    res.status(201).json({ user });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { placeholder };
+async function login(req, res, next) {
+  try {
+    const result = await authService.login(req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function me(req, res, next) {
+  try {
+    const user = await authService.getCurrentUser(req.user.id);
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  register,
+  login,
+  me,
+};
