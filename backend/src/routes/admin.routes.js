@@ -1,67 +1,100 @@
 const router = require('express').Router();
+const adminController = require('../controllers/admin.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const controller = require('../controllers/admin.controller');
 
+/**
+ * @swagger
+ * tags:
+ *   name: Admin
+ *   description: Administrative management
+ */
+
+// All routes here require Admin role
 router.use(verifyToken, requireRole('admin'));
 
 /**
  * @swagger
  * /api/admin/users:
  *   get:
- *     summary: List platform users
+ *     summary: List all users
  *     tags: [Admin]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200:
- *         description: Users returned
- *       401:
- *         description: Missing, invalid, or expired token
- *       403:
- *         description: Admin role required
+ *       200: { description: List of users }
  */
-router.get('/users', controller.listUsers);
+router.get('/users', adminController.getAllUsers);
 
 /**
  * @swagger
- * /api/admin/users/{id}/status:
+ * /api/admin/users/{id}:
  *   patch:
- *     summary: Enable or disable a user account
+ *     summary: Update user status or storage limit
  *     tags: [Admin]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: integer
- *         description: User ID
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: { type: string, enum: [active, disabled] }
+ *               storage_limit_bytes: { type: integer }
+ *     responses:
+ *       200: { description: Updated }
+ */
+router.patch('/users/:id', adminController.updateUser);
+
+/**
+ * @swagger
+ * /api/admin/subjects:
+ *   get:
+ *     summary: List all subjects
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: List of subjects }
+ */
+router.get('/subjects', adminController.getAllSubjects);
+
+/**
+ * @swagger
+ * /api/admin/subjects:
+ *   post:
+ *     summary: Create subject
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [status]
+ *             required: [name, code]
  *             properties:
- *               status:
- *                 type: string
- *                 enum: [active, disabled]
- *                 example: disabled
+ *               name: { type: string }
+ *               code: { type: string }
+ *               description: { type: string }
  *     responses:
- *       200:
- *         description: User status updated
- *       400:
- *         description: Invalid status or self-status update
- *       401:
- *         description: Missing, invalid, or expired token
- *       403:
- *         description: Admin role required
- *       404:
- *         description: User not found
+ *       201: { description: Created }
  */
-router.patch('/users/:id/status', controller.updateUserStatus);
+router.post('/subjects', adminController.createSubject);
+
+/**
+ * @swagger
+ * /api/admin/activity-logs:
+ *   get:
+ *     summary: Paginated activity log
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: List of logs }
+ */
+router.get('/activity-logs', adminController.getActivityLogs);
 
 module.exports = router;

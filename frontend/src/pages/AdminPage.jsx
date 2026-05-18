@@ -14,7 +14,6 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [subjectForm, setSubjectForm] = useState(emptySubject);
-  const [editingSubjectId, setEditingSubjectId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -30,10 +29,10 @@ export default function AdminPage() {
     try {
       const [usersResponse, subjectsResponse] = await Promise.all([
         api.get("/admin/users"),
-        api.get("/subjects"),
+        api.get("/admin/subjects"),
       ]);
-      setUsers(usersResponse.data.users);
-      setSubjects(subjectsResponse.data.subjects);
+      setUsers(usersResponse.data);
+      setSubjects(subjectsResponse.data);
     } catch (err) {
       setError(messageFromError(err));
     } finally {
@@ -50,25 +49,15 @@ export default function AdminPage() {
     setSuccess("");
 
     try {
-      const response = await api.patch(`/admin/users/${targetUser.id}/status`, { status });
-      setUsers((current) => current.map((item) => (item.id === targetUser.id ? response.data.user : item)));
+      const response = await api.patch(`/admin/users/${targetUser.id}`, { status });
+      setUsers((current) => current.map((item) => (item.id === targetUser.id ? response.data : item)));
       setSuccess("User status updated");
     } catch (err) {
       setError(messageFromError(err));
     }
   }
 
-  function startEdit(subject) {
-    setEditingSubjectId(subject.id);
-    setSubjectForm({
-      name: subject.name,
-      code: subject.code,
-      description: subject.description || "",
-    });
-  }
-
   function resetSubjectForm() {
-    setEditingSubjectId(null);
     setSubjectForm(emptySubject);
   }
 
@@ -78,33 +67,10 @@ export default function AdminPage() {
     setSuccess("");
 
     try {
-      if (editingSubjectId) {
-        const response = await api.patch(`/subjects/${editingSubjectId}`, subjectForm);
-        setSubjects((current) => current.map((item) => (item.id === editingSubjectId ? response.data.subject : item)));
-        setSuccess("Subject updated");
-      } else {
-        const response = await api.post("/subjects", subjectForm);
-        setSubjects((current) => [...current, response.data.subject].sort((a, b) => a.name.localeCompare(b.name)));
-        setSuccess("Subject created");
-      }
+      const response = await api.post("/admin/subjects", subjectForm);
+      setSubjects((current) => [...current, response.data].sort((a, b) => a.name.localeCompare(b.name)));
+      setSuccess("Subject created");
       resetSubjectForm();
-    } catch (err) {
-      setError(messageFromError(err));
-    }
-  }
-
-  async function removeSubject(subject) {
-    if (!window.confirm(`Delete ${subject.name}?`)) {
-      return;
-    }
-
-    setError("");
-    setSuccess("");
-
-    try {
-      await api.delete(`/subjects/${subject.id}`);
-      setSubjects((current) => current.filter((item) => item.id !== subject.id));
-      setSuccess("Subject deleted");
     } catch (err) {
       setError(messageFromError(err));
     }
@@ -163,7 +129,7 @@ export default function AdminPage() {
                       <td>
                         <span className={`status status--${item.status}`}>{item.status}</span>
                       </td>
-                      <td>{new Date(item.createdAt).toLocaleDateString()}</td>
+                      <td>{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
                       <td>
                         {item.id === user.id ? (
                           <span className="muted">Current admin</span>
@@ -189,7 +155,7 @@ export default function AdminPage() {
       {!isLoading && activeTab === "subjects" ? (
         <section className="admin-grid">
           <form className="panel form-panel" onSubmit={saveSubject}>
-            <h2>{editingSubjectId ? "Edit subject" : "Create subject"}</h2>
+            <h2>Create subject</h2>
             <label>
               Name
               <input
@@ -219,13 +185,8 @@ export default function AdminPage() {
             </label>
             <div className="form-actions">
               <button className="button button--primary" type="submit">
-                {editingSubjectId ? "Save changes" : "Create subject"}
+                Create subject
               </button>
-              {editingSubjectId ? (
-                <button className="button button--secondary" type="button" onClick={resetSubjectForm}>
-                  Cancel
-                </button>
-              ) : null}
             </div>
           </form>
 
@@ -241,14 +202,6 @@ export default function AdminPage() {
                       <strong>{subject.name}</strong>
                       <span>{subject.code}</span>
                       {subject.description ? <p>{subject.description}</p> : null}
-                    </div>
-                    <div className="row-actions">
-                      <button className="link-button" type="button" onClick={() => startEdit(subject)}>
-                        Edit
-                      </button>
-                      <button className="link-button link-button--danger" type="button" onClick={() => removeSubject(subject)}>
-                        Delete
-                      </button>
                     </div>
                   </article>
                 ))}

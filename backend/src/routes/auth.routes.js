@@ -1,12 +1,19 @@
 const router = require('express').Router();
-const controller = require('../controllers/auth.controller');
+const authController = require('../controllers/auth.controller');
 const verifyToken = require('../middleware/auth');
+
+/**
+ * @swagger
+ * tags:
+ *   name: Auth
+ *   description: Authentication API
+ */
 
 /**
  * @swagger
  * /api/auth/register:
  *   post:
- *     summary: Register a student account
+ *     summary: Register new student
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -16,28 +23,19 @@ const verifyToken = require('../middleware/auth');
  *             type: object
  *             required: [email, password]
  *             properties:
- *               email:
- *                 type: string
- *                 example: student@example.com
- *               password:
- *                 type: string
- *                 minLength: 8
- *                 example: Student123
+ *               email: { type: string }
+ *               password: { type: string }
  *     responses:
- *       201:
- *         description: Account created
- *       400:
- *         description: Invalid email or password
- *       409:
- *         description: Email already registered
+ *       201: { description: Registered }
+ *       400: { description: Bad request }
  */
-router.post('/register', controller.register);
+router.post('/register', authController.register);
 
 /**
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: Login with email and password
+ *     summary: Login student/admin
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -47,36 +45,26 @@ router.post('/register', controller.register);
  *             type: object
  *             required: [email, password]
  *             properties:
- *               email:
- *                 type: string
- *                 example: student@example.com
- *               password:
- *                 type: string
- *                 example: Student123
+ *               email: { type: string }
+ *               password: { type: string }
  *     responses:
- *       200:
- *         description: JWT token and user profile returned
- *       401:
- *         description: Invalid email or password
- *       403:
- *         description: Account suspended
+ *       200: { description: Logged in }
+ *       401: { description: Invalid credentials }
  */
-router.post('/login', controller.login);
+router.post('/login', authController.login);
 
 /**
  * @swagger
  * /api/auth/me:
  *   get:
- *     summary: Get current authenticated user
+ *     summary: Get current user profile
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
  *     responses:
- *       200:
- *         description: Current user profile
- *       401:
- *         description: Missing, invalid, or expired token
+ *       200: { description: User profile }
+ *       401: { description: Unauthorized }
  */
-router.get('/me', verifyToken, controller.me);
+router.get('/me', verifyToken, authController.getMe);
 
 module.exports = router;
