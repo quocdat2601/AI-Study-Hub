@@ -1,20 +1,9 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const userModel = require('../models/user.model');
-
-function publicUser(user) {
-  if (!user) return null;
-
-  return {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    storageLimitBytes: user.storage_limit_bytes,
-    createdAt: user.created_at,
-    lastLoginAt: user.last_login_at,
-  };
-}
+const activityService = require('./activity.service');
+const createError = require('../utils/createError');
+const { publicUser } = require('./user.service');
 
 function signToken(user) {
   return jwt.sign(
@@ -22,13 +11,6 @@ function signToken(user) {
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
-}
-
-function createError(statusCode, publicMessage) {
-  const error = new Error(publicMessage);
-  error.statusCode = statusCode;
-  error.publicMessage = publicMessage;
-  return error;
 }
 
 function normalizeEmail(email) {
@@ -56,7 +38,17 @@ async function register({ email, password }) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await userModel.createStudent(normalizedEmail, passwordHash);
+  const user = await userModel.create({
+    email: normalizedEmail,
+    password_hash: passwordHash,
+    role: 'student',
+  });
+  activityService.log({
+    userId: user.id,
+    action: 'auth.register',
+    targetType: 'user',
+    targetId: user.id,
+  });
 
   return publicUser(user);
 }
@@ -79,6 +71,12 @@ async function login({ email, password }) {
   }
 
   await userModel.updateLastLogin(user.id);
+  activityService.log({
+    userId: user.id,
+    action: 'auth.login',
+    targetType: 'user',
+    targetId: user.id,
+  });
 
   return {
     token: signToken(user),

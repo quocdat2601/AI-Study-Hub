@@ -1,14 +1,11 @@
-const User = require('../models/user.model');
-const Subject = require('../models/subject.model');
-const supabase = require('../config/supabase');
+const adminService = require('../services/admin.service');
 
 /**
  * List all users (Admin)
  */
 async function getAllUsers(req, res, next) {
   try {
-    const users = await User.findAll();
-    res.json(users);
+    res.json(await adminService.listUsers());
   } catch (err) {
     next(err);
   }
@@ -19,10 +16,11 @@ async function getAllUsers(req, res, next) {
  */
 async function updateUser(req, res, next) {
   try {
-    const { id } = req.params;
-    const { status, storage_limit_bytes } = req.body;
-    const updated = await User.update(id, { status, storage_limit_bytes });
-    res.json(updated);
+    res.json(await adminService.updateUser({
+      targetUserId: req.params.id,
+      updates: req.body,
+      currentUserId: req.user.id,
+    }));
   } catch (err) {
     next(err);
   }
@@ -33,9 +31,7 @@ async function updateUser(req, res, next) {
  */
 async function getAllSubjects(req, res, next) {
   try {
-    // This would ideally be a more complex query with joins
-    const subjects = await Subject.findAll();
-    res.json(subjects);
+    res.json(await adminService.listSubjects());
   } catch (err) {
     next(err);
   }
@@ -46,14 +42,11 @@ async function getAllSubjects(req, res, next) {
  */
 async function createSubject(req, res, next) {
   try {
-    const { name, code, description } = req.body;
-    const newSubject = await Subject.create({ 
-      name, 
-      code, 
-      description,
-      created_by: req.user.id 
+    const subject = await adminService.createSubject({
+      ...req.body,
+      createdBy: req.user.id,
     });
-    res.status(201).json(newSubject);
+    res.status(201).json(subject);
   } catch (err) {
     next(err);
   }
@@ -64,14 +57,7 @@ async function createSubject(req, res, next) {
  */
 async function getActivityLogs(req, res, next) {
   try {
-    const { data, error } = await supabase
-      .from('activity_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    
-    if (error) throw error;
-    res.json(data);
+    res.json(await adminService.listActivityLogs(req.query.limit));
   } catch (err) {
     next(err);
   }

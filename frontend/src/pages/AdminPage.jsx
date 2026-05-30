@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
-import api from "../services/api.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import {
+  createAdminSubject,
+  listAdminSubjects,
+  listAdminUsers,
+  updateAdminUser,
+} from "../services/adminApi.js";
 
 const emptySubject = { name: "", code: "", description: "" };
 
@@ -27,12 +32,12 @@ export default function AdminPage() {
     setError("");
 
     try {
-      const [usersResponse, subjectsResponse] = await Promise.all([
-        api.get("/admin/users"),
-        api.get("/admin/subjects"),
+      const [userData, subjectData] = await Promise.all([
+        listAdminUsers(),
+        listAdminSubjects(),
       ]);
-      setUsers(usersResponse.data);
-      setSubjects(subjectsResponse.data);
+      setUsers(userData);
+      setSubjects(subjectData);
     } catch (err) {
       setError(messageFromError(err));
     } finally {
@@ -49,8 +54,8 @@ export default function AdminPage() {
     setSuccess("");
 
     try {
-      const response = await api.patch(`/admin/users/${targetUser.id}`, { status });
-      setUsers((current) => current.map((item) => (item.id === targetUser.id ? response.data : item)));
+      const updated = await updateAdminUser(targetUser.id, { status });
+      setUsers((current) => current.map((item) => (item.id === targetUser.id ? updated : item)));
       setSuccess("User status updated");
     } catch (err) {
       setError(messageFromError(err));
@@ -67,8 +72,8 @@ export default function AdminPage() {
     setSuccess("");
 
     try {
-      const response = await api.post("/admin/subjects", subjectForm);
-      setSubjects((current) => [...current, response.data].sort((a, b) => a.name.localeCompare(b.name)));
+      const subject = await createAdminSubject(subjectForm);
+      setSubjects((current) => [...current, subject].sort((a, b) => a.name.localeCompare(b.name)));
       setSuccess("Subject created");
       resetSubjectForm();
     } catch (err) {

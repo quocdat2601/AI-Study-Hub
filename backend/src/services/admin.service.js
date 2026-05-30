@@ -1,47 +1,64 @@
 const userModel = require('../models/user.model');
-
-function createError(statusCode, publicMessage) {
-  const error = new Error(publicMessage);
-  error.statusCode = statusCode;
-  error.publicMessage = publicMessage;
-  return error;
-}
-
-function publicUser(user) {
-  return {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    storageLimitBytes: user.storage_limit_bytes,
-    createdAt: user.created_at,
-    lastLoginAt: user.last_login_at,
-  };
-}
+const subjectService = require('./subject.service');
+const activityService = require('./activity.service');
+const createError = require('../utils/createError');
+const { publicUser } = require('./user.service');
 
 async function listUsers() {
   const users = await userModel.listUsers();
   return users.map(publicUser);
 }
 
-async function updateUserStatus({ targetUserId, status, currentUserId }) {
-  if (!['active', 'disabled'].includes(status)) {
-    throw createError(400, 'Status must be active or disabled');
+async function updateUser({ targetUserId, updates, currentUserId }) {
+  const dbUpdates = {};
+
+  if (updates.status !== undefined) {
+    if (!['active', 'disabled'].includes(updates.status)) {
+      throw createError(400, 'Status must be active or disabled');
+    }
+
+    if (Number(targetUserId) === Number(currentUserId) && updates.status === 'disabled') {
+      throw createError(400, 'You cannot disable your own account');
+    }
+
+    dbUpdates.status = updates.status;
   }
 
-  if (Number(targetUserId) === Number(currentUserId)) {
-    throw createError(400, 'You cannot change your own account status');
+  if (updates.storage_limit_bytes !== undefined) {
+    const storageLimit = Number(updates.storage_limit_bytes);
+    if (!Number.isInteger(storageLimit) || storageLimit <= 0) {
+      throw createError(400, 'Storage limit must be a positive integer');
+    }
+
+    dbUpdates.storage_limit_bytes = storageLimit;
   }
 
-  const user = await userModel.updateStatus(targetUserId, status);
+  if (!Object.keys(dbUpdates).length) {
+    throw createError(400, 'No supported user updates provided');
+  }
+
+  dbUpdates.updated_at = new Date().toISOString();
+
+  const user = await userModel.update(targetUserId, dbUpdates);
   if (!user) {
     throw createError(404, 'User not found');
   }
+
+  activityService.log({
+    userId: currentUserId,
+    action: 'admin.user.update',
+    targetType: 'user',
+    targetId: user.id,
+    metadata: dbUpdates,
+  });
 
   return publicUser(user);
 }
 
 module.exports = {
   listUsers,
-  updateUserStatus,
+  updateUser,
+  listSubjects: subjectService.listSubjects,
+  createSubject: subjectService.createSubject,
+  listActivityLogs: activityService.listLatest,
 };

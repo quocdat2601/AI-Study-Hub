@@ -1,5 +1,7 @@
 const router = require('express').Router();
 const userController = require('../controllers/user.controller');
+const verifyToken = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 
 /**
  * @swagger
@@ -20,7 +22,7 @@ const userController = require('../controllers/user.controller');
  *       500:
  *         description: Server error
  */
-router.get('/', userController.getAllUsers);
+router.get('/', verifyToken, requireRole('admin'), userController.getAllUsers);
 
 /**
  * @swagger
@@ -41,6 +43,6 @@ router.get('/', userController.getAllUsers);
  *       404:
  *         description: User not found
  */
-router.get('/:id', userController.getUserById);
+router.get('/:id', verifyToken, requireRole('admin'), userController.getUserById);
 
 module.exports = router;

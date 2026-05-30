@@ -1,11 +1,8 @@
-const Notification = require('../models/notification.model');
+const notificationService = require('../services/notification.service');
 
 async function getAllNotifications(req, res, next) {
   try {
-    const userId = req.user.id;
-    const notifications = await Notification.findByUserId(userId);
-    const unreadCount = notifications.filter(n => !n.is_read).length;
-    res.json({ notifications, unreadCount });
+    res.json(await notificationService.listNotifications(req.user.id));
   } catch (err) {
     next(err);
   }
@@ -13,9 +10,7 @@ async function getAllNotifications(req, res, next) {
 
 async function markAllRead(req, res, next) {
   try {
-    const userId = req.user.id;
-    await Notification.markAllAsRead(userId);
-    res.json({ message: 'All notifications marked as read' });
+    res.json(await notificationService.markAllRead(req.user.id));
   } catch (err) {
     next(err);
   }
@@ -23,10 +18,10 @@ async function markAllRead(req, res, next) {
 
 async function markRead(req, res, next) {
   try {
-    const userId = req.user.id;
-    const { id } = req.params;
-    await Notification.markAsRead(id, userId);
-    res.json({ message: 'Notification marked as read' });
+    res.json(await notificationService.markRead({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
   } catch (err) {
     next(err);
   }

@@ -1,12 +1,11 @@
-const User = require('../models/user.model');
+const userService = require('../services/user.service');
 
 /**
  * Get all users
  */
 async function getAllUsers(req, res, next) {
   try {
-    const users = await User.findAll();
-    res.json(users);
+    res.json(await userService.listUsers());
   } catch (err) {
     next(err);
   }
@@ -17,11 +16,7 @@ async function getAllUsers(req, res, next) {
  */
 async function getUserById(req, res, next) {
   try {
-    const user = await User.findById(req.params.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    res.json(user);
+    res.json(await userService.getUserById(req.params.id));
   } catch (err) {
     next(err);
   }

@@ -11,6 +11,10 @@ class SubjectModel {
     return data;
   }
 
+  static async listSubjects() {
+    return this.findAll();
+  }
+
   static async findByCode(code) {
     const { data, error } = await supabase
       .from('subjects')
@@ -31,6 +35,40 @@ class SubjectModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async updateSubject(id, updates) {
+    const { data, error } = await supabase
+      .from('subjects')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async deleteSubject(id) {
+    const { data, error } = await supabase
+      .from('subjects')
+      .delete()
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async countDocuments(id) {
+    const { count, error } = await supabase
+      .from('documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('subject_id', id);
+
+    if (error) throw error;
+    return count || 0;
   }
 }
 

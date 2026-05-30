@@ -1,10 +1,8 @@
-const Bookmark = require('../models/bookmark.model');
+const bookmarkService = require('../services/bookmark.service');
 
 async function getAllBookmarks(req, res, next) {
   try {
-    const userId = req.user.id;
-    const bookmarks = await Bookmark.findByUserId(userId);
-    res.json(bookmarks);
+    res.json(await bookmarkService.listBookmarks(req.user.id));
   } catch (err) {
     next(err);
   }
@@ -12,10 +10,10 @@ async function getAllBookmarks(req, res, next) {
 
 async function addBookmark(req, res, next) {
   try {
-    const userId = req.user.id;
-    const { docId } = req.params;
-    const bookmark = await Bookmark.create(userId, docId);
-    res.status(201).json(bookmark);
+    res.status(201).json(await bookmarkService.addBookmark({
+      userId: req.user.id,
+      docId: req.params.docId,
+    }));
   } catch (err) {
     next(err);
   }
@@ -23,10 +21,10 @@ async function addBookmark(req, res, next) {
 
 async function removeBookmark(req, res, next) {
   try {
-    const userId = req.user.id;
-    const { docId } = req.params;
-    await Bookmark.delete(userId, docId);
-    res.json({ message: 'Bookmark removed' });
+    res.json(await bookmarkService.removeBookmark({
+      userId: req.user.id,
+      docId: req.params.docId,
+    }));
   } catch (err) {
     next(err);
   }

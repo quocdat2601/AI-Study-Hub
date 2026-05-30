@@ -1,11 +1,6 @@
 const subjectModel = require('../models/subject.model');
-
-function createError(statusCode, publicMessage) {
-  const error = new Error(publicMessage);
-  error.statusCode = statusCode;
-  error.publicMessage = publicMessage;
-  return error;
-}
+const activityService = require('./activity.service');
+const createError = require('../utils/createError');
 
 function normalizeCode(code) {
   return String(code || '').trim().toUpperCase();
@@ -36,12 +31,21 @@ async function createSubject({ name, code, description, createdBy }) {
   validateSubject({ name, code });
 
   try {
-    return await subjectModel.createSubject({
+    const subject = await subjectModel.create({
       name: String(name).trim(),
       code: normalizeCode(code),
       description: String(description || '').trim(),
-      createdBy,
+      created_by: createdBy,
     });
+
+    activityService.log({
+      userId: createdBy,
+      action: 'subject.create',
+      targetType: 'subject',
+      targetId: subject.id,
+    });
+
+    return subject;
   } catch (err) {
     handleUniqueCodeError(err);
   }

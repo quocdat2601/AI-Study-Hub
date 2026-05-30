@@ -57,6 +57,6 @@ router.post('/:docId', verifyToken, requireRole('student'), bookmarkController.a
  *     responses:
  *       200: { description: Removed }
  */
-router.get('/:docId', verifyToken, requireRole('student'), bookmarkController.removeBookmark);
+router.delete('/:docId', verifyToken, requireRole('student'), bookmarkController.removeBookmark);
 
 module.exports = router;

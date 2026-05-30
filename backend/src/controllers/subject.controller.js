@@ -1,12 +1,11 @@
-const Subject = require('../models/subject.model');
+const subjectService = require('../services/subject.service');
 
 /**
  * List all subjects
  */
 async function getAllSubjects(req, res, next) {
   try {
-    const subjects = await Subject.findAll();
-    res.json(subjects);
+    res.json(await subjectService.listSubjects());
   } catch (err) {
     next(err);
   }

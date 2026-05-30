@@ -11,6 +11,10 @@ class UserModel {
     return data;
   }
 
+  static async listUsers() {
+    return this.findAll();
+  }
+
   static async findByEmail(email) {
     const { data, error } = await supabase
       .from('users')
@@ -50,10 +54,21 @@ class UserModel {
       .update(updates)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     return data;
+  }
+
+  static async updateStatus(id, status) {
+    return this.update(id, { status, updated_at: new Date().toISOString() });
+  }
+
+  static async updateLastLogin(id) {
+    return this.update(id, {
+      last_login_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
   }
 }
 
