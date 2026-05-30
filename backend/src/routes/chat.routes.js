@@ -26,7 +26,9 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: Session details }
  */
-router.get('/session/:docId', verifyToken, requireRole('student'), chatController.getOrCreateSession);
+router.use(verifyToken, requireRole('student'));
+
+router.get('/session/:docId', chatController.getOrCreateSession);
 
 /**
  * @swagger
@@ -44,7 +46,7 @@ router.get('/session/:docId', verifyToken, requireRole('student'), chatControlle
  *     responses:
  *       200: { description: List of messages }
  */
-router.get('/sessions/:sessionId/messages', verifyToken, chatController.getMessages);
+router.get('/sessions/:sessionId/messages', chatController.getMessages);
 
 /**
  * @swagger
@@ -71,6 +73,6 @@ router.get('/sessions/:sessionId/messages', verifyToken, chatController.getMessa
  *     responses:
  *       200: { description: AI response }
  */
-router.post('/sessions/:sessionId/messages', verifyToken, chatController.sendMessage);
+router.post('/sessions/:sessionId/messages', chatController.sendMessage);
 
 module.exports = router;

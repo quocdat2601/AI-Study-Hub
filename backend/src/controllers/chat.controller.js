@@ -1,12 +1,11 @@
-const Chat = require('../models/chat.model');
-const geminiService = require('../services/gemini.service');
+const chatService = require('../services/chat.service');
 
 async function getOrCreateSession(req, res, next) {
   try {
-    const userId = req.user.id;
-    const { docId } = req.params;
-    const session = await Chat.findOrCreateSession(userId, docId);
-    res.json(session);
+    res.json(await chatService.getOrCreateSession({
+      userId: req.user.id,
+      docId: req.params.docId,
+    }));
   } catch (err) {
     next(err);
   }
@@ -14,9 +13,7 @@ async function getOrCreateSession(req, res, next) {
 
 async function getMessages(req, res, next) {
   try {
-    const { sessionId } = req.params;
-    const messages = await Chat.getMessages(sessionId);
-    res.json(messages);
+    res.json(await chatService.getMessages(req.params.sessionId));
   } catch (err) {
     next(err);
   }
@@ -24,19 +21,11 @@ async function getMessages(req, res, next) {
 
 async function sendMessage(req, res, next) {
   try {
-    const { sessionId } = req.params;
-    const { content } = req.body;
-
-    // 1. Save user message
-    await Chat.addMessage(sessionId, 'user', content);
-
-    // 2. Get AI answer (simplified)
-    const aiResponse = await geminiService.generateAnswer(content, 'This is a context placeholder');
-    
-    // 3. Save AI message
-    const savedAiMsg = await Chat.addMessage(sessionId, 'assistant', aiResponse);
-
-    res.json(savedAiMsg);
+    res.json(await chatService.sendMessage({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      content: req.body.content,
+    }));
   } catch (err) {
     next(err);
   }
