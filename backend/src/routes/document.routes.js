@@ -55,9 +55,9 @@ router.get('/', verifyToken, documentController.getAllDocuments);
  *     responses:
  *       201: { description: Uploaded }
  *       400: { description: Bad request }
- *       403: { description: Forbidden (Students only) }
+ *       403: { description: Forbidden (Students or admins only) }
  */
-router.post('/', verifyToken, requireRole('student'), upload.single('file'), documentController.uploadDocument);
+router.post('/', verifyToken, requireRole('student', 'admin'), upload.single('file'), documentController.uploadDocument);
 
 /**
  * @swagger

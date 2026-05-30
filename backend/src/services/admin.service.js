@@ -5,7 +5,7 @@ const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
 
 async function listUsers() {
-  const users = await userModel.listUsers();
+  const users = await userModel.findAll();
   return users.map(publicUser);
 }
 

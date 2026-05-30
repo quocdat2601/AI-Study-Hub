@@ -6,7 +6,7 @@ const MIME_TYPES = {
   DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
-const MIN_READABLE_CHARS = 40;
+const MIN_READABLE_CHARS = 50;
 
 function normalizeText(text) {
   return (text || '')

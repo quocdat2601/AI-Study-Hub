@@ -1,7 +1,17 @@
 node_modules/
 .env
 .env.local
+.env.*
 .DS_Store
 dist/
 coverage/
 *.log
+backend/.env
+backend/.env.*
+backend/dist/
+backend/coverage/
+frontend/.env
+frontend/.env.*
+frontend/dist/
+frontend/coverage/
+frontend/node_modules/.vite/

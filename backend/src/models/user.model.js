@@ -11,10 +11,6 @@ class UserModel {
     return data;
   }
 
-  static async listUsers() {
-    return this.findAll();
-  }
-
   static async findByEmail(email) {
     const { data, error } = await supabase
       .from('users')

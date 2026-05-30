@@ -1,4 +1,5 @@
 const documentModel = require('../models/document.model');
+const userModel = require('../models/user.model');
 const supabaseService = require('./supabase.service');
 const documentTextService = require('./document-text.service');
 const activityService = require('./activity.service');
@@ -50,9 +51,27 @@ async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
   }
 }
 
+function formatMegabytes(bytes) {
+  return Math.round(Number(bytes || 0) / 1024 / 1024);
+}
+
 async function uploadDocument({ userId, file, title, subjectId }) {
   if (!file) {
     throw createError(400, 'No file uploaded');
+  }
+
+  const user = await userModel.findById(userId);
+  if (!user) {
+    throw createError(404, 'User not found');
+  }
+
+  const usedBytes = await documentModel.sumStorageByUserId(userId);
+  const storageLimitBytes = Number(user.storage_limit_bytes || 0);
+  if (usedBytes + file.size > storageLimitBytes) {
+    throw createError(
+      400,
+      `Storage limit exceeded. ${formatMegabytes(usedBytes)} MB used of ${formatMegabytes(storageLimitBytes)} MB`
+    );
   }
 
   const fileName = `${Date.now()}-${file.originalname}`;
