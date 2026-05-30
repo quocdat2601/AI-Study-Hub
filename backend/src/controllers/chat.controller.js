@@ -1,12 +1,74 @@
-const Chat = require('../models/chat.model');
-const geminiService = require('../services/gemini.service');
+const chatService = require('../services/chat.service');
 
-async function getOrCreateSession(req, res, next) {
+async function listSessions(req, res, next) {
   try {
-    const userId = req.user.id;
-    const { docId } = req.params;
-    const session = await Chat.findOrCreateSession(userId, docId);
-    res.json(session);
+    res.json(await chatService.listSessions(req.user.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function createSession(req, res, next) {
+  try {
+    res.status(201).json(await chatService.createSession(req.user.id, req.body.title));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getSession(req, res, next) {
+  try {
+    res.json(await chatService.getSession({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateSession(req, res, next) {
+  try {
+    res.json(await chatService.updateSession({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      title: req.body.title,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteSession(req, res, next) {
+  try {
+    res.json(await chatService.deleteSession({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function addDocument(req, res, next) {
+  try {
+    res.status(201).json(await chatService.addDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      docId: req.body.docId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function removeDocument(req, res, next) {
+  try {
+    res.json(await chatService.removeDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      docId: req.params.docId,
+    }));
   } catch (err) {
     next(err);
   }
@@ -14,9 +76,12 @@ async function getOrCreateSession(req, res, next) {
 
 async function getMessages(req, res, next) {
   try {
-    const { sessionId } = req.params;
-    const messages = await Chat.getMessages(sessionId);
-    res.json(messages);
+    res.json(await chatService.getMessages({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      limit: req.query.limit,
+      before: req.query.before,
+    }));
   } catch (err) {
     next(err);
   }
@@ -24,26 +89,24 @@ async function getMessages(req, res, next) {
 
 async function sendMessage(req, res, next) {
   try {
-    const { sessionId } = req.params;
-    const { content } = req.body;
-
-    // 1. Save user message
-    await Chat.addMessage(sessionId, 'user', content);
-
-    // 2. Get AI answer (simplified)
-    const aiResponse = await geminiService.generateAnswer(content, 'This is a context placeholder');
-    
-    // 3. Save AI message
-    const savedAiMsg = await Chat.addMessage(sessionId, 'assistant', aiResponse);
-
-    res.json(savedAiMsg);
+    res.json(await chatService.sendMessage({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      content: req.body.content,
+    }));
   } catch (err) {
     next(err);
   }
 }
 
 module.exports = {
-  getOrCreateSession,
+  listSessions,
+  createSession,
+  getSession,
+  updateSession,
+  deleteSession,
+  addDocument,
+  removeDocument,
   getMessages,
-  sendMessage
+  sendMessage,
 };

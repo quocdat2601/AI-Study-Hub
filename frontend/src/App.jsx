@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
+import ChatPage from "./pages/ChatPage.jsx";
+import ChatSessionsPage from "./pages/ChatSessionsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
@@ -22,6 +24,7 @@ function Navigation() {
           <>
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/library">Library</NavLink>
+            <NavLink to="/chat">Chat</NavLink>
             {user?.role === "admin" ? <NavLink to="/admin">Admin</NavLink> : null}
             <button className="nav__button" onClick={logout} type="button">
               Logout
@@ -55,6 +58,22 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <LibraryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <ChatSessionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat/:sessionId"
+          element={
+            <ProtectedRoute>
+              <ChatPage />
             </ProtectedRoute>
           }
         />
