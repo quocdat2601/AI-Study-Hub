@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-export default function LandingHeader({ isAuthenticated, onLogout, workspacePath }) {
+export default function LandingHeader({ isAuthenticated, isLoading = false, onLogout, workspacePath }) {
   return (
     <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-[#c7c4d7] bg-white px-4 py-2.5 shadow-[0_1px_1px_rgba(0,0,0,0.05)] md:flex-nowrap md:px-8">
       <Link className="text-[#4648d4] text-xl font-extrabold no-underline whitespace-nowrap" to="/">
@@ -19,7 +19,9 @@ export default function LandingHeader({ isAuthenticated, onLogout, workspacePath
         <button className="inline-flex items-center justify-center bg-transparent border-0 text-[#57657a] cursor-pointer text-lg h-8 w-8" type="button" aria-label="Notifications">
           *
         </button>
-        {isAuthenticated ? (
+        {isLoading ? (
+          <span className="inline-flex min-h-[38px] w-[104px] animate-pulse rounded-full border border-[#c7c4d7] bg-[#eef2f8]" aria-label="Checking session" />
+        ) : isAuthenticated ? (
           <button className="inline-flex items-center justify-center rounded-full text-sm font-extrabold min-h-[38px] px-6 bg-white border border-[#4648d4] text-[#4648d4] auth-btn-slide" onClick={onLogout} type="button">
             Log out
           </button>

@@ -13,7 +13,7 @@ import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 
 function AppRoutes() {
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname);
@@ -23,6 +23,7 @@ function AppRoutes() {
       {shouldShowAppNav ? (
         <LandingHeader
           isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
           onLogout={logout}
           workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
         />
