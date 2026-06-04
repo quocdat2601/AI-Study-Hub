@@ -19,10 +19,8 @@ function AppRoutes() {
     <>
       {shouldShowAppNav ? (
         <LandingHeader
-          isAdmin={user?.role === "admin"}
           isAuthenticated={isAuthenticated}
           onLogout={logout}
-          showAppLinks
           workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
         />
       ) : null}

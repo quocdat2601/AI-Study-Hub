@@ -1,11 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const stats = [
-  { icon: "▣", label: "Total Documents", value: "42" },
-  { icon: "◇", label: "Bookmarks", value: "12" },
-  { icon: "◱", label: "AI Chats", value: "8" },
+  { icon: "D", label: "Total Documents", value: "42" },
+  { icon: "B", label: "Bookmarks", value: "12" },
+  { icon: "C", label: "AI Chats", value: "8" },
+];
+
+const sidebarItems = [
+  { id: "dashboard", icon: "G", label: "Dashboard" },
+  { id: "study-sets", icon: "S", label: "Study Sets" },
+  { id: "documents", icon: "F", label: "Documents" },
+  { id: "ai-workspace", icon: "A", label: "AI Workspace" },
+  { id: "analytics", icon: "N", label: "Analytics" },
 ];
 
 const recentDocuments = [
@@ -26,49 +34,71 @@ function getDisplayName(email) {
   return email.split("@")[0].replace(/[._-]+/g, " ");
 }
 
+function getSectionCopy(activeSection) {
+  const current = sidebarItems.find((item) => item.id === activeSection);
+  if (!current || activeSection === "dashboard") {
+    return {
+      title: "Welcome back",
+      description: "Continue studying with your documents and AI assistant.",
+    };
+  }
+
+  return {
+    title: current.label,
+    description: "This workspace keeps your sidebar in place while you move between study areas.",
+  };
+}
+
 export default function DashboardPage() {
   const { user, logout } = useAuth();
+  const [activeSection, setActiveSection] = useState("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const displayName = getDisplayName(user?.email);
+  const sectionCopy = getSectionCopy(activeSection);
 
   return (
-    <main className="student-dashboard">
+    <main className={isSidebarCollapsed ? "student-dashboard student-dashboard--collapsed" : "student-dashboard"}>
       <aside className="student-sidebar" aria-label="Dashboard navigation">
+        <button
+          className="student-sidebar__toggle"
+          onClick={() => setIsSidebarCollapsed((current) => !current)}
+          type="button"
+        >
+          <span>{isSidebarCollapsed ? ">" : "<"}</span>
+          <b>{isSidebarCollapsed ? "Show" : "Hide"}</b>
+        </button>
+
         <Link className="student-sidebar__new" to="/library">
           <span>+</span>
-          New Document
+          <b>New Document</b>
         </Link>
 
         <nav className="student-sidebar__nav">
-          <Link className="student-sidebar__link student-sidebar__link--active" to="/dashboard">
-            <span>▦</span>
-            Dashboard
-          </Link>
-          <Link className="student-sidebar__link" to="/library">
-            <span>▤</span>
-            Study Sets
-          </Link>
-          <Link className="student-sidebar__link" to="/library">
-            <span>▧</span>
-            Documents
-          </Link>
-          <Link className="student-sidebar__link" to="/library">
-            <span>◌</span>
-            AI Workspace
-          </Link>
-          <a className="student-sidebar__link" href="#analytics">
-            <span>▥</span>
-            Analytics
-          </a>
+          {sidebarItems.map((item) => (
+            <button
+              className={
+                activeSection === item.id
+                  ? "student-sidebar__link student-sidebar__link--active"
+                  : "student-sidebar__link"
+              }
+              key={item.id}
+              onClick={() => setActiveSection(item.id)}
+              type="button"
+            >
+              <span>{item.icon}</span>
+              <b>{item.label}</b>
+            </button>
+          ))}
         </nav>
 
         <div className="student-sidebar__footer">
-          <a className="student-sidebar__link" href="#settings">
-            <span>⚙</span>
-            Settings
-          </a>
+          <button className="student-sidebar__link" onClick={() => setActiveSection("settings")} type="button">
+            <span>T</span>
+            <b>Settings</b>
+          </button>
           <button className="student-sidebar__link" onClick={logout} type="button">
-            <span>↪</span>
-            Log Out
+            <span>L</span>
+            <b>Log Out</b>
           </button>
         </div>
       </aside>
@@ -76,8 +106,11 @@ export default function DashboardPage() {
       <section className="student-dashboard__content">
         <section className="student-welcome">
           <div>
-            <h1>Welcome back, {displayName}</h1>
-            <p>Continue studying with your documents and AI assistant.</p>
+            <h1>
+              {sectionCopy.title}
+              {activeSection === "dashboard" ? `, ${displayName}` : ""}
+            </h1>
+            <p>{sectionCopy.description}</p>
           </div>
           <div className="student-welcome__actions">
             <Link className="student-button student-button--outline" to="/library">
@@ -92,7 +125,7 @@ export default function DashboardPage() {
         <section className="student-stat-grid" aria-label="Dashboard statistics">
           <article className="student-stat-card student-stat-card--storage">
             <h2>
-              <span>☁</span>
+              <span>U</span>
               Storage Usage
             </h2>
             <div className="student-stat-card__usage">
@@ -151,12 +184,12 @@ export default function DashboardPage() {
               <div className="student-learning-list">
                 {learningItems.map((item) => (
                   <Link className="student-learning-item" key={item.title} to="/library">
-                    <span>⌘</span>
+                    <span>A</span>
                     <div>
                       <strong>{item.title}</strong>
                       <small>{item.time}</small>
                     </div>
-                    <b>→</b>
+                    <b>-&gt;</b>
                   </Link>
                 ))}
               </div>
