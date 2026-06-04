@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 function messageFromError(err) {
-  return err.response?.data?.error || "Something went wrong. Please try again.";
+  return err.response?.data?.error || err.message || "Something went wrong. Please try again.";
 }
 
 export default function LoginPage() {
@@ -68,10 +68,15 @@ export default function LoginPage() {
 
     try {
       if (mode === "register") {
-        await register({ email: form.email, password: form.password });
-        setForm({ fullName: "", email: form.email, password: "", confirmPassword: "" });
-        switchMode("login");
-        setSuccess("Account created. You can log in now.");
+        const result = await register({ email: form.email, password: form.password });
+
+        if (result.requiresEmailConfirmation) {
+          setForm({ fullName: "", email: form.email, password: "", confirmPassword: "" });
+          switchMode("login");
+          setSuccess("Account created. Check your email to confirm your account, then log in.");
+        } else {
+          navigate(result.user.role === "admin" ? "/admin" : "/dashboard", { replace: true });
+        }
       } else {
         const loggedInUser = await login({ email: form.email, password: form.password });
         navigate(loggedInUser.role === "admin" ? "/admin" : "/dashboard", { replace: true });

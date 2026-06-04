@@ -17,7 +17,7 @@ async function updateUser({ targetUserId, updates, currentUserId }) {
       throw createError(400, 'Status must be active or disabled');
     }
 
-    if (Number(targetUserId) === Number(currentUserId) && updates.status === 'disabled') {
+    if (String(targetUserId) === String(currentUserId) && updates.status === 'disabled') {
       throw createError(400, 'You cannot disable your own account');
     }
 

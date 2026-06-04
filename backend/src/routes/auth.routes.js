@@ -11,53 +11,9 @@ const verifyToken = require('../middleware/auth');
 
 /**
  * @swagger
- * /api/auth/register:
- *   post:
- *     summary: Register new student
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [email, password]
- *             properties:
- *               email: { type: string }
- *               password: { type: string }
- *     responses:
- *       201: { description: Registered }
- *       400: { description: Bad request }
- */
-router.post('/register', authController.register);
-
-/**
- * @swagger
- * /api/auth/login:
- *   post:
- *     summary: Login student/admin
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [email, password]
- *             properties:
- *               email: { type: string }
- *               password: { type: string }
- *     responses:
- *       200: { description: Logged in }
- *       401: { description: Invalid credentials }
- */
-router.post('/login', authController.login);
-
-/**
- * @swagger
  * /api/auth/me:
  *   get:
- *     summary: Get current user profile
+ *     summary: Get current authenticated user profile
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
