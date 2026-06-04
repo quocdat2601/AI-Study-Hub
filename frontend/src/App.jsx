@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Link, NavLink } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -36,9 +36,12 @@ function Navigation() {
 }
 
 function AppRoutes() {
+  const location = useLocation();
+  const shouldShowAppNav = !["/", "/login"].includes(location.pathname);
+
   return (
-    <BrowserRouter>
-      <Navigation />
+    <>
+      {shouldShowAppNav ? <Navigation /> : null}
 
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -68,14 +71,16 @@ function AppRoutes() {
         />
         <Route path="/login" element={<LoginPage />} />
       </Routes>
-    </BrowserRouter>
+    </>
   );
 }
 
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
     </AuthProvider>
   );
 }

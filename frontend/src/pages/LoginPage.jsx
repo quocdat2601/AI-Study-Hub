@@ -13,7 +13,7 @@ export default function LoginPage() {
   const location = useLocation();
   const initialMode = searchParams.get("mode") === "register" ? "register" : "login";
   const [mode, setMode] = useState(initialMode);
-  const [form, setForm] = useState({ email: "", password: "", confirmPassword: "" });
+  const [form, setForm] = useState({ fullName: "", email: "", password: "", confirmPassword: "" });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,7 +64,7 @@ export default function LoginPage() {
     try {
       if (mode === "register") {
         await register({ email: form.email, password: form.password });
-        setForm({ email: form.email, password: "", confirmPassword: "" });
+        setForm({ fullName: "", email: form.email, password: "", confirmPassword: "" });
         switchMode("login");
         setSuccess("Account created. You can log in now.");
       } else {
@@ -79,58 +79,119 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-card">
-        <Link className="back-link" to="/">
-          AI Study Hub
-        </Link>
-        <h1>{mode === "register" ? "Create your account" : "Welcome back"}</h1>
-        <p className="muted">
-          {mode === "register"
-            ? "Register with your email to start storing study materials."
-            : "Log in to access your study workspace."}
-        </p>
+    <main className="simple-auth">
+      <Link className="simple-auth__brand" to="/">
+        <span>AI</span>
+        <strong>AI Study Hub</strong>
+      </Link>
 
-        <div className="mode-switch">
-          <button className={mode === "login" ? "mode-switch__item active" : "mode-switch__item"} onClick={() => switchMode("login")}>
-            Login
-          </button>
-          <button
-            className={mode === "register" ? "mode-switch__item active" : "mode-switch__item"}
-            onClick={() => switchMode("register")}
-          >
-            Register
-          </button>
-        </div>
+      <section className={mode === "register" ? "simple-auth__card simple-auth__card--register" : "simple-auth__card"}>
+        <header className="simple-auth__header" key={`header-${mode}`}>
+          <h1>{mode === "register" ? "Create your study workspace" : "Welcome back"}</h1>
+          <p>
+            {mode === "register"
+              ? "Save notes, documents, and AI study chats in one place."
+              : "Log in to continue to AI Study Hub."}
+          </p>
+        </header>
 
-        {error ? <div className="alert alert--error">{error}</div> : null}
-        {success ? <div className="alert alert--success">{success}</div> : null}
+          {error ? <div className="alert alert--error">{error}</div> : null}
+          {success ? <div className="alert alert--success">{success}</div> : null}
 
-        <form className="stack-form" onSubmit={submitForm}>
-          <label>
-            Email
-            <input name="email" type="email" value={form.email} onChange={updateField} required />
-          </label>
-          <label>
-            Password
-            <input name="password" type="password" value={form.password} onChange={updateField} required />
-          </label>
+        <form
+          className={mode === "register" ? "simple-auth__form simple-auth__form--register" : "simple-auth__form"}
+          key={`form-${mode}`}
+          onSubmit={submitForm}
+        >
           {mode === "register" ? (
             <label>
-              Confirm password
+              Full name
               <input
-                name="confirmPassword"
-                type="password"
-                value={form.confirmPassword}
+                name="fullName"
+                type="text"
+                value={form.fullName}
                 onChange={updateField}
+                placeholder="Your full name"
                 required
               />
             </label>
           ) : null}
-          <button className="button button--primary button--full" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Please wait..." : mode === "register" ? "Create account" : "Login"}
+
+          <label>
+            Email
+                <input
+                  name="email"
+                  type="email"
+                  value={form.email}
+                  onChange={updateField}
+              placeholder="you@example.com"
+                  required
+                />
+          </label>
+
+          <label>
+            Password
+                <input
+                  name="password"
+                  type="password"
+                  value={form.password}
+                  onChange={updateField}
+              placeholder={mode === "register" ? "Create a password" : "Your password"}
+                  required
+                />
+          </label>
+
+          {mode === "register" ? (
+            <label>
+              Confirm password
+                <input
+                  name="confirmPassword"
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={updateField}
+                placeholder="Confirm your password"
+                required
+                />
+            </label>
+          ) : null}
+
+          {mode === "login" ? (
+            <div className="simple-auth__options">
+              <label className="simple-auth__check">
+                <input type="checkbox" />
+                Remember me
+              </label>
+              <a href="#forgot">Forgot password?</a>
+            </div>
+          ) : (
+            <label className="simple-auth__check">
+              <input type="checkbox" required />
+              <span>
+                I agree to the <a href="#terms">Terms of Service</a> and <a href="#privacy">Privacy Policy</a>
+              </span>
+            </label>
+          )}
+
+          <button className="simple-auth__submit" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Please wait..." : mode === "register" ? "Create account" : "Continue"}
+            </button>
+          </form>
+
+        <div className="simple-auth__divider">
+          <span>OR</span>
+        </div>
+
+        <button className="simple-auth__google" key={`google-${mode}`} type="button">
+          <span>G</span>
+          {mode === "register" ? "Sign up with Google" : "Continue with Google"}
+        </button>
+
+        <p className="simple-auth__switch" key={`switch-${mode}`}>
+          {mode === "register" ? "Already have an account?" : "New to AI Study Hub?"}{" "}
+          <button type="button" onClick={() => switchMode(mode === "register" ? "login" : "register")}>
+            {mode === "register" ? "Log in" : "Create an account"}
           </button>
-        </form>
+        </p>
       </section>
     </main>
   );
