@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState({ fullName: "", email: "", password: "", confirmPassword: "" });
   const [error, setError] = useState("");
+  const [messageField, setMessageField] = useState("");
   const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -34,6 +35,7 @@ export default function LoginPage() {
   function switchMode(nextMode) {
     setMode(nextMode);
     setError("");
+    setMessageField("");
     setSuccess("");
     setSearchParams(nextMode === "register" ? { mode: "register" } : {});
   }
@@ -45,16 +47,19 @@ export default function LoginPage() {
   async function submitForm(event) {
     event.preventDefault();
     setError("");
+    setMessageField("");
     setSuccess("");
 
     if (mode === "register") {
       if (form.password.length < 8) {
         setError("Password must be at least 8 characters");
+        setMessageField("password");
         return;
       }
 
       if (form.password !== form.confirmPassword) {
         setError("Passwords do not match");
+        setMessageField("confirmPassword");
         return;
       }
     }
@@ -72,10 +77,32 @@ export default function LoginPage() {
         navigate(loggedInUser.role === "admin" ? "/admin" : "/dashboard", { replace: true });
       }
     } catch (err) {
-      setError(messageFromError(err));
+      const nextError = messageFromError(err);
+      setError(nextError);
+      setMessageField(mode === "login" ? "" : "password");
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function renderMessage(field = "") {
+    const message = error || success;
+    if (!message) return null;
+    if (field !== messageField) return null;
+
+    return (
+      <div
+        className={
+          error
+            ? "simple-auth__bubble simple-auth__bubble--error simple-auth__bubble--field"
+            : "simple-auth__bubble simple-auth__bubble--success simple-auth__bubble--field"
+        }
+        key={`message-${field}-${message}`}
+        role="alert"
+      >
+        <p>{message}</p>
+      </div>
+    );
   }
 
   return (
@@ -95,8 +122,7 @@ export default function LoginPage() {
           </p>
         </header>
 
-          {error ? <div className="alert alert--error">{error}</div> : null}
-          {success ? <div className="alert alert--success">{success}</div> : null}
+        {renderMessage()}
 
         <form
           className={mode === "register" ? "simple-auth__form simple-auth__form--register" : "simple-auth__form"}
@@ -104,7 +130,7 @@ export default function LoginPage() {
           onSubmit={submitForm}
         >
           {mode === "register" ? (
-            <label>
+            <label className="simple-auth__field">
               Full name
               <input
                 name="fullName"
@@ -117,7 +143,7 @@ export default function LoginPage() {
             </label>
           ) : null}
 
-          <label>
+          <label className="simple-auth__field">
             Email
                 <input
                   name="email"
@@ -127,9 +153,10 @@ export default function LoginPage() {
               placeholder="you@example.com"
                   required
                 />
+            {renderMessage("email")}
           </label>
 
-          <label>
+          <label className="simple-auth__field">
             Password
                 <input
                   name="password"
@@ -139,10 +166,11 @@ export default function LoginPage() {
               placeholder={mode === "register" ? "Create a password" : "Your password"}
                   required
                 />
+            {renderMessage("password")}
           </label>
 
           {mode === "register" ? (
-            <label>
+            <label className="simple-auth__field">
               Confirm password
                 <input
                   name="confirmPassword"
@@ -152,6 +180,7 @@ export default function LoginPage() {
                 placeholder="Confirm your password"
                 required
                 />
+              {renderMessage("confirmPassword")}
             </label>
           ) : null}
 
