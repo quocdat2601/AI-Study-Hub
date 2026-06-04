@@ -1,11 +1,24 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api.js";
-import { supabase } from "../lib/supabase.js";
+import {
+  clearRecoveryMode,
+  getAuthSession,
+  hasRecoveryContext,
+  loginWithPassword,
+  logoutAuth,
+  markRecoveryMode,
+  onAuthStateChange,
+  registerWithPassword,
+  requestPasswordResetEmail,
+  updateUserPassword,
+} from "../services/authApi.js";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [hasSession, setHasSession] = useState(false);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(() => hasRecoveryContext());
   const [isLoading, setIsLoading] = useState(true);
   const manualAuthInProgressRef = useRef(false);
   const userRef = useRef(null);
@@ -15,13 +28,16 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   async function loadCurrentUser(accessToken) {
-    const response = await api.get("/auth/me", accessToken
-      ? {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      : undefined);
+    const response = await api.get(
+      "/auth/me",
+      accessToken
+        ? {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        : undefined
+    );
 
     return response.data.user || response.data;
   }
@@ -29,9 +45,23 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let isMounted = true;
 
-    async function hydrateFromSession(session) {
+    async function hydrateFromSession(session, recoveryMode = hasRecoveryContext()) {
       try {
         if (!session?.access_token) {
+          if (isMounted) {
+            setUser(null);
+            setHasSession(false);
+            setIsRecoveryMode(recoveryMode);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          setHasSession(true);
+          setIsRecoveryMode(recoveryMode);
+        }
+
+        if (recoveryMode) {
           if (isMounted) {
             setUser(null);
           }
@@ -43,9 +73,11 @@ export function AuthProvider({ children }) {
           setUser(currentUser);
         }
       } catch (err) {
-        await supabase.auth.signOut();
+        await logoutAuth().catch(() => {});
         if (isMounted) {
           setUser(null);
+          setHasSession(false);
+          setIsRecoveryMode(false);
         }
       } finally {
         if (isMounted) {
@@ -55,18 +87,25 @@ export function AuthProvider({ children }) {
     }
 
     async function initializeAuth() {
-      const { data } = await supabase.auth.getSession();
-      await hydrateFromSession(data.session);
+      const session = await getAuthSession();
+      await hydrateFromSession(session, hasRecoveryContext());
     }
 
     initializeAuth();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        markRecoveryMode();
+      }
+
       if (event === "SIGNED_OUT") {
+        clearRecoveryMode();
         if (isMounted) {
           setUser(null);
+          setHasSession(false);
+          setIsRecoveryMode(false);
           setIsLoading(false);
         }
         return;
@@ -76,15 +115,20 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      if (event === "TOKEN_REFRESHED" && userRef.current) {
-        setIsLoading(false);
+      if (event === "TOKEN_REFRESHED" && userRef.current && !hasRecoveryContext()) {
+        if (isMounted) {
+          setHasSession(true);
+          setIsRecoveryMode(false);
+          setIsLoading(false);
+        }
         return;
       }
 
       if (isMounted) {
         setIsLoading(true);
       }
-      await hydrateFromSession(session);
+
+      await hydrateFromSession(session, hasRecoveryContext());
     });
 
     return () => {
@@ -94,16 +138,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function login(credentials) {
+    clearRecoveryMode();
+    setIsRecoveryMode(false);
     manualAuthInProgressRef.current = true;
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword(credentials);
-
-      if (error) {
-        throw error;
-      }
-
+      const data = await loginWithPassword(credentials);
       const currentUser = await loadCurrentUser(data.session.access_token);
+      setHasSession(true);
       setUser(currentUser);
       setIsLoading(false);
       return currentUser;
@@ -116,21 +158,10 @@ export function AuthProvider({ children }) {
     manualAuthInProgressRef.current = true;
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        ...details,
-        options: {
-          data: {
-            name: details.fullName,
-            full_name: details.fullName,
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
+      const data = await registerWithPassword(details);
 
       if (!data.session?.access_token) {
+        setHasSession(false);
         setIsLoading(false);
         return {
           user: data.user,
@@ -139,6 +170,8 @@ export function AuthProvider({ children }) {
       }
 
       const currentUser = await loadCurrentUser(data.session.access_token);
+      setHasSession(true);
+      setIsRecoveryMode(false);
       setUser(currentUser);
       setIsLoading(false);
 
@@ -151,24 +184,38 @@ export function AuthProvider({ children }) {
     }
   }
 
-  function logout() {
+  async function requestPasswordReset(email) {
+    const redirectTo = new URL("/reset-password", window.location.origin).toString();
+    await requestPasswordResetEmail(email, redirectTo);
+  }
+
+  async function updatePassword(newPassword) {
+    await updateUserPassword(newPassword);
+  }
+
+  async function logout() {
+    clearRecoveryMode();
     setUser(null);
+    setHasSession(false);
+    setIsRecoveryMode(false);
     setIsLoading(false);
-    supabase.auth.signOut().catch(() => {
-      // Local auth is already cleared; the next session refresh will reconcile remote state.
-    });
+    await logoutAuth().catch(() => {});
   }
 
   const value = useMemo(
     () => ({
       user,
+      hasSession,
       isLoading,
+      isRecoveryMode,
       isAuthenticated: Boolean(user),
       login,
       register,
+      requestPasswordReset,
+      updatePassword,
       logout,
     }),
-    [user, isLoading]
+    [user, hasSession, isLoading, isRecoveryMode]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

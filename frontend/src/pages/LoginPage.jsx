@@ -23,6 +23,14 @@ export default function LoginPage() {
     setMode(searchParams.get("mode") === "register" ? "register" : "login");
   }, [searchParams]);
 
+  useEffect(() => {
+    if (location.state?.authMessage) {
+      setError("");
+      setMessageField("");
+      setSuccess(location.state.authMessage);
+    }
+  }, [location.state]);
+
   const destination = useMemo(() => {
     if (location.state?.from?.pathname) return location.state.from.pathname;
     return user?.role === "admin" ? "/admin" : "/dashboard";
@@ -218,7 +226,7 @@ export default function LoginPage() {
                 <input className="h-4 w-4 select-auto p-0" type="checkbox" />
                 Remember me
               </label>
-              <a className="font-bold text-[#0f62fe] no-underline" href="#forgot">Forgot password?</a>
+              <Link className="font-bold text-[#0f62fe] no-underline" to="/forgot-password">Forgot password?</Link>
             </div>
           ) : (
             <label className="col-span-full mx-auto flex max-w-[560px] flex-row items-center gap-[9px] text-left text-[13px] font-medium text-[#526173]">

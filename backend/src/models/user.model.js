@@ -1,10 +1,12 @@
 const supabase = require('../config/supabase');
 
+const USER_COLUMNS = 'id, email, role, status, storage_limit_bytes, created_at, last_login_at';
+
 class UserModel {
   static async findAll() {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_COLUMNS)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -14,7 +16,7 @@ class UserModel {
   static async findByEmail(email) {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_COLUMNS)
       .eq('email', email)
       .single();
 
@@ -25,7 +27,7 @@ class UserModel {
   static async findById(id) {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_COLUMNS)
       .eq('id', id)
       .single();
 
@@ -37,7 +39,7 @@ class UserModel {
     const { data, error } = await supabase
       .from('users')
       .insert([userData])
-      .select()
+      .select(USER_COLUMNS)
       .single();
 
     if (error) throw error;
@@ -49,7 +51,7 @@ class UserModel {
       .from('users')
       .update(updates)
       .eq('id', id)
-      .select()
+      .select(USER_COLUMNS)
       .maybeSingle();
 
     if (error) throw error;
@@ -58,13 +60,6 @@ class UserModel {
 
   static async updateStatus(id, status) {
     return this.update(id, { status, updated_at: new Date().toISOString() });
-  }
-
-  static async updateLastLogin(id) {
-    return this.update(id, {
-      last_login_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
   }
 }
 

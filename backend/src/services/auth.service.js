@@ -26,27 +26,11 @@ async function syncUserProfile(authUser) {
       status: 'active',
       last_login_at: authUser.last_sign_in_at || null,
     });
-  } else {
-    const updates = {};
-    const lastLoginChanged = authUser.last_sign_in_at && user.last_login_at !== authUser.last_sign_in_at;
-
-    if (normalizedEmail && user.email !== normalizedEmail) {
-      updates.email = normalizedEmail;
-    }
-
-    if (lastLoginChanged && Object.keys(updates).length) {
-      updates.last_login_at = authUser.last_sign_in_at;
-    }
-
-    if (Object.keys(updates).length) {
-      updates.updated_at = new Date().toISOString();
-      user = await userModel.update(authUser.id, updates);
-    } else if (lastLoginChanged) {
-      userModel.update(authUser.id, {
-        last_login_at: authUser.last_sign_in_at,
-        updated_at: new Date().toISOString(),
-      }).catch(() => {});
-    }
+  } else if (normalizedEmail && user.email !== normalizedEmail) {
+    user = await userModel.update(authUser.id, {
+      email: normalizedEmail,
+      updated_at: new Date().toISOString(),
+    });
   }
 
   if (!user) {

@@ -6,14 +6,17 @@ import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
+import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 
 function AppRoutes() {
   const { isAuthenticated, logout, user } = useAuth();
   const location = useLocation();
-  const shouldShowAppNav = !["/", "/login"].includes(location.pathname);
+  const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
+  const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname);
 
   return (
     <>
@@ -27,6 +30,7 @@ function AppRoutes() {
 
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route
           path="/dashboard"
           element={
@@ -52,6 +56,7 @@ function AppRoutes() {
           }
         />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Routes>
     </>
   );
