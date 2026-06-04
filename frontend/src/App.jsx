@@ -1,7 +1,8 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Link, NavLink, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
+import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
@@ -9,39 +10,22 @@ import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 
-function Navigation() {
-  const { isAuthenticated, user, logout } = useAuth();
-
-  return (
-    <nav className="nav">
-      <Link className="brand" to="/">
-        AI Study Hub
-      </Link>
-      <div className="nav__links">
-        {isAuthenticated ? (
-          <>
-            <NavLink to="/dashboard">Dashboard</NavLink>
-            <NavLink to="/library">Library</NavLink>
-            {user?.role === "admin" ? <NavLink to="/admin">Admin</NavLink> : null}
-            <button className="nav__button" onClick={logout} type="button">
-              Logout
-            </button>
-          </>
-        ) : (
-          <NavLink to="/login">Login / Register</NavLink>
-        )}
-      </div>
-    </nav>
-  );
-}
-
 function AppRoutes() {
+  const { isAuthenticated, logout, user } = useAuth();
   const location = useLocation();
   const shouldShowAppNav = !["/", "/login"].includes(location.pathname);
 
   return (
     <>
-      {shouldShowAppNav ? <Navigation /> : null}
+      {shouldShowAppNav ? (
+        <LandingHeader
+          isAdmin={user?.role === "admin"}
+          isAuthenticated={isAuthenticated}
+          onLogout={logout}
+          showAppLinks
+          workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
+        />
+      ) : null}
 
       <Routes>
         <Route path="/" element={<LandingPage />} />
