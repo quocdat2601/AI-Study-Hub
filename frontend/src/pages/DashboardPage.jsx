@@ -1,19 +1,12 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import DashboardSidebar, { dashboardSidebarItems } from "../components/dashboard/DashboardSidebar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const stats = [
   { icon: "D", label: "Total Documents", value: "42" },
   { icon: "B", label: "Bookmarks", value: "12" },
   { icon: "C", label: "AI Chats", value: "8" },
-];
-
-const sidebarItems = [
-  { id: "dashboard", icon: "G", label: "Dashboard" },
-  { id: "study-sets", icon: "S", label: "Study Sets" },
-  { id: "documents", icon: "F", label: "Documents" },
-  { id: "ai-workspace", icon: "A", label: "AI Workspace" },
-  { id: "analytics", icon: "N", label: "Analytics" },
 ];
 
 const recentDocuments = [
@@ -29,13 +22,16 @@ const learningItems = [
 
 const subjects = ["Computer Science", "Mathematics", "Physics", "Software Engineering"];
 
-function getDisplayName(email) {
-  if (!email) return "Student";
-  return email.split("@")[0].replace(/[._-]+/g, " ");
+function getDisplayName(user) {
+  if (user?.name) return user.name;
+  if (user?.fullName) return user.fullName;
+  if (user?.full_name) return user.full_name;
+  if (user?.email) return user.email.split("@")[0].replace(/[._-]+/g, " ");
+  return "Student";
 }
 
 function getSectionCopy(activeSection) {
-  const current = sidebarItems.find((item) => item.id === activeSection);
+  const current = dashboardSidebarItems.find((item) => item.id === activeSection);
   if (!current || activeSection === "dashboard") {
     return {
       title: "Welcome back",
@@ -50,111 +46,78 @@ function getSectionCopy(activeSection) {
 }
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const displayName = getDisplayName(user?.email);
+  const displayName = getDisplayName(user);
   const sectionCopy = getSectionCopy(activeSection);
+  const contentClass = isSidebarCollapsed
+    ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
+    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
 
   return (
-    <main className={isSidebarCollapsed ? "student-dashboard student-dashboard--collapsed" : "student-dashboard"}>
-      <aside className="student-sidebar" aria-label="Dashboard navigation">
-        <button
-          className="student-sidebar__toggle"
-          onClick={() => setIsSidebarCollapsed((current) => !current)}
-          type="button"
-        >
-          <span>{isSidebarCollapsed ? ">" : "<"}</span>
-          <b>{isSidebarCollapsed ? "Show" : "Hide"}</b>
-        </button>
+    <main className={isSidebarCollapsed
+      ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out [grid-template-columns:64px_minmax(0,1fr)]"
+      : "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out [grid-template-columns:224px_minmax(0,1fr)]"
+    }>
+      <DashboardSidebar
+        activeSection={activeSection}
+        isCollapsed={isSidebarCollapsed}
+        onSectionChange={setActiveSection}
+        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+        userName={displayName}
+      />
 
-        <Link className="student-sidebar__new" to="/library">
-          <span>+</span>
-          <b>New Document</b>
-        </Link>
-
-        <nav className="student-sidebar__nav">
-          {sidebarItems.map((item) => (
-            <button
-              className={
-                activeSection === item.id
-                  ? "student-sidebar__link student-sidebar__link--active"
-                  : "student-sidebar__link"
-              }
-              key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              type="button"
-            >
-              <span>{item.icon}</span>
-              <b>{item.label}</b>
-            </button>
-          ))}
-        </nav>
-
-        <div className="student-sidebar__footer">
-          <button className="student-sidebar__link" onClick={() => setActiveSection("settings")} type="button">
-            <span>T</span>
-            <b>Settings</b>
-          </button>
-          <button className="student-sidebar__link" onClick={logout} type="button">
-            <span>L</span>
-            <b>Log Out</b>
-          </button>
-        </div>
-      </aside>
-
-      <section className="student-dashboard__content">
-        <section className="student-welcome">
+      <section className={contentClass}>
+        <section className="flex items-center justify-between bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] p-6">
           <div>
-            <h1>
+            <h1 className="text-2xl font-bold m-0 mb-1">
               {sectionCopy.title}
               {activeSection === "dashboard" ? `, ${displayName}` : ""}
             </h1>
-            <p>{sectionCopy.description}</p>
+            <p className="text-[#464554] m-0">{sectionCopy.description}</p>
           </div>
-          <div className="student-welcome__actions">
-            <Link className="student-button student-button--outline" to="/library">
+          <div className="flex gap-[10px]">
+            <Link className="inline-flex items-center justify-center rounded-lg text-sm font-extrabold min-h-10 px-4 bg-white border border-[#767586] text-[#191c1e] no-underline whitespace-nowrap" to="/library">
               Upload Document
             </Link>
-            <Link className="student-button student-button--primary" to="/library">
+            <Link className="inline-flex items-center justify-center rounded-lg text-sm font-extrabold min-h-10 px-4 bg-[#4648d4] border border-[#4648d4] text-white no-underline whitespace-nowrap" to="/library">
               Open AI Workspace
             </Link>
           </div>
         </section>
 
-        <section className="student-stat-grid" aria-label="Dashboard statistics">
-          <article className="student-stat-card student-stat-card--storage">
-            <h2>
-              <span>U</span>
-              Storage Usage
-            </h2>
-            <div className="student-stat-card__usage">
-              <strong>1.2 GB</strong>
-              <span>/ 5 GB used</span>
+        <section className="grid gap-5 grid-cols-4" aria-label="Dashboard statistics">
+          <article className="flex flex-col justify-center bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] min-h-[118px] p-5">
+            <span className="text-[#4648d4] block text-xl mb-[10px]">U</span>
+            <p className="m-0 mb-1 text-sm text-[#464554]">Storage Usage</p>
+            <div className="flex items-end justify-between">
+              <strong className="text-xl">1.2 GB</strong>
+              <span className="text-sm text-[#464554]">/ 5 GB used</span>
             </div>
-            <div className="student-progress" aria-label="24 percent used">
-              <span />
+            <div className="bg-[#e6e8ea] rounded-full h-2 mt-3 overflow-hidden" aria-label="24 percent used">
+              <span className="bg-[#4648d4] rounded-[inherit] block h-full w-[24%]" />
             </div>
-            <p>24% used</p>
+            <p className="text-xs text-[#464554] m-0 mt-1">24% used</p>
           </article>
 
           {stats.map((item) => (
-            <article className="student-stat-card" key={item.label}>
-              <span className="student-stat-card__icon">{item.icon}</span>
-              <p>{item.label}</p>
-              <strong>{item.value}</strong>
+            <article className="flex flex-col justify-center bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] min-h-[118px] p-5" key={item.label}>
+              <span className="text-[#4648d4] block text-xl mb-[10px]">{item.icon}</span>
+              <p className="m-0 mb-1 text-sm text-[#464554]">{item.label}</p>
+              <strong className="text-xl">{item.value}</strong>
             </article>
           ))}
         </section>
 
-        <section className="student-dashboard__grid">
-          <article className="student-panel student-panel--documents">
-            <header>
-              <h2>Recent Documents</h2>
-              <Link to="/library">View All</Link>
+        <section className="grid gap-7 grid-cols-[minmax(0,2fr)_minmax(280px,0.95fr)]">
+          <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
+            <header className="flex items-center justify-between bg-[#f7f9fb] border-b border-[#c7c4d7] px-5 py-[18px]">
+              <h2 className="text-xl leading-[1.3] m-0">Recent Documents</h2>
+              <Link className="text-[#4648d4] text-[13px] font-extrabold no-underline" to="/library">View All</Link>
             </header>
-            <div className="student-table">
-              <div className="student-table__head">
+            <div className="grid">
+              <div className="grid items-center gap-3 grid-cols-[minmax(180px,1.6fr)_minmax(110px,1fr)_110px_70px_60px] px-4 py-[14px] bg-[#f2f4f6] text-[#464554] text-xs font-bold">
                 <span>Name</span>
                 <span>Subject</span>
                 <span>Date</span>
@@ -162,9 +125,12 @@ export default function DashboardPage() {
                 <span>Action</span>
               </div>
               {recentDocuments.map((doc) => (
-                <div className="student-table__row" key={doc.name}>
-                  <div className="student-doc-name">
-                    <span className={doc.type === "DOC" ? "student-doc-icon student-doc-icon--doc" : "student-doc-icon"}>
+                <div className="grid items-center gap-3 grid-cols-[minmax(180px,1.6fr)_minmax(110px,1fr)_110px_70px_60px] px-4 py-[14px] border-t border-[#d9dde6] text-[#464554] text-[13px]" key={doc.name}>
+                  <div className="flex items-center gap-3 text-[#191c1e]">
+                    <span className={doc.type === "DOC"
+                      ? "inline-flex items-center justify-center bg-[#d5e3fc] rounded-[6px] text-[#4648d4] flex-none text-[10px] font-black h-7 w-7"
+                      : "inline-flex items-center justify-center bg-[#fee2e2] rounded-[6px] text-[#ef4444] flex-none text-[10px] font-black h-7 w-7"
+                    }>
                       {doc.type}
                     </span>
                     <strong>{doc.name}</strong>
@@ -172,34 +138,34 @@ export default function DashboardPage() {
                   <span>{doc.subject}</span>
                   <span>{doc.date}</span>
                   <span>{doc.size}</span>
-                  <Link to="/library">Open</Link>
+                  <Link className="text-[#4648d4] text-[13px] font-extrabold no-underline" to="/library">Open</Link>
                 </div>
               ))}
             </div>
           </article>
 
-          <div className="student-dashboard__side">
-            <article className="student-panel student-panel--compact">
-              <h2>Continue Learning</h2>
-              <div className="student-learning-list">
+          <div className="grid gap-5">
+            <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden p-5">
+              <h2 className="text-xl leading-[1.3] m-0">Continue Learning</h2>
+              <div className="grid gap-[14px] mt-4">
                 {learningItems.map((item) => (
-                  <Link className="student-learning-item" key={item.title} to="/library">
-                    <span>A</span>
+                  <Link className="grid items-center gap-3 grid-cols-[40px_1fr_auto] text-inherit no-underline" key={item.title} to="/library">
+                    <span className="inline-flex items-center justify-center bg-[#d5e3fc] rounded-full text-[#4648d4] h-10 w-10">A</span>
                     <div>
-                      <strong>{item.title}</strong>
-                      <small>{item.time}</small>
+                      <strong className="block text-sm">{item.title}</strong>
+                      <small className="text-[#464554]">{item.time}</small>
                     </div>
-                    <b>-&gt;</b>
+                    <b className="text-[#4648d4]">-&gt;</b>
                   </Link>
                 ))}
               </div>
             </article>
 
-            <article className="student-panel student-panel--compact">
-              <h2>Your Subjects</h2>
-              <div className="student-subjects">
+            <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden p-5">
+              <h2 className="text-xl leading-[1.3] m-0">Your Subjects</h2>
+              <div className="flex flex-wrap gap-2 mt-4">
                 {subjects.map((subject) => (
-                  <span key={subject}>{subject}</span>
+                  <span className="bg-[#f2f4f6] border border-[#c7c4d7] rounded-[6px] text-xs font-bold px-3 py-[7px]" key={subject}>{subject}</span>
                 ))}
               </div>
             </article>

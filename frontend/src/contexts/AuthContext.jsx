@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api.js";
 import { supabase } from "../lib/supabase.js";
 
@@ -7,6 +7,12 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const manualAuthInProgressRef = useRef(false);
+  const userRef = useRef(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   async function loadCurrentUser(accessToken) {
     const response = await api.get("/auth/me", accessToken
@@ -57,7 +63,24 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT") {
+        if (isMounted) {
+          setUser(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (event === "SIGNED_IN" && manualAuthInProgressRef.current) {
+        return;
+      }
+
+      if (event === "TOKEN_REFRESHED" && userRef.current) {
+        setIsLoading(false);
+        return;
+      }
+
       if (isMounted) {
         setIsLoading(true);
       }
@@ -71,43 +94,69 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function login(credentials) {
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
+    manualAuthInProgressRef.current = true;
 
-    if (error) {
-      throw error;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword(credentials);
+
+      if (error) {
+        throw error;
+      }
+
+      const currentUser = await loadCurrentUser(data.session.access_token);
+      setUser(currentUser);
+      setIsLoading(false);
+      return currentUser;
+    } finally {
+      manualAuthInProgressRef.current = false;
     }
-
-    const currentUser = await loadCurrentUser(data.session.access_token);
-    setUser(currentUser);
-    return currentUser;
   }
 
   async function register(details) {
-    const { data, error } = await supabase.auth.signUp(details);
+    manualAuthInProgressRef.current = true;
 
-    if (error) {
-      throw error;
-    }
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        ...details,
+        options: {
+          data: {
+            name: details.fullName,
+            full_name: details.fullName,
+          },
+        },
+      });
 
-    if (!data.session?.access_token) {
+      if (error) {
+        throw error;
+      }
+
+      if (!data.session?.access_token) {
+        setIsLoading(false);
+        return {
+          user: data.user,
+          requiresEmailConfirmation: true,
+        };
+      }
+
+      const currentUser = await loadCurrentUser(data.session.access_token);
+      setUser(currentUser);
+      setIsLoading(false);
+
       return {
-        user: data.user,
-        requiresEmailConfirmation: true,
+        user: currentUser,
+        requiresEmailConfirmation: false,
       };
+    } finally {
+      manualAuthInProgressRef.current = false;
     }
-
-    const currentUser = await loadCurrentUser(data.session.access_token);
-    setUser(currentUser);
-
-    return {
-      user: currentUser,
-      requiresEmailConfirmation: false,
-    };
   }
 
-  async function logout() {
-    await supabase.auth.signOut();
+  function logout() {
     setUser(null);
+    setIsLoading(false);
+    supabase.auth.signOut().catch(() => {
+      // Local auth is already cleared; the next session refresh will reconcile remote state.
+    });
   }
 
   const value = useMemo(

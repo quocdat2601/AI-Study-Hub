@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children }) {
   const location = useLocation();
 
   if (isLoading) {
-    return <main className="page page--plain">Loading...</main>;
+    return <main className="mx-auto my-8 max-w-[1120px] rounded-lg border border-[#e5e9ef] bg-white p-8 text-[#66758a]">Loading...</main>;
   }
 
   if (!isAuthenticated) {

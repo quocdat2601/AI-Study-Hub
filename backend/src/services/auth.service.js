@@ -28,18 +28,24 @@ async function syncUserProfile(authUser) {
     });
   } else {
     const updates = {};
+    const lastLoginChanged = authUser.last_sign_in_at && user.last_login_at !== authUser.last_sign_in_at;
 
     if (normalizedEmail && user.email !== normalizedEmail) {
       updates.email = normalizedEmail;
     }
 
-    if (authUser.last_sign_in_at && user.last_login_at !== authUser.last_sign_in_at) {
+    if (lastLoginChanged && Object.keys(updates).length) {
       updates.last_login_at = authUser.last_sign_in_at;
     }
 
     if (Object.keys(updates).length) {
       updates.updated_at = new Date().toISOString();
       user = await userModel.update(authUser.id, updates);
+    } else if (lastLoginChanged) {
+      userModel.update(authUser.id, {
+        last_login_at: authUser.last_sign_in_at,
+        updated_at: new Date().toISOString(),
+      }).catch(() => {});
     }
   }
 

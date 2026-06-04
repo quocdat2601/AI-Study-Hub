@@ -11,7 +11,7 @@ export default function LandingPage() {
   const workspacePath = user?.role === "admin" ? "/admin" : "/dashboard";
 
   return (
-    <div className="figma-landing">
+    <div className="min-h-screen text-[#191c1e]" style={{ background: "#f7f9fb url('/landing/soft-wave-bg.svg') center top / cover fixed" }}>
       <LandingHeader isAuthenticated={isAuthenticated} workspacePath={workspacePath} />
       <main>
         <LandingHero />

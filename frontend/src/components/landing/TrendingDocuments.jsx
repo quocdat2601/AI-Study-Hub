@@ -44,16 +44,16 @@ const documents = [
 
 export default function TrendingDocuments() {
   return (
-    <section className="trending-section" id="courses">
-      <div className="landing-section-heading">
+    <section className="mx-auto max-w-[1280px] px-8 py-16" id="courses">
+      <div className="flex items-end justify-between mb-8">
         <div>
-          <h2>Trending at your University</h2>
-          <p>The most viewed documents this week</p>
+          <h2 className="text-[28px] leading-[1.28] tracking-normal m-0">Trending at your University</h2>
+          <p className="text-[#464554] leading-[1.5] mt-1 mb-0">The most viewed documents this week</p>
         </div>
-        <a href="#courses">View all ›</a>
+        <a className="text-[#4648d4] text-sm font-extrabold no-underline whitespace-nowrap" href="#courses">View all ›</a>
       </div>
 
-      <div className="document-bento">
+      <div className="grid gap-6 grid-cols-4">
         <DocumentCard document={featuredDocument} featured />
         {documents.map((document) => (
           <DocumentCard key={document.title} document={document} />
