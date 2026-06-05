@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { BellIcon } from "./dashboard/DashboardIcons.jsx";
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -115,28 +116,14 @@ export default function NotificationBell() {
   return (
     <div className="relative" ref={panelRef}>
       <button
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border-0 bg-transparent text-[#57657a] cursor-pointer transition hover:bg-[#f2f4f6] hover:text-[#4648d4]"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 cursor-pointer transition hover:border-slate-300 hover:text-indigo-600"
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
         onClick={handleOpenPanel}
         type="button"
       >
-        <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-          <path
-            d="M15 17H9c-2.2 0-4-1.8-4-4V10c0-3.3 2.7-6 6-6s6 2.7 6 6v3c0 2.2-1.8 4-4 4Z"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.8"
-          />
-          <path
-            d="M10 17v1a2 2 0 0 0 4 0v-1"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeWidth="1.8"
-          />
-        </svg>
+        <BellIcon className="h-5 w-5" />
 
         {unreadCount > 0 ? (
           <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ef4444] px-1 text-[10px] font-bold text-white">

@@ -18,7 +18,9 @@ function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname);
+  const dashboardShellRoutes = ["/dashboard"];
+  const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
+    && !dashboardShellRoutes.includes(location.pathname);
 
   return (
     <>

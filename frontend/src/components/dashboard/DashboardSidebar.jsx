@@ -13,10 +13,10 @@ function SidebarIcon({ name }) {
   const paths = {
     dashboard: (
       <>
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
       </>
     ),
     book: (
@@ -44,8 +44,6 @@ function SidebarIcon({ name }) {
       <>
         <path d="M4 16l4-4 3 3 6-8" />
         <path d="M17 7h3v3" />
-        <circle cx="7" cy="18" r="2" />
-        <circle cx="17" cy="18" r="2" />
       </>
     ),
     settings: (
@@ -54,70 +52,62 @@ function SidebarIcon({ name }) {
         <path d="M19.4 15a8.3 8.3 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8.8 8.8 0 0 0-1.7-1L15 6.5h-4L10.6 9a8.8 8.8 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a8.3 8.3 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a8.8 8.8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8.8 8.8 0 0 0 1.7-1l2.4 1 2-3.5-2.2-1.5Z" />
       </>
     ),
+    logout: (
+      <>
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <path d="M16 17l5-5-5-5" />
+        <path d="M21 12H9" />
+      </>
+    ),
   };
 
   return (
-    <svg className="h-[18px] w-[18px] stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className="h-5 w-5 shrink-0 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths[name]}
     </svg>
   );
 }
 
-function navItemClass(isCollapsed, isActive) {
-  if (isCollapsed) {
-    return isActive
-      ? "flex h-10 w-full items-center justify-center rounded-md border-0 bg-[#d5e3fc] text-[#344154] transition"
-      : "flex h-10 w-full items-center justify-center rounded-md border-0 bg-transparent text-[#344154] transition hover:bg-white";
-  }
-
+function navItemClass(isActive) {
   return isActive
-    ? "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-[#d5e3fc] px-3 text-left text-[13px] font-extrabold text-[#344154] transition"
-    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] transition hover:bg-white";
+    ? "relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 transition before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-indigo-600"
+    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900";
 }
 
 export default function DashboardSidebar({
   activeSection,
-  isCollapsed,
   onSectionChange,
-  onToggleCollapse,
-  userName,
+  onLogout,
 }) {
-  const initials = (userName || "User").slice(0, 2).toUpperCase();
-
   return (
     <aside
-      className={
-        isCollapsed
-          ? "sticky top-16 flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-visible border-r border-[#c7c4d7] bg-[#f2f4f6] px-[10px] py-4"
-          : "sticky top-16 flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-visible border-r border-[#c7c4d7] bg-[#f2f4f6] px-3 py-4"
-      }
+      className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5"
       aria-label="Dashboard navigation"
     >
-      <button
-        className="absolute right-[-13px] top-1/2 z-10 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
-        aria-label={isCollapsed ? "Show sidebar" : "Hide sidebar"}
-        onClick={onToggleCollapse}
-        type="button"
-      >
-        {isCollapsed ? ">" : "<"}
-      </button>
-
-      <Link
-        className={
-          isCollapsed
-            ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-            : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-        }
-        to="/documents?upload=true"
-      >
-        <span>+</span>
-        <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>Upload Documents</b>
+      <Link className="mb-6 flex items-center gap-3 no-underline" to="/dashboard">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.28)]">
+          A
+        </span>
+        <span className="min-w-0">
+          <strong className="block truncate text-[15px] font-bold tracking-tight text-slate-900">AI Study Hub</strong>
+          <small className="block truncate text-[11px] font-medium text-slate-500">Academic Pro</small>
+        </span>
       </Link>
 
-      <nav className="mt-5 grid content-start gap-2">
+      <Link
+        className="mb-6 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-[13px] font-semibold text-white no-underline shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
+        to="/documents?upload=true"
+      >
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+        </svg>
+        <span>New Document</span>
+      </Link>
+
+      <nav className="grid content-start gap-1">
         {dashboardSidebarItems.map((item) => (
           <button
-            className={navItemClass(isCollapsed, activeSection === item.id)}
+            className={navItemClass(activeSection === item.id)}
             key={item.id}
             onClick={() => onSectionChange(item.id)}
             type="button"
@@ -125,28 +115,32 @@ export default function DashboardSidebar({
             <span className="flex h-5 w-5 flex-none items-center justify-center">
               <SidebarIcon name={item.icon} />
             </span>
-            {!isCollapsed && <b className="truncate">{item.label}</b>}
+            <span className="truncate">{item.label}</span>
           </button>
         ))}
       </nav>
 
-      <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
-        <div className={isCollapsed ? "flex justify-center" : "flex items-center gap-2 px-1"}>
-          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
-            {initials}
-          </span>
-          {!isCollapsed && <strong className="block min-w-0 truncate text-xs text-[#172033]">{userName || "User"}</strong>}
-        </div>
-
+      <div className="mt-auto grid gap-1 border-t border-slate-100 pt-4">
         <button
-          className={navItemClass(isCollapsed, activeSection === "settings")}
+          className={navItemClass(activeSection === "settings")}
           onClick={() => onSectionChange("settings")}
           type="button"
         >
-          <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
             <SidebarIcon name="settings" />
           </span>
-          {!isCollapsed && <b className="truncate">Settings</b>}
+          <span className="truncate">Settings</span>
+        </button>
+
+        <button
+          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+          onClick={onLogout}
+          type="button"
+        >
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
+            <SidebarIcon name="logout" />
+          </span>
+          <span className="truncate">Log Out</span>
         </button>
       </div>
     </aside>
