@@ -45,6 +45,7 @@ function formatActivity(log) {
     'bookmark.create': 'Document bookmarked',
     'bookmark.delete': 'Bookmark removed',
     'chat.message': 'AI chat message created',
+    'chat.message.send': 'AI chat message created',
     'subject.create': 'Subject created',
   };
 

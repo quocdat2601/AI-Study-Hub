@@ -1,7 +1,6 @@
 const router = require('express').Router();
 const chatController = require('../controllers/chat.controller');
 const verifyToken = require('../middleware/auth');
-const requireRole = require('../middleware/requireRole');
 
 /**
  * @swagger
@@ -26,7 +25,7 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: Session details }
  */
-router.use(verifyToken, requireRole('student'));
+router.use(verifyToken);
 
 router.get('/session/:docId', chatController.getOrCreateSession);
 
@@ -74,5 +73,10 @@ router.get('/sessions/:sessionId/messages', chatController.getMessages);
  *       200: { description: AI response }
  */
 router.post('/sessions/:sessionId/messages', chatController.sendMessage);
+
+router.post('/sessions/:sessionId/shares/users', chatController.shareSessionWithUser);
+router.delete('/sessions/:sessionId/shares/users/:userId', chatController.removeUserShare);
+router.post('/sessions/:sessionId/public-link', chatController.createPublicLink);
+router.delete('/sessions/:sessionId/public-link', chatController.revokePublicLink);
 
 module.exports = router;

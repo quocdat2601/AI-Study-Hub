@@ -1,9 +1,11 @@
 const documentModel = require('../models/document.model');
 const supabaseService = require('./supabase.service');
+const chatService = require('./chat.service');
+const documentService = require('./document.service');
 
 async function getTrendingDocuments(limit) {
   const documents = await documentModel.findTrending(limit);
-  return Promise.all(documents.map(async (doc) => {
+  const documentsWithThumbnails = await Promise.all(documents.map(async (doc) => {
     if (!doc.thumbnail_path || doc.thumbnail_status !== 'ready') {
       return { ...doc, thumbnailUrl: null };
     }
@@ -17,8 +19,15 @@ async function getTrendingDocuments(limit) {
       return { ...doc, thumbnailUrl: null };
     }
   }));
+
+  return documentsWithThumbnails.map(documentService.buildPublicDocumentPreview);
+}
+
+async function getPublicChatShare(token) {
+  return chatService.getPublicChatShare(token);
 }
 
 module.exports = {
   getTrendingDocuments,
+  getPublicChatShare,
 };

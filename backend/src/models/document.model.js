@@ -53,6 +53,22 @@ class DocumentModel {
     return data;
   }
 
+  static async findOwnedById(id, userId) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(`
+        *,
+        subjects (name, code),
+        cloud_files (storage_path, mime_type, size_bytes)
+      `)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async findAccessibleById(id, userId) {
     const doc = await this.findById(id);
     if (!doc) return null;
@@ -121,6 +137,25 @@ class DocumentModel {
         extraction_error: extractionData.error,
         extracted_at: new Date().toISOString(),
         status: extractionData.status === 'ready' ? 'indexed' : 'uploaded',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        subjects (name, code),
+        cloud_files (storage_path, mime_type, size_bytes)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async updateVisibility(id, isPublic) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        is_public: isPublic,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -237,15 +272,18 @@ class DocumentModel {
         created_at,
         extracted_text,
         extraction_status,
+        status,
         view_count,
         thumbnail_path,
         thumbnail_status,
         thumbnail_error,
         thumbnail_generated_at,
         subjects (name, code),
-        cloud_files (storage_path, mime_type, size_bytes)
+        cloud_files (mime_type, size_bytes)
       `)
       .eq('is_public', true)
+      .eq('status', 'indexed')
+      .eq('extraction_status', 'ready')
       .order('view_count', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 5, 12));

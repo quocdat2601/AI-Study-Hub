@@ -59,9 +59,22 @@ async function getSignedUrl(req, res, next) {
   }
 }
 
+async function updateVisibility(req, res, next) {
+  try {
+    res.json(await documentService.updateVisibility({
+      id: req.params.id,
+      userId: req.user.id,
+      isPublic: req.body.isPublic,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllDocuments,
   uploadDocument,
   getDocumentById,
-  getSignedUrl
+  getSignedUrl,
+  updateVisibility
 };

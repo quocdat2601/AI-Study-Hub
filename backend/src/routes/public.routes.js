@@ -22,5 +22,6 @@ const router = express.Router();
  *         description: Trending documents returned
  */
 router.get('/documents/trending', publicController.getTrendingDocuments);
+router.get('/chat-shares/:token', publicController.getPublicChatShare);
 
 module.exports = router;

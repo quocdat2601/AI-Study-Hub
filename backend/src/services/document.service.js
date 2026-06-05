@@ -6,6 +6,8 @@ const thumbnailService = require('./thumbnail.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 
+const PUBLIC_PREVIEW_MAX_CHARS = 150;
+
 function filterDocuments(documents, { search, subjectId }) {
   let filtered = documents;
 
@@ -24,6 +26,47 @@ function filterDocuments(documents, { search, subjectId }) {
 async function listDocuments({ userId, search, subjectId }) {
   const documents = await documentModel.findByUserId(userId);
   return addThumbnailUrls(filterDocuments(documents, { search, subjectId }));
+}
+
+function normalizePreviewText(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  if (normalized.length <= PUBLIC_PREVIEW_MAX_CHARS) return normalized;
+  return `${normalized.slice(0, PUBLIC_PREVIEW_MAX_CHARS)}...`;
+}
+
+function getDocumentFileType(doc) {
+  const mimeType = doc.cloud_files?.mime_type || '';
+  if (mimeType.includes('pdf')) return 'PDF';
+  if (mimeType.includes('word')) return 'DOC';
+  return 'DOC';
+}
+
+function buildPublicDocumentPreview(doc) {
+  return {
+    id: doc.id,
+    title: doc.title,
+    subject: doc.subjects?.name || null,
+    subjectCode: doc.subjects?.code || null,
+    viewCount: Number(doc.view_count || 0),
+    fileType: getDocumentFileType(doc),
+    thumbnailUrl: doc.thumbnailUrl || null,
+    previewText: normalizePreviewText(doc.extracted_text),
+    createdAt: doc.created_at,
+    fileSizeBytes: Number(doc.cloud_files?.size_bytes || 0),
+  };
+}
+
+async function canReadDocument(userId, id) {
+  return documentModel.findAccessibleById(id, userId);
+}
+
+async function canUseDocumentInChat(userId, id) {
+  return canReadDocument(userId, id);
+}
+
+async function canEditDocument(userId, id) {
+  return documentModel.findOwnedById(id, userId);
 }
 
 async function addThumbnailUrls(documents) {
@@ -171,7 +214,7 @@ async function uploadDocument({ userId, file, title, subjectId }) {
 }
 
 async function getDocumentById({ id, userId }) {
-  const doc = await documentModel.findAccessibleById(id, userId);
+  const doc = await canReadDocument(userId, id);
   if (!doc) {
     throw createError(404, 'Document not found');
   }
@@ -181,12 +224,37 @@ async function getDocumentById({ id, userId }) {
 }
 
 async function getSignedUrl({ id, userId }) {
-  const doc = await documentModel.findAccessibleById(id, userId);
+  const doc = await canReadDocument(userId, id);
   if (!doc || !doc.cloud_files) {
     throw createError(404, 'File not found');
   }
 
   return { signedUrl: await supabaseService.getSignedUrl(doc.cloud_files.storage_path) };
+}
+
+async function updateVisibility({ id, userId, isPublic }) {
+  if (typeof isPublic !== 'boolean') {
+    throw createError(400, 'isPublic must be a boolean');
+  }
+
+  const doc = await canEditDocument(userId, id);
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+
+  const updatedDocument = await documentModel.updateVisibility(id, isPublic);
+  activityService.log({
+    userId,
+    action: isPublic ? 'document.publish' : 'document.unpublish',
+    targetType: 'document',
+    targetId: Number(id),
+  });
+
+  const [documentWithThumbnail] = await addThumbnailUrls([updatedDocument]);
+  return {
+    message: isPublic ? 'Document is now public' : 'Document is now private',
+    document: documentWithThumbnail,
+  };
 }
 
 module.exports = {
@@ -195,4 +263,9 @@ module.exports = {
   getDocumentById,
   getSignedUrl,
   addThumbnailUrls,
+  buildPublicDocumentPreview,
+  canReadDocument,
+  canUseDocumentInChat,
+  canEditDocument,
+  updateVisibility,
 };

@@ -9,6 +9,15 @@ async function getTrendingDocuments(req, res, next) {
   }
 }
 
+async function getPublicChatShare(req, res, next) {
+  try {
+    res.json(await publicService.getPublicChatShare(req.params.token));
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getTrendingDocuments,
+  getPublicChatShare,
 };

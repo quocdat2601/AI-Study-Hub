@@ -97,4 +97,32 @@ router.get('/:id', verifyToken, documentController.getDocumentById);
  */
 router.get('/:id/signed-url', verifyToken, documentController.getSignedUrl);
 
+/**
+ * @swagger
+ * /api/documents/{id}/visibility:
+ *   patch:
+ *     summary: Toggle document public visibility
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [isPublic]
+ *             properties:
+ *               isPublic: { type: boolean }
+ *     responses:
+ *       200: { description: Visibility updated }
+ *       404: { description: Document not found }
+ */
+router.patch('/:id/visibility', verifyToken, documentController.updateVisibility);
+
 module.exports = router;

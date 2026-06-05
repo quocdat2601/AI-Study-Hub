@@ -17,10 +17,7 @@ function estimatePages(bytes = 0) {
 }
 
 function getFileType(doc) {
-  const mime = doc.cloud_files?.mime_type || "";
-  if (mime.includes("word")) return "DOC";
-  if (mime.includes("pdf")) return "PDF";
-  return "DOC";
+  return doc.fileType || "DOC";
 }
 
 export default function TrendingDocuments() {
@@ -48,11 +45,9 @@ export default function TrendingDocuments() {
   }, []);
 
   const mappedDocuments = useMemo(() => documents.map((doc) => {
-    const course = doc.subjects?.name || doc.subjects?.code || "Study Material";
-    const viewCount = Number(doc.view_count || 0);
-    const description = doc.extracted_text
-      ? `${doc.extracted_text.slice(0, 150)}${doc.extracted_text.length > 150 ? "..." : ""}`
-      : "A student-uploaded study document ready for library search, preview, and future AI Q&A.";
+    const course = doc.subject || doc.subjectCode || "Study Material";
+    const viewCount = Number(doc.viewCount || 0);
+    const description = doc.previewText || "A public study document ready for preview and AI-assisted review.";
 
     return {
       badge: `${viewCount} views`,
@@ -62,10 +57,10 @@ export default function TrendingDocuments() {
       image: doc.thumbnailUrl || null,
       fileType: getFileType(doc),
       initials: initialsFromTitle(doc.title),
-      author: doc.subjects?.code || "AI Study Hub",
+      author: doc.subjectCode || "AI Study Hub",
       rating: `${viewCount} views`,
-      school: doc.subjects?.code || "AI Study Hub",
-      pages: estimatePages(doc.cloud_files?.size_bytes),
+      school: doc.subjectCode || "AI Study Hub",
+      pages: estimatePages(doc.fileSizeBytes),
     };
   }), [documents]);
 
@@ -76,7 +71,7 @@ export default function TrendingDocuments() {
       <div className="flex items-end justify-between mb-8">
         <div>
           <h2 className="text-[28px] leading-[1.28] tracking-normal m-0">Trending at your University</h2>
-          <p className="text-[#464554] leading-[1.5] mt-1 mb-0">The most viewed documents this week</p>
+          <p className="text-[#464554] leading-[1.5] mt-1 mb-0">The most viewed public documents right now</p>
         </div>
         <a className="text-[#4648d4] text-sm font-extrabold no-underline whitespace-nowrap" href="#courses">View all &gt;</a>
       </div>
