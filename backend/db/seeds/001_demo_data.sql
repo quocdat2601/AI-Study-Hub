@@ -5,7 +5,7 @@
 DO $$
 DECLARE
   admin_id users.id%TYPE;
-  student_id users.id%TYPE;
+  learner_id users.id%TYPE;
   swp_id subjects.id%TYPE;
   dbi_id subjects.id%TYPE;
   prn_id subjects.id%TYPE;
@@ -25,14 +25,14 @@ BEGIN
     RAISE EXCEPTION 'Seed requires at least one active admin user in users table.';
   END IF;
 
-  SELECT id INTO student_id
+  SELECT id INTO learner_id
   FROM users
-  WHERE role = 'student' AND status = 'active'
+  WHERE role = 'user' AND status = 'active'
   ORDER BY created_at
   LIMIT 1;
 
-  IF student_id IS NULL THEN
-    RAISE EXCEPTION 'Seed requires at least one active student user in users table.';
+  IF learner_id IS NULL THEN
+    RAISE EXCEPTION 'Seed requires at least one active user account in users table.';
   END IF;
 
   INSERT INTO subjects (code, name, description, created_by)
@@ -75,16 +75,16 @@ BEGIN
         updated_at = NOW()
   RETURNING id INTO mae_id;
 
-  SELECT id INTO seed_doc_id FROM documents WHERE user_id = student_id AND title = 'SWP391 Requirement Engineering Notes' LIMIT 1;
+  SELECT id INTO seed_doc_id FROM documents WHERE user_id = learner_id AND title = 'SWP391 Requirement Engineering Notes' LIMIT 1;
   IF seed_doc_id IS NULL THEN
     INSERT INTO cloud_files (storage_path, mime_type, size_bytes)
-    VALUES ('demo/' || student_id || '/swp391-requirement-engineering.pdf', 'application/pdf', 2432000)
+    VALUES ('demo/' || learner_id || '/swp391-requirement-engineering.pdf', 'application/pdf', 2432000)
     RETURNING id INTO seed_file_id;
 
     INSERT INTO documents (title, user_id, subject_id, file_id, status, extracted_text, extraction_status, extracted_at, view_count, created_at, updated_at)
     VALUES (
       'SWP391 Requirement Engineering Notes',
-      student_id,
+      learner_id,
       swp_id,
       seed_file_id,
       'indexed',
@@ -108,24 +108,24 @@ BEGIN
     WHERE id = seed_doc_id;
   END IF;
   INSERT INTO bookmarks (user_id, doc_id)
-  SELECT student_id, seed_doc_id
+  SELECT learner_id, seed_doc_id
   WHERE NOT EXISTS (
     SELECT 1
     FROM bookmarks
-    WHERE bookmarks.user_id = student_id
+    WHERE bookmarks.user_id = learner_id
       AND bookmarks.doc_id = seed_doc_id
   );
 
-  SELECT id INTO seed_doc_id FROM documents WHERE user_id = student_id AND title = 'DBI202 Normalization and SQL Review' LIMIT 1;
+  SELECT id INTO seed_doc_id FROM documents WHERE user_id = learner_id AND title = 'DBI202 Normalization and SQL Review' LIMIT 1;
   IF seed_doc_id IS NULL THEN
     INSERT INTO cloud_files (storage_path, mime_type, size_bytes)
-    VALUES ('demo/' || student_id || '/dbi202-normalization-review.pdf', 'application/pdf', 1887000)
+    VALUES ('demo/' || learner_id || '/dbi202-normalization-review.pdf', 'application/pdf', 1887000)
     RETURNING id INTO seed_file_id;
 
     INSERT INTO documents (title, user_id, subject_id, file_id, status, extracted_text, extraction_status, extracted_at, view_count, created_at, updated_at)
     VALUES (
       'DBI202 Normalization and SQL Review',
-      student_id,
+      learner_id,
       dbi_id,
       seed_file_id,
       'indexed',
@@ -149,24 +149,24 @@ BEGIN
     WHERE id = seed_doc_id;
   END IF;
   INSERT INTO bookmarks (user_id, doc_id)
-  SELECT student_id, seed_doc_id
+  SELECT learner_id, seed_doc_id
   WHERE NOT EXISTS (
     SELECT 1
     FROM bookmarks
-    WHERE bookmarks.user_id = student_id
+    WHERE bookmarks.user_id = learner_id
       AND bookmarks.doc_id = seed_doc_id
   );
 
-  SELECT id INTO seed_doc_id FROM documents WHERE user_id = student_id AND title = 'PRN212 WPF MVVM Final Checklist' LIMIT 1;
+  SELECT id INTO seed_doc_id FROM documents WHERE user_id = learner_id AND title = 'PRN212 WPF MVVM Final Checklist' LIMIT 1;
   IF seed_doc_id IS NULL THEN
     INSERT INTO cloud_files (storage_path, mime_type, size_bytes)
-    VALUES ('demo/' || student_id || '/prn212-mvvm-checklist.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 934000)
+    VALUES ('demo/' || learner_id || '/prn212-mvvm-checklist.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 934000)
     RETURNING id INTO seed_file_id;
 
     INSERT INTO documents (title, user_id, subject_id, file_id, status, extracted_text, extraction_status, extracted_at, view_count, created_at, updated_at)
     VALUES (
       'PRN212 WPF MVVM Final Checklist',
-      student_id,
+      learner_id,
       prn_id,
       seed_file_id,
       'indexed',
@@ -190,16 +190,16 @@ BEGIN
     WHERE id = seed_doc_id;
   END IF;
 
-  SELECT id INTO seed_doc_id FROM documents WHERE user_id = student_id AND title = 'AI101 Prompting Study Companion Guide' LIMIT 1;
+  SELECT id INTO seed_doc_id FROM documents WHERE user_id = learner_id AND title = 'AI101 Prompting Study Companion Guide' LIMIT 1;
   IF seed_doc_id IS NULL THEN
     INSERT INTO cloud_files (storage_path, mime_type, size_bytes)
-    VALUES ('demo/' || student_id || '/ai101-prompting-guide.pdf', 'application/pdf', 1210000)
+    VALUES ('demo/' || learner_id || '/ai101-prompting-guide.pdf', 'application/pdf', 1210000)
     RETURNING id INTO seed_file_id;
 
     INSERT INTO documents (title, user_id, subject_id, file_id, status, extracted_text, extraction_status, extracted_at, view_count, created_at, updated_at)
     VALUES (
       'AI101 Prompting Study Companion Guide',
-      student_id,
+      learner_id,
       ai_id,
       seed_file_id,
       'indexed',
@@ -223,24 +223,24 @@ BEGIN
     WHERE id = seed_doc_id;
   END IF;
   INSERT INTO bookmarks (user_id, doc_id)
-  SELECT student_id, seed_doc_id
+  SELECT learner_id, seed_doc_id
   WHERE NOT EXISTS (
     SELECT 1
     FROM bookmarks
-    WHERE bookmarks.user_id = student_id
+    WHERE bookmarks.user_id = learner_id
       AND bookmarks.doc_id = seed_doc_id
   );
 
-  SELECT id INTO seed_doc_id FROM documents WHERE user_id = student_id AND title = 'MAE101 Integration Practice Pack' LIMIT 1;
+  SELECT id INTO seed_doc_id FROM documents WHERE user_id = learner_id AND title = 'MAE101 Integration Practice Pack' LIMIT 1;
   IF seed_doc_id IS NULL THEN
     INSERT INTO cloud_files (storage_path, mime_type, size_bytes)
-    VALUES ('demo/' || student_id || '/mae101-integration-practice.pdf', 'application/pdf', 1653000)
+    VALUES ('demo/' || learner_id || '/mae101-integration-practice.pdf', 'application/pdf', 1653000)
     RETURNING id INTO seed_file_id;
 
     INSERT INTO documents (title, user_id, subject_id, file_id, status, extracted_text, extraction_status, extracted_at, view_count, created_at, updated_at)
     VALUES (
       'MAE101 Integration Practice Pack',
-      student_id,
+      learner_id,
       mae_id,
       seed_file_id,
       'indexed',
@@ -264,16 +264,16 @@ BEGIN
     WHERE id = seed_doc_id;
   END IF;
 
-  SELECT id INTO seed_doc_id FROM documents WHERE user_id = student_id AND title = 'Software Testing Final Review' LIMIT 1;
+  SELECT id INTO seed_doc_id FROM documents WHERE user_id = learner_id AND title = 'Software Testing Final Review' LIMIT 1;
   IF seed_doc_id IS NULL THEN
     INSERT INTO cloud_files (storage_path, mime_type, size_bytes)
-    VALUES ('demo/' || student_id || '/software-testing-final-review.pdf', 'application/pdf', 2115000)
+    VALUES ('demo/' || learner_id || '/software-testing-final-review.pdf', 'application/pdf', 2115000)
     RETURNING id INTO seed_file_id;
 
     INSERT INTO documents (title, user_id, subject_id, file_id, status, extracted_text, extraction_status, extracted_at, view_count, created_at, updated_at)
     VALUES (
       'Software Testing Final Review',
-      student_id,
+      learner_id,
       swp_id,
       seed_file_id,
       'indexed',
@@ -299,19 +299,19 @@ BEGIN
 
   SELECT id INTO seed_session_id
   FROM chat_sessions
-  WHERE user_id = student_id AND title = 'Demo study chat'
+  WHERE user_id = learner_id AND title = 'Demo study chat'
   LIMIT 1;
 
   IF seed_session_id IS NULL THEN
     INSERT INTO chat_sessions (user_id, title, created_at, last_activity_at, updated_at)
-    VALUES (student_id, 'Demo study chat', NOW() - INTERVAL '12 hours', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
+    VALUES (learner_id, 'Demo study chat', NOW() - INTERVAL '12 hours', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
     RETURNING id INTO seed_session_id;
   END IF;
 
   INSERT INTO chat_session_documents (session_id, doc_id)
   SELECT seed_session_id, d.id
   FROM documents d
-  WHERE d.user_id = student_id
+  WHERE d.user_id = learner_id
     AND d.title IN ('SWP391 Requirement Engineering Notes', 'AI101 Prompting Study Companion Guide')
   ON CONFLICT (session_id, doc_id) DO NOTHING;
 

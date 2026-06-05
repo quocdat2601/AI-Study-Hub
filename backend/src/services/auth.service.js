@@ -22,7 +22,7 @@ async function syncUserProfile(authUser) {
     user = await userModel.create({
       id: authUser.id,
       email: normalizedEmail,
-      role: 'student',
+      role: 'user',
       status: 'active',
       last_login_at: authUser.last_sign_in_at || null,
     });

@@ -15,7 +15,7 @@ export function hasRecoveryParams(locationLike = window.location) {
   const searchParams = new URLSearchParams(locationLike.search || "");
   const recoveryType = hashParams.get("type") || searchParams.get("type");
 
-  return recoveryType === "recovery" || searchParams.has("code");
+  return recoveryType === "recovery";
 }
 
 export function markRecoveryMode() {
@@ -45,6 +45,22 @@ export function onAuthStateChange(callback) {
 
 export async function loginWithPassword(credentials) {
   const { data, error } = await supabase.auth.signInWithPassword(credentials);
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function loginWithGoogle() {
+  const redirectTo = new URL("/login", window.location.origin).toString();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+    },
+  });
+
   if (error) {
     throw error;
   }

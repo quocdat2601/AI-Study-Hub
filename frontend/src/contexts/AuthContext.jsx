@@ -4,6 +4,7 @@ import {
   clearRecoveryMode,
   getAuthSession,
   hasRecoveryContext,
+  loginWithGoogle,
   loginWithPassword,
   logoutAuth,
   markRecoveryMode,
@@ -154,6 +155,12 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function loginWithGoogleOAuth() {
+    clearRecoveryMode();
+    setIsRecoveryMode(false);
+    await loginWithGoogle();
+  }
+
   async function register(details) {
     manualAuthInProgressRef.current = true;
 
@@ -210,6 +217,7 @@ export function AuthProvider({ children }) {
       isRecoveryMode,
       isAuthenticated: Boolean(user),
       login,
+      loginWithGoogle: loginWithGoogleOAuth,
       register,
       requestPasswordReset,
       updatePassword,

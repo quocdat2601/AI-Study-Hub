@@ -7,7 +7,7 @@ function messageFromError(err) {
 }
 
 export default function LoginPage() {
-  const { isAuthenticated, isLoading, login, register, user } = useAuth();
+  const { isAuthenticated, isLoading, login, loginWithGoogle, register, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,7 +36,21 @@ export default function LoginPage() {
     return user?.role === "admin" ? "/admin" : "/dashboard";
   }, [location.state, user]);
 
-  if (!isLoading && isAuthenticated) {
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f7fbff] bg-[url('/landing/soft-wave-bg.svg')] bg-cover bg-center px-6 text-[#24262d]">
+        <div className="grid justify-items-center gap-4 rounded-[20px] border border-[#c7c4d7]/45 bg-white px-10 py-9 shadow-[0_20px_58px_rgba(48,44,84,0.11)]">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#4d4de1]/25 border-t-[#4d4de1]" aria-hidden="true" />
+          <div className="grid justify-items-center gap-1 text-center">
+            <strong className="text-[19px] font-extrabold leading-6">AI Study Hub</strong>
+            <p className="m-0 text-sm text-[#526173]">Checking your sign-in session...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (isAuthenticated) {
     return <Navigate to={destination} replace />;
   }
 
@@ -94,6 +108,21 @@ export default function LoginPage() {
       setError(nextError);
       setMessageField(mode === "login" ? "" : "password");
     } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleAuth() {
+    setError("");
+    setMessageField("");
+    setSuccess("");
+    setIsSubmitting(true);
+
+    try {
+      await loginWithGoogle();
+    } catch (err) {
+      setError(messageFromError(err));
+      setMessageField("");
       setIsSubmitting(false);
     }
   }
@@ -254,6 +283,8 @@ export default function LoginPage() {
         <button
           className="mx-auto flex min-h-[46px] w-full max-w-[460px] animate-[auth-content-in_180ms_ease_50ms_both] cursor-pointer items-center justify-center gap-3 rounded-[14px] border border-[#d5d9e1] bg-[#f7f8fa] text-[15px] font-extrabold text-[#172033] motion-reduce:animate-none"
           key={`google-${mode}`}
+          disabled={isSubmitting}
+          onClick={handleGoogleAuth}
           type="button"
         >
           <span className="font-black text-[#ea4335]">G</span>

@@ -21,7 +21,7 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: List of bookmarks }
  */
-router.get('/', verifyToken, requireRole('student'), bookmarkController.getAllBookmarks);
+router.get('/', verifyToken, requireRole('user'), bookmarkController.getAllBookmarks);
 
 /**
  * @swagger
@@ -39,7 +39,7 @@ router.get('/', verifyToken, requireRole('student'), bookmarkController.getAllBo
  *     responses:
  *       201: { description: Bookmarked }
  */
-router.post('/:docId', verifyToken, requireRole('student'), bookmarkController.addBookmark);
+router.post('/:docId', verifyToken, requireRole('user'), bookmarkController.addBookmark);
 
 /**
  * @swagger
@@ -57,6 +57,6 @@ router.post('/:docId', verifyToken, requireRole('student'), bookmarkController.a
  *     responses:
  *       200: { description: Removed }
  */
-router.delete('/:docId', verifyToken, requireRole('student'), bookmarkController.removeBookmark);
+router.delete('/:docId', verifyToken, requireRole('user'), bookmarkController.removeBookmark);
 
 module.exports = router;
