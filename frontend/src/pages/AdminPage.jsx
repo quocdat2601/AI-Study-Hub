@@ -512,8 +512,7 @@ export default function AdminPage() {
         onSectionChange={setActiveSection}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
-        newDocumentTo="/library"
-        newDocumentLabel="New Document"
+        showNewDocument={false}
       />
 
       <section className={contentClass}>

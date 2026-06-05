@@ -2,6 +2,9 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 export default function LandingHeader({ isAuthenticated, isLoading = false, onLogout, workspacePath }) {
+  const libraryPath = workspacePath || "/dashboard";
+  const libraryLabel = isAuthenticated && libraryPath === "/admin" ? "Dashboard" : "My Library";
+
   return (
     <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-[#c7c4d7] bg-white px-4 py-2.5 shadow-[0_1px_1px_rgba(0,0,0,0.05)] md:flex-nowrap md:px-8">
       <Link className="text-[#4648d4] text-xl font-extrabold no-underline whitespace-nowrap" to="/">
@@ -9,8 +12,8 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
       </Link>
 
       <nav className="order-3 flex min-w-0 flex-1 items-center justify-start gap-5 overflow-x-auto md:order-none md:justify-center md:gap-8 md:overflow-visible" aria-label="Primary navigation">
+        <Link className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" to={libraryPath}>{libraryLabel}</Link>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#community">Community</a>
-        <Link className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" to={isAuthenticated ? "/dashboard" : workspacePath || "/dashboard"}>My Library</Link>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#universities">Universities</a>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#courses">Courses</a>
       </nav>

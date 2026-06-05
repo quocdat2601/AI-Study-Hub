@@ -107,6 +107,7 @@ export default function DashboardSidebar({
   userName,
   newDocumentTo = "/library",
   newDocumentLabel = "New Document",
+  showNewDocument = true,
 }) {
   const initials = (userName || "User").slice(0, 2).toUpperCase();
 
@@ -128,19 +129,21 @@ export default function DashboardSidebar({
         {isCollapsed ? ">" : "<"}
       </button>
 
-      <Link
-        className={
-          isCollapsed
-            ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-            : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-        }
-        to={newDocumentTo}
-      >
-        <span>+</span>
-        <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>{newDocumentLabel}</b>
-      </Link>
+      {showNewDocument ? (
+        <Link
+          className={
+            isCollapsed
+              ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
+              : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
+          }
+          to={newDocumentTo}
+        >
+          <span>+</span>
+          <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>{newDocumentLabel}</b>
+        </Link>
+      ) : null}
 
-      <nav className="mt-5 grid content-start gap-2">
+      <nav className={showNewDocument ? "mt-5 grid content-start gap-2" : "grid content-start gap-2"}>
         {items.map((item) => (
           <button
             className={navItemClass(isCollapsed, activeSection === item.id)}
