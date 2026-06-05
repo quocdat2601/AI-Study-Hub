@@ -2,14 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import DocumentCard from "./DocumentCard.jsx";
 import { listTrendingDocuments } from "../../services/documentApi.js";
 
-const documentImages = [
-  "/landing/economics.jpg",
-  "/landing/biology.jpg",
-  "/landing/architecture.jpg",
-  "/landing/law.jpg",
-  "/landing/math.jpg",
-];
-
 function initialsFromTitle(title = "AI") {
   return title
     .split(/\s+/)
@@ -22,6 +14,13 @@ function initialsFromTitle(title = "AI") {
 function estimatePages(bytes = 0) {
   const pages = Math.max(1, Math.round(Number(bytes || 0) / 50000));
   return `${pages} Pages`;
+}
+
+function getFileType(doc) {
+  const mime = doc.cloud_files?.mime_type || "";
+  if (mime.includes("word")) return "DOC";
+  if (mime.includes("pdf")) return "PDF";
+  return "DOC";
 }
 
 export default function TrendingDocuments() {
@@ -48,7 +47,7 @@ export default function TrendingDocuments() {
     };
   }, []);
 
-  const mappedDocuments = useMemo(() => documents.map((doc, index) => {
+  const mappedDocuments = useMemo(() => documents.map((doc) => {
     const course = doc.subjects?.name || doc.subjects?.code || "Study Material";
     const viewCount = Number(doc.view_count || 0);
     const description = doc.extracted_text
@@ -60,7 +59,8 @@ export default function TrendingDocuments() {
       course,
       title: doc.title,
       description,
-      image: documentImages[index % documentImages.length],
+      image: doc.thumbnailUrl || null,
+      fileType: getFileType(doc),
       initials: initialsFromTitle(doc.title),
       author: doc.subjects?.code || "AI Study Hub",
       rating: `${viewCount} views`,

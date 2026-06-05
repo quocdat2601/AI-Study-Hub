@@ -1,11 +1,28 @@
 import React from "react";
 
+function Thumbnail({ document, className }) {
+  if (document.image) {
+    return <img className={className} src={document.image} alt="" loading="lazy" />;
+  }
+
+  return (
+    <div className={`${className} flex items-center justify-center bg-[#f7f9fb]`}>
+      <div className="flex h-[72%] w-[58%] flex-col gap-2 rounded border border-[#c7c4d7] bg-white p-3 shadow-sm">
+        <span className="h-2 w-4/5 rounded bg-[#d5e3fc]" />
+        <span className="h-2 w-full rounded bg-[#e8edf5]" />
+        <span className="h-2 w-3/4 rounded bg-[#e8edf5]" />
+        <span className="mt-auto text-[10px] font-black text-[#4648d4]">{document.fileType || "DOC"}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function DocumentCard({ document, featured = false }) {
   if (featured) {
     return (
       <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden col-span-2 row-span-2">
         <div className="bg-[#eceef0] relative h-64">
-          <img className="w-full h-full object-cover" src={document.image} alt="" />
+          <Thumbnail document={document} className="w-full h-full object-cover object-top" />
           <span className="absolute top-4 left-4 bg-[#4648d4] text-white text-xs font-bold rounded-full px-3 py-[5px]">{document.badge}</span>
         </div>
         <div className="p-6">
@@ -27,7 +44,7 @@ export default function DocumentCard({ document, featured = false }) {
   return (
     <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
       <div className="bg-[#eceef0] relative h-40">
-        <img className="w-full h-full object-cover" src={document.image} alt="" />
+        <Thumbnail document={document} className="w-full h-full object-cover object-top" />
         {document.pages ? <span className="absolute bottom-2 right-2 backdrop-blur-sm bg-white/90 rounded text-[#172033] text-xs font-bold px-2 py-1">{document.pages}</span> : null}
       </div>
       <div className="p-4">

@@ -2,6 +2,7 @@ const documentModel = require('../models/document.model');
 const userModel = require('../models/user.model');
 const supabaseService = require('./supabase.service');
 const documentTextService = require('./document-text.service');
+const thumbnailService = require('./thumbnail.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 
@@ -22,7 +23,41 @@ function filterDocuments(documents, { search, subjectId }) {
 
 async function listDocuments({ userId, search, subjectId }) {
   const documents = await documentModel.findByUserId(userId);
-  return filterDocuments(documents, { search, subjectId });
+  return addThumbnailUrls(filterDocuments(documents, { search, subjectId }));
+}
+
+async function addThumbnailUrls(documents) {
+  return Promise.all((documents || []).map(async (doc) => {
+    if (!doc.thumbnail_path || doc.thumbnail_status !== 'ready') {
+      return { ...doc, thumbnailUrl: null };
+    }
+
+    try {
+      return {
+        ...doc,
+        thumbnailUrl: await supabaseService.getSignedUrl(doc.thumbnail_path),
+      };
+    } catch {
+      return { ...doc, thumbnailUrl: null };
+    }
+  }));
+}
+
+async function generateAndSaveThumbnail({ userId, documentId, file }) {
+  try {
+    const thumbnailBuffer = await thumbnailService.generateThumbnailFromBuffer(file.buffer, file.mimetype);
+    const thumbnailPath = thumbnailService.createThumbnailStoragePath({ userId, documentId });
+    await supabaseService.uploadFile(thumbnailBuffer, thumbnailPath, 'image/png', { upsert: true });
+    return documentModel.updateThumbnail(documentId, {
+      status: 'ready',
+      path: thumbnailPath,
+    });
+  } catch (err) {
+    return documentModel.updateThumbnail(documentId, {
+      status: 'failed',
+      error: err.message,
+    });
+  }
 }
 
 async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
@@ -95,7 +130,10 @@ async function uploadDocument({ userId, file, title, subjectId }) {
       file_id: cloudFile.id,
       status: 'uploaded',
       extraction_status: 'pending',
+      thumbnail_status: 'pending',
     });
+
+    await generateAndSaveThumbnail({ userId, documentId: document.id, file });
 
     let extraction;
     try {
@@ -120,9 +158,11 @@ async function uploadDocument({ userId, file, title, subjectId }) {
       },
     });
 
+    const [documentWithThumbnail] = await addThumbnailUrls([savedDocument]);
+
     return {
       message: 'Document uploaded successfully',
-      document: savedDocument,
+      document: documentWithThumbnail,
     };
   } catch (err) {
     await cleanupFailedUpload({ storagePath, cloudFile, document });
@@ -136,7 +176,8 @@ async function getDocumentById({ id, userId }) {
     throw createError(404, 'Document not found');
   }
 
-  return doc;
+  const [documentWithThumbnail] = await addThumbnailUrls([doc]);
+  return documentWithThumbnail;
 }
 
 async function getSignedUrl({ id, userId }) {
@@ -153,4 +194,5 @@ module.exports = {
   uploadDocument,
   getDocumentById,
   getSignedUrl,
+  addThumbnailUrls,
 };

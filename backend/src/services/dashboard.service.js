@@ -3,6 +3,7 @@ const documentModel = require('../models/document.model');
 const bookmarkModel = require('../models/bookmark.model');
 const chatModel = require('../models/chat.model');
 const subjectModel = require('../models/subject.model');
+const documentService = require('./document.service');
 const createError = require('../utils/createError');
 
 async function getDashboardData(userId) {
@@ -20,6 +21,8 @@ async function getDashboardData(userId) {
     subjectModel.findAll(),
   ]);
 
+  const recentDocuments = await documentService.addThumbnailUrls(recentDocs);
+
   return {
     storage: {
       limit: user.storage_limit_bytes,
@@ -30,7 +33,7 @@ async function getDashboardData(userId) {
       bookmarks: bookmarkCount,
       chats: chatCount,
     },
-    recentDocuments: recentDocs,
+    recentDocuments,
     subjects,
   };
 }

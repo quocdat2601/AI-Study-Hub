@@ -47,6 +47,28 @@ function getDocumentType(doc) {
   return "FILE";
 }
 
+function DocumentThumbnail({ doc, type }) {
+  if (doc.thumbnailUrl) {
+    return (
+      <img
+        className="h-12 w-10 flex-none rounded border border-[#d9dde6] bg-white object-cover object-top"
+        src={doc.thumbnailUrl}
+        alt=""
+        loading="lazy"
+      />
+    );
+  }
+
+  return (
+    <span className={type === "DOC"
+      ? "inline-flex h-12 w-10 flex-none items-end justify-center rounded border border-[#bcd0fb] bg-[#edf4ff] px-1 pb-1 text-[9px] font-black text-[#4648d4]"
+      : "inline-flex h-12 w-10 flex-none items-end justify-center rounded border border-[#fecaca] bg-[#fff1f1] px-1 pb-1 text-[9px] font-black text-[#ef4444]"
+    }>
+      {type}
+    </span>
+  );
+}
+
 function DashboardDataSkeleton() {
   return (
     <div className="grid gap-7" aria-label="Loading dashboard data">
@@ -230,12 +252,7 @@ export default function DashboardPage() {
                     return (
                       <div className="grid items-center gap-3 grid-cols-[minmax(180px,1.6fr)_minmax(110px,1fr)_110px_70px_60px] px-4 py-[14px] border-t border-[#d9dde6] text-[#464554] text-[13px]" key={doc.id}>
                         <div className="flex items-center gap-3 text-[#191c1e]">
-                          <span className={type === "DOC"
-                            ? "inline-flex items-center justify-center bg-[#d5e3fc] rounded-[6px] text-[#4648d4] flex-none text-[10px] font-black h-7 w-7"
-                            : "inline-flex items-center justify-center bg-[#fee2e2] rounded-[6px] text-[#ef4444] flex-none text-[10px] font-black h-7 w-7"
-                          }>
-                            {type}
-                          </span>
+                          <DocumentThumbnail doc={doc} type={type} />
                           <strong>{doc.title}</strong>
                         </div>
                         <span>{doc.subjects?.name || doc.subjects?.code || "No subject"}</span>

@@ -135,6 +135,28 @@ class DocumentModel {
     return data;
   }
 
+  static async updateThumbnail(id, thumbnailData) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        thumbnail_path: thumbnailData.path || null,
+        thumbnail_status: thumbnailData.status,
+        thumbnail_error: thumbnailData.error || null,
+        thumbnail_generated_at: thumbnailData.status === 'ready' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(`
+        *,
+        subjects (name, code),
+        cloud_files (storage_path, mime_type, size_bytes)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async countByUserId(userId) {
     const { count, error } = await supabase
       .from('documents')
@@ -155,8 +177,12 @@ class DocumentModel {
         extraction_status,
         created_at,
         view_count,
+        thumbnail_path,
+        thumbnail_status,
+        thumbnail_error,
+        thumbnail_generated_at,
         subjects (name, code),
-        cloud_files (mime_type, size_bytes)
+        cloud_files (storage_path, mime_type, size_bytes)
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -176,9 +202,14 @@ class DocumentModel {
         extracted_text,
         extraction_status,
         view_count,
+        thumbnail_path,
+        thumbnail_status,
+        thumbnail_error,
+        thumbnail_generated_at,
         subjects (name, code),
-        cloud_files (mime_type, size_bytes)
+        cloud_files (storage_path, mime_type, size_bytes)
       `)
+      .eq('is_public', true)
       .order('view_count', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 5, 12));
