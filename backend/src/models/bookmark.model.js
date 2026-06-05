@@ -20,6 +20,16 @@ class BookmarkModel {
     return data;
   }
 
+  static async countByUserId(userId) {
+    const { count, error } = await supabase
+      .from('bookmarks')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return count || 0;
+  }
+
   static async create(userId, docId) {
     const { data, error } = await supabase
       .from('bookmarks')

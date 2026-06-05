@@ -1,48 +1,76 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import DocumentCard from "./DocumentCard.jsx";
+import { listTrendingDocuments } from "../../services/documentApi.js";
 
-const featuredDocument = {
-  badge: "Premium Guide",
-  course: "Introduction to Macroeconomics",
-  title: "Complete Semester Notes: Principles of Economics 101",
-  description:
-    "A comprehensive 150-page guide covering everything from supply and demand to fiscal policy, with detailed graphs and AI-generated summaries.",
-  image: "/landing/economics.jpg",
-  initials: "JD",
-  author: "John Doe • Yale University",
-  rating: "4.9 ★ (1.2k)",
-};
-
-const documents = [
-  {
-    course: "Biology",
-    title: "Cellular Mitosis & DNA Replication...",
-    school: "Stanford University",
-    image: "/landing/biology.jpg",
-    pages: "12 Pages",
-  },
-  {
-    course: "Architecture",
-    title: "History of Modern Urban Planning...",
-    school: "MIT",
-    image: "/landing/architecture.jpg",
-    pages: "45 Pages",
-  },
-  {
-    course: "Law",
-    title: "International Human Rights Case...",
-    school: "University of Oxford",
-    image: "/landing/law.jpg",
-  },
-  {
-    course: "Mathematics",
-    title: "Advanced Calculus III Exam...",
-    school: "ETH Zurich",
-    image: "/landing/math.jpg",
-  },
+const documentImages = [
+  "/landing/economics.jpg",
+  "/landing/biology.jpg",
+  "/landing/architecture.jpg",
+  "/landing/law.jpg",
+  "/landing/math.jpg",
 ];
 
+function initialsFromTitle(title = "AI") {
+  return title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join("") || "AI";
+}
+
+function estimatePages(bytes = 0) {
+  const pages = Math.max(1, Math.round(Number(bytes || 0) / 50000));
+  return `${pages} Pages`;
+}
+
 export default function TrendingDocuments() {
+  const [documents, setDocuments] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTrendingDocuments() {
+      try {
+        const data = await listTrendingDocuments(5);
+        if (isMounted) setDocuments(Array.isArray(data) ? data : []);
+      } catch {
+        if (isMounted) setDocuments([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadTrendingDocuments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const mappedDocuments = useMemo(() => documents.map((doc, index) => {
+    const course = doc.subjects?.name || doc.subjects?.code || "Study Material";
+    const viewCount = Number(doc.view_count || 0);
+    const description = doc.extracted_text
+      ? `${doc.extracted_text.slice(0, 150)}${doc.extracted_text.length > 150 ? "..." : ""}`
+      : "A student-uploaded study document ready for library search, preview, and future AI Q&A.";
+
+    return {
+      badge: `${viewCount} views`,
+      course,
+      title: doc.title,
+      description,
+      image: documentImages[index % documentImages.length],
+      initials: initialsFromTitle(doc.title),
+      author: doc.subjects?.code || "AI Study Hub",
+      rating: `${viewCount} views`,
+      school: doc.subjects?.code || "AI Study Hub",
+      pages: estimatePages(doc.cloud_files?.size_bytes),
+    };
+  }), [documents]);
+
+  const [featuredDocument, ...restDocuments] = mappedDocuments;
+
   return (
     <section className="mx-auto max-w-[1280px] px-8 py-16" id="courses">
       <div className="flex items-end justify-between mb-8">
@@ -50,15 +78,28 @@ export default function TrendingDocuments() {
           <h2 className="text-[28px] leading-[1.28] tracking-normal m-0">Trending at your University</h2>
           <p className="text-[#464554] leading-[1.5] mt-1 mb-0">The most viewed documents this week</p>
         </div>
-        <a className="text-[#4648d4] text-sm font-extrabold no-underline whitespace-nowrap" href="#courses">View all ›</a>
+        <a className="text-[#4648d4] text-sm font-extrabold no-underline whitespace-nowrap" href="#courses">View all &gt;</a>
       </div>
 
-      <div className="grid gap-6 grid-cols-4">
-        <DocumentCard document={featuredDocument} featured />
-        {documents.map((document) => (
-          <DocumentCard key={document.title} document={document} />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="grid gap-6 grid-cols-4">
+          <div className="col-span-2 row-span-2 h-[480px] rounded-xl bg-white border border-[#d9dde6] animate-pulse" />
+          {[0, 1, 2, 3].map((item) => (
+            <div className="h-[260px] rounded-xl bg-white border border-[#d9dde6] animate-pulse" key={item} />
+          ))}
+        </div>
+      ) : mappedDocuments.length === 0 ? (
+        <div className="rounded-xl border border-[#d9dde6] bg-white p-8 text-center text-[#464554]">
+          No public documents yet. Seed demo data or upload documents to fill this section.
+        </div>
+      ) : (
+        <div className="grid gap-6 grid-cols-4">
+          <DocumentCard document={featuredDocument} featured />
+          {restDocuments.map((document) => (
+            <DocumentCard key={document.title} document={document} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

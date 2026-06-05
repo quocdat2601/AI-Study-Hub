@@ -28,6 +28,7 @@ const options = {
     },
     tags: [
       { name: 'Health', description: 'Server and database health checks' },
+      { name: 'Public', description: 'Public landing-page data' },
       { name: 'Auth', description: 'Authentication endpoints' },
       { name: 'Admin', description: 'Admin-only platform management' },
       { name: 'Documents', description: 'Document management' },

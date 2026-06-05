@@ -148,10 +148,40 @@ class DocumentModel {
   static async findRecentByUserId(userId, limit = 5) {
     const { data, error } = await supabase
       .from('documents')
-      .select('id, title, created_at')
+      .select(`
+        id,
+        title,
+        status,
+        extraction_status,
+        created_at,
+        view_count,
+        subjects (name, code),
+        cloud_files (mime_type, size_bytes)
+      `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 5, 20));
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async findTrending(limit = 5) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(`
+        id,
+        title,
+        created_at,
+        extracted_text,
+        extraction_status,
+        view_count,
+        subjects (name, code),
+        cloud_files (mime_type, size_bytes)
+      `)
+      .order('view_count', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(Math.min(Number(limit) || 5, 12));
 
     if (error) throw error;
     return data || [];
