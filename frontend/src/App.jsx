@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import LandingHeader from "./components/landing/LandingHeader.jsx";
@@ -15,8 +15,13 @@ import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname);
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <>
@@ -24,7 +29,7 @@ function AppRoutes() {
         <LandingHeader
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
-          onLogout={logout}
+          onLogout={handleLogout}
           workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
         />
       ) : null}
