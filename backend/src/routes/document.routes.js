@@ -2,7 +2,7 @@ const router = require('express').Router();
 const documentController = require('../controllers/document.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const upload = require('../middleware/upload');
+const requireDocumentOwner = require('../middleware/requireDocumentOwner');
 
 /**
  * @swagger
@@ -33,31 +33,6 @@ const upload = require('../middleware/upload');
  *       401: { description: Unauthorized }
  */
 router.get('/', verifyToken, documentController.getAllDocuments);
-
-/**
- * @swagger
- * /api/documents:
- *   post:
- *     summary: Upload document (multipart/form-data)
- *     tags: [Documents]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file: { type: string, format: binary }
- *               title: { type: string }
- *               subjectId: { type: integer }
- *     responses:
- *       201: { description: Uploaded }
- *       400: { description: Bad request }
- *       403: { description: Forbidden (Students or admins only) }
- */
-router.post('/', verifyToken, requireRole('student', 'admin'), upload.single('file'), documentController.uploadDocument);
 
 /**
  * @swagger
@@ -96,5 +71,119 @@ router.get('/:id', verifyToken, documentController.getDocumentById);
  *       404: { description: File not found }
  */
 router.get('/:id/signed-url', verifyToken, documentController.getSignedUrl);
+
+/**
+ * @swagger
+ * /api/documents/{id}/shares:
+ *   get:
+ *     summary: List active shares for a document (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *   post:
+ *     summary: Share document with another user by email
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string }
+ */
+router.get(
+  '/:id/shares',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.listDocumentShares
+);
+
+router.post(
+  '/:id/shares',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.shareDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}/shares/{shareId}:
+ *   delete:
+ *     summary: Revoke a document share
+ *     tags: [Documents]
+ */
+router.delete(
+  '/:id/shares/:shareId',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.revokeDocumentShare
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}:
+ *   patch:
+ *     summary: Update document title or subject (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title: { type: string }
+ *               subjectId: { type: integer, nullable: true }
+ *               tags: { type: string, description: Comma-separated tag names }
+ *     responses:
+ *       200: { description: Updated }
+ *       403: { description: Forbidden }
+ *       404: { description: Not found }
+ */
+router.patch(
+  '/:id',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.updateDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}:
+ *   delete:
+ *     summary: Delete document from database and storage (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ *       403: { description: Forbidden }
+ *       404: { description: Not found }
+ */
+router.delete(
+  '/:id',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.deleteDocument
+);
 
 module.exports = router;

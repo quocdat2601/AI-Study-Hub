@@ -21,7 +21,7 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: List of notifications }
  */
-router.get('/', verifyToken, requireRole('student'), notificationController.getAllNotifications);
+router.get('/', verifyToken, requireRole('student', 'admin'), notificationController.getAllNotifications);
 
 /**
  * @swagger
@@ -34,7 +34,7 @@ router.get('/', verifyToken, requireRole('student'), notificationController.getA
  *     responses:
  *       200: { description: Success }
  */
-router.patch('/read-all', verifyToken, requireRole('student'), notificationController.markAllRead);
+router.patch('/read-all', verifyToken, requireRole('student', 'admin'), notificationController.markAllRead);
 
 /**
  * @swagger
@@ -52,6 +52,6 @@ router.patch('/read-all', verifyToken, requireRole('student'), notificationContr
  *     responses:
  *       200: { description: Success }
  */
-router.patch('/:id/read', verifyToken, requireRole('student'), notificationController.markRead);
+router.patch('/:id/read', verifyToken, requireRole('student', 'admin'), notificationController.markRead);
 
 module.exports = router;

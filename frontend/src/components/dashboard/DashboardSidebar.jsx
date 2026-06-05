@@ -108,10 +108,10 @@ export default function DashboardSidebar({
             ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
             : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
         }
-        to="/library"
+        to="/documents?upload=true"
       >
         <span>+</span>
-        <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>New Document</b>
+        <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>Upload Documents</b>
       </Link>
 
       <nav className="mt-5 grid content-start gap-2">

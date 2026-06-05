@@ -1,14 +1,18 @@
 const supabase = require('../config/supabase');
+const TagModel = require('./tag.model');
+
+const DOCUMENT_SELECT = `
+  *,
+  subjects (name, code),
+  cloud_files (storage_path, mime_type, size_bytes),
+  ${TagModel.documentTagSelect}
+`;
 
 class DocumentModel {
   static async findByUserId(userId) {
     const { data: ownedDocs, error: ownedError } = await supabase
       .from('documents')
-      .select(`
-        *,
-        subjects (name, code),
-        cloud_files (storage_path, mime_type, size_bytes)
-      `)
+      .select(DOCUMENT_SELECT)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -18,9 +22,7 @@ class DocumentModel {
       .from('doc_shares')
       .select(`
         documents (
-          *,
-          subjects (name, code),
-          cloud_files (storage_path, mime_type, size_bytes)
+          ${DOCUMENT_SELECT}
         )
       `)
       .eq('shared_to', userId)
@@ -41,11 +43,7 @@ class DocumentModel {
   static async findById(id) {
     const { data, error } = await supabase
       .from('documents')
-      .select(`
-        *,
-        subjects (name, code),
-        cloud_files (storage_path, mime_type, size_bytes)
-      `)
+      .select(DOCUMENT_SELECT)
       .eq('id', id)
       .single();
 
@@ -112,6 +110,27 @@ class DocumentModel {
     return true;
   }
 
+  static async update(id, { title, subjectId }) {
+    const payload = { updated_at: new Date().toISOString() };
+
+    if (title !== undefined) {
+      payload.title = title;
+    }
+    if (subjectId !== undefined) {
+      payload.subject_id = subjectId || null;
+    }
+
+    const { data, error } = await supabase
+      .from('documents')
+      .update(payload)
+      .eq('id', id)
+      .select(DOCUMENT_SELECT)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async updateExtraction(id, extractionData) {
     const { data, error } = await supabase
       .from('documents')
@@ -124,12 +143,87 @@ class DocumentModel {
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select(`
-        *,
-        subjects (name, code),
-        cloud_files (storage_path, mime_type, size_bytes)
-      `)
+      .select(DOCUMENT_SELECT)
       .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async findShareByDocAndRecipient(docId, sharedTo) {
+    const { data, error } = await supabase
+      .from('doc_shares')
+      .select('*')
+      .eq('doc_id', docId)
+      .eq('shared_to', sharedTo)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async createShare({ docId, sharedBy, sharedTo }) {
+    const existing = await this.findShareByDocAndRecipient(docId, sharedTo);
+
+    if (existing?.status === 'active') {
+      return existing;
+    }
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('doc_shares')
+        .update({
+          status: 'active',
+          shared_by: sharedBy,
+          revoked_at: null,
+        })
+        .eq('id', existing.id)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      return data;
+    }
+
+    const { data, error } = await supabase
+      .from('doc_shares')
+      .insert([{
+        doc_id: docId,
+        shared_by: sharedBy,
+        shared_to: sharedTo,
+        status: 'active',
+      }])
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async findSharesByDocId(docId) {
+    const { data, error } = await supabase
+      .from('doc_shares')
+      .select('id, shared_to, shared_by, status, created_at, revoked_at')
+      .eq('doc_id', docId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async revokeShare(shareId, docId) {
+    const { data, error } = await supabase
+      .from('doc_shares')
+      .update({
+        status: 'revoked',
+        revoked_at: new Date().toISOString(),
+      })
+      .eq('id', shareId)
+      .eq('doc_id', docId)
+      .eq('status', 'active')
+      .select('*')
+      .maybeSingle();
 
     if (error) throw error;
     return data;
@@ -148,7 +242,13 @@ class DocumentModel {
   static async findRecentByUserId(userId, limit = 5) {
     const { data, error } = await supabase
       .from('documents')
-      .select('id, title, created_at')
+      .select(`
+        id,
+        title,
+        created_at,
+        subjects (name, code),
+        cloud_files (mime_type, size_bytes)
+      `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 5, 20));

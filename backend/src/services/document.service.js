@@ -1,156 +1,422 @@
 const documentModel = require('../models/document.model');
+
+const tagModel = require('../models/tag.model');
+
 const userModel = require('../models/user.model');
+
+const notificationModel = require('../models/notification.model');
+
 const supabaseService = require('./supabase.service');
-const documentTextService = require('./document-text.service');
+
 const activityService = require('./activity.service');
+
 const createError = require('../utils/createError');
 
+
+
+function mapDocument(doc) {
+
+  if (!doc) return doc;
+
+
+
+  const { document_tags: documentTags, ...rest } = doc;
+
+  return {
+
+    ...rest,
+
+    tags: tagModel.normalizeDocumentTags(documentTags),
+
+  };
+
+}
+
+
+
 function filterDocuments(documents, { search, subjectId }) {
+
   let filtered = documents;
 
+
+
   if (search) {
+
     const term = String(search).trim().toLowerCase();
-    filtered = filtered.filter((doc) => doc.title.toLowerCase().includes(term));
+
+    filtered = filtered.filter((doc) => {
+
+      const titleMatch = doc.title.toLowerCase().includes(term);
+
+      const tagMatch = (doc.tags || []).some((tag) => tag.name.includes(term));
+
+      return titleMatch || tagMatch;
+
+    });
+
   }
+
+
 
   if (subjectId) {
+
     filtered = filtered.filter((doc) => Number(doc.subject_id) === Number(subjectId));
+
   }
+
+
 
   return filtered;
+
 }
+
+
 
 async function listDocuments({ userId, search, subjectId }) {
-  const documents = await documentModel.findByUserId(userId);
+
+  const documents = (await documentModel.findByUserId(userId)).map(mapDocument);
+
   return filterDocuments(documents, { search, subjectId });
+
 }
 
-async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
-  if (document?.id) {
-    try {
-      await documentModel.delete(document.id);
-    } catch (err) {
-      console.error('Document cleanup failed:', err.message);
-    }
-  }
 
-  if (cloudFile?.id) {
-    try {
-      await documentModel.deleteCloudFile(cloudFile.id);
-    } catch (err) {
-      console.error('Cloud file row cleanup failed:', err.message);
-    }
-  }
-
-  if (storagePath) {
-    try {
-      await supabaseService.deleteFile(storagePath);
-    } catch (err) {
-      console.error('Storage cleanup failed:', err.message);
-    }
-  }
-}
-
-function formatMegabytes(bytes) {
-  return Math.round(Number(bytes || 0) / 1024 / 1024);
-}
-
-async function uploadDocument({ userId, file, title, subjectId }) {
-  if (!file) {
-    throw createError(400, 'No file uploaded');
-  }
-
-  const user = await userModel.findById(userId);
-  if (!user) {
-    throw createError(404, 'User not found');
-  }
-
-  const usedBytes = await documentModel.sumStorageByUserId(userId);
-  const storageLimitBytes = Number(user.storage_limit_bytes || 0);
-  if (usedBytes + file.size > storageLimitBytes) {
-    throw createError(
-      400,
-      `Storage limit exceeded. ${formatMegabytes(usedBytes)} MB used of ${formatMegabytes(storageLimitBytes)} MB`
-    );
-  }
-
-  const fileName = `${Date.now()}-${file.originalname}`;
-  const storagePath = `user-${userId}/${fileName}`;
-  let cloudFile = null;
-  let document = null;
-
-  try {
-    await supabaseService.uploadFile(file.buffer, storagePath, file.mimetype);
-
-    cloudFile = await documentModel.createCloudFile({
-      storage_path: storagePath,
-      mime_type: file.mimetype,
-      size_bytes: file.size,
-    });
-
-    document = await documentModel.create({
-      title: title || file.originalname,
-      user_id: userId,
-      subject_id: subjectId || null,
-      file_id: cloudFile.id,
-      status: 'uploaded',
-      extraction_status: 'pending',
-    });
-
-    let extraction;
-    try {
-      extraction = await documentTextService.extractTextFromBuffer(file.buffer, file.mimetype);
-    } catch (err) {
-      extraction = {
-        text: '',
-        status: 'failed',
-        error: err.message,
-      };
-    }
-
-    const savedDocument = await documentModel.updateExtraction(document.id, extraction);
-    activityService.log({
-      userId,
-      action: 'document.upload',
-      targetType: 'document',
-      targetId: savedDocument.id,
-      metadata: {
-        mimeType: file.mimetype,
-        extractionStatus: savedDocument.extraction_status,
-      },
-    });
-
-    return {
-      message: 'Document uploaded successfully',
-      document: savedDocument,
-    };
-  } catch (err) {
-    await cleanupFailedUpload({ storagePath, cloudFile, document });
-    throw err;
-  }
-}
 
 async function getDocumentById({ id, userId }) {
+
   const doc = await documentModel.findAccessibleById(id, userId);
+
   if (!doc) {
+
     throw createError(404, 'Document not found');
+
   }
 
-  return doc;
+
+
+  return mapDocument(doc);
+
 }
+
+
 
 async function getSignedUrl({ id, userId }) {
+
   const doc = await documentModel.findAccessibleById(id, userId);
+
   if (!doc || !doc.cloud_files) {
+
     throw createError(404, 'File not found');
+
   }
 
+
+
   return { signedUrl: await supabaseService.getSignedUrl(doc.cloud_files.storage_path) };
+
 }
 
+
+
+async function updateDocument({ document, title, subjectId, tags }) {
+
+  if (title === undefined && subjectId === undefined && tags === undefined) {
+
+    throw createError(400, 'Nothing to update. Send title, subjectId and/or tags');
+
+  }
+
+
+
+  if (title !== undefined && !String(title).trim()) {
+
+    throw createError(400, 'Title cannot be empty');
+
+  }
+
+
+
+  let updated = document;
+
+
+
+  if (title !== undefined || subjectId !== undefined) {
+
+    updated = await documentModel.update(document.id, {
+
+      title: title !== undefined ? String(title).trim() : undefined,
+
+      subjectId,
+
+    });
+
+  }
+
+
+
+  if (tags !== undefined) {
+
+    await tagModel.setForDocument(document.id, tags);
+
+    updated = await documentModel.findById(document.id);
+
+  }
+
+
+
+  activityService.log({
+
+    userId: document.user_id,
+
+    action: 'document.update',
+
+    targetType: 'document',
+
+    targetId: updated.id,
+
+    metadata: { title: updated.title, subjectId: updated.subject_id },
+
+  });
+
+
+
+  return {
+
+    message: 'Document updated successfully',
+
+    document: mapDocument(updated),
+
+  };
+
+}
+
+
+
+async function deleteDocument({ document, userId }) {
+
+  const storagePath = document.cloud_files?.storage_path;
+
+  const fileId = document.file_id;
+
+
+
+  if (storagePath) {
+
+    await supabaseService.deleteFile(storagePath);
+
+  }
+
+
+
+  await documentModel.delete(document.id);
+
+
+
+  if (fileId) {
+
+    await documentModel.deleteCloudFile(fileId);
+
+  }
+
+
+
+  activityService.log({
+
+    userId,
+
+    action: 'document.delete',
+
+    targetType: 'document',
+
+    targetId: document.id,
+
+    metadata: { title: document.title },
+
+  });
+
+
+
+  return { message: 'Document deleted successfully' };
+
+}
+
+
+
+async function listDocumentShares({ document }) {
+
+  const shares = await documentModel.findSharesByDocId(document.id);
+
+  const users = await Promise.all(
+
+    shares.map((share) => userModel.findById(share.shared_to))
+
+  );
+
+
+
+  return shares.map((share, index) => ({
+
+    id: share.id,
+
+    sharedTo: users[index]
+
+      ? { id: users[index].id, email: users[index].email }
+
+      : null,
+
+    createdAt: share.created_at,
+
+  }));
+
+}
+
+
+
+async function shareDocument({ document, userId, email }) {
+
+  const targetEmail = String(email || '').trim().toLowerCase();
+
+  if (!targetEmail) {
+
+    throw createError(400, 'Email is required');
+
+  }
+
+
+
+  const recipient = await userModel.findByEmail(targetEmail);
+
+  if (!recipient) {
+
+    throw createError(404, 'User not found with this email');
+
+  }
+
+  if (recipient.status !== 'active') {
+
+    throw createError(400, 'This user account is not active');
+
+  }
+
+  if (recipient.id === userId) {
+
+    throw createError(400, 'You cannot share a document with yourself');
+
+  }
+
+
+
+  const existing = await documentModel.findShareByDocAndRecipient(document.id, recipient.id);
+
+  if (existing?.status === 'active') {
+
+    throw createError(400, 'Document is already shared with this user');
+
+  }
+
+
+
+  const share = await documentModel.createShare({
+
+    docId: document.id,
+
+    sharedBy: userId,
+
+    sharedTo: recipient.id,
+
+  });
+
+
+
+  const sharer = await userModel.findById(userId);
+
+  await notificationModel.create({
+
+    userId: recipient.id,
+
+    type: 'share',
+
+    message: `${sharer?.email || 'Someone'} shared "${document.title}" with you`,
+
+    refDocId: document.id,
+
+  });
+
+
+
+  activityService.log({
+
+    userId,
+
+    action: 'document.share',
+
+    targetType: 'document',
+
+    targetId: document.id,
+
+    metadata: { sharedTo: recipient.email },
+
+  });
+
+
+
+  return {
+
+    message: 'Document shared successfully',
+
+    share: {
+
+      id: share.id,
+
+      sharedTo: { id: recipient.id, email: recipient.email },
+
+      createdAt: share.created_at,
+
+    },
+
+  };
+
+}
+
+
+
+async function revokeDocumentShare({ document, shareId }) {
+
+  const revoked = await documentModel.revokeShare(shareId, document.id);
+
+  if (!revoked) {
+
+    throw createError(404, 'Share not found');
+
+  }
+
+
+
+  return { message: 'Share revoked successfully' };
+
+}
+
+
+
 module.exports = {
+
+  mapDocument,
+
   listDocuments,
-  uploadDocument,
+
   getDocumentById,
+
   getSignedUrl,
+
+  updateDocument,
+
+  deleteDocument,
+
+  listDocumentShares,
+
+  shareDocument,
+
+  revokeDocumentShare,
+
 };
+

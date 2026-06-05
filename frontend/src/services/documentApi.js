@@ -14,3 +14,28 @@ export async function getDocumentSignedUrl(id) {
   const response = await api.get(`/documents/${id}/signed-url`);
   return response.data;
 }
+
+export async function updateDocument(id, data) {
+  const response = await api.patch(`/documents/${id}`, data);
+  return response.data;
+}
+
+export async function deleteDocument(id) {
+  const response = await api.delete(`/documents/${id}`);
+  return response.data;
+}
+
+export async function listDocumentShares(id) {
+  const response = await api.get(`/documents/${id}/shares`);
+  return response.data;
+}
+
+export async function shareDocument(id, email) {
+  const response = await api.post(`/documents/${id}/shares`, { email });
+  return response.data;
+}
+
+export async function revokeDocumentShare(id, shareId) {
+  const response = await api.delete(`/documents/${id}/shares/${shareId}`);
+  return response.data;
+}

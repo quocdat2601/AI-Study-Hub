@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import NotificationBell from "../NotificationBell.jsx";
 
 export default function LandingHeader({ isAuthenticated, isLoading = false, onLogout, workspacePath }) {
   return (
@@ -10,15 +11,13 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
 
       <nav className="order-3 flex min-w-0 flex-1 items-center justify-start gap-5 overflow-x-auto md:order-none md:justify-center md:gap-8 md:overflow-visible" aria-label="Primary navigation">
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#community">Community</a>
-        <Link className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" to={isAuthenticated ? "/dashboard" : workspacePath || "/dashboard"}>My Library</Link>
+        <Link className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" to={isAuthenticated ? "/documents" : workspacePath || "/dashboard"}>My Documents</Link>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#universities">Universities</a>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#courses">Courses</a>
       </nav>
 
       <div className="flex items-center gap-3">
-        <button className="inline-flex items-center justify-center bg-transparent border-0 text-[#57657a] cursor-pointer text-lg h-8 w-8" type="button" aria-label="Notifications">
-          *
-        </button>
+        {isAuthenticated ? <NotificationBell /> : null}
         {isLoading ? (
           <span className="inline-flex min-h-[38px] w-[104px] animate-pulse rounded-full border border-[#c7c4d7] bg-[#eef2f8]" aria-label="Checking session" />
         ) : isAuthenticated ? (

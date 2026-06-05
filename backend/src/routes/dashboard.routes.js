@@ -21,6 +21,6 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: Dashboard data }
  */
-router.get('/', verifyToken, requireRole('student'), dashboardController.getDashboardData);
+router.get('/', verifyToken, requireRole('student', 'admin'), dashboardController.getDashboardData);
 
 module.exports = router;

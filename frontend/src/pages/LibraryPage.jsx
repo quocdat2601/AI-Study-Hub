@@ -50,9 +50,17 @@ export default function LibraryPage() {
           <h1 className="mt-2 mb-2.5">Document Library</h1>
           <p className="text-[#66758a] m-0">Documents with readable extracted text can be attached to AI chat sessions.</p>
         </div>
-        <Link className="inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] bg-[#0f766e] text-white no-underline" to="/chat">
-          Open AI Chat
-        </Link>
+        <div className="flex gap-2">
+          <Link className="inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] bg-[#4648d4] text-white no-underline" to="/documents">
+            Document Management
+          </Link>
+          <Link className="inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] bg-white border border-[#dbe3ed] text-[#4648d4] no-underline" to="/documents?upload=true">
+            Upload Documents
+          </Link>
+          <Link className="inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] bg-[#0f766e] text-white no-underline" to="/chat">
+            Open AI Chat
+          </Link>
+        </div>
       </section>
 
       {error ? <div className="rounded-lg font-bold my-4 px-[14px] py-3 bg-[#fff0f0] text-[#b42318]">{error}</div> : null}

@@ -1,0 +1,324 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "../contexts/AuthContext.jsx";
+import { useToast } from "../contexts/ToastContext.jsx";
+import useDocuments from "../hooks/useDocuments.js";
+import useUploadDoc from "../hooks/useUploadDoc.js";
+import { formatFileSize } from "../lib/formatFileSize.js";
+import {
+  deleteDocument,
+  getDocumentSignedUrl,
+} from "../services/documentApi.js";
+import { listSubjects } from "../services/subjectApi.js";
+import EditDocumentModal from "./EditDocumentModal.jsx";
+import ShareDocumentModal from "./ShareDocumentModal.jsx";
+import UploadDocModal from "./UploadDocModal.jsx";
+
+function getMimeLabel(mimeType) {
+  if (mimeType === "application/pdf") return "PDF";
+  if (mimeType?.includes("wordprocessingml")) return "DOCX";
+  return "FILE";
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function canManageDocument(doc, user) {
+  if (!doc || !user) return false;
+  return doc.user_id === user.id || user.role === "admin";
+}
+
+function ActionButton({ children, onClick, tone = "default" }) {
+  const tones = {
+    default: "border-[#dbe3ed] bg-white text-[#4648d4] hover:bg-[#f8faff]",
+    muted: "border-[#dbe3ed] bg-white text-[#344154] hover:bg-[#f8fafc]",
+    share: "border-[#b8e8df] bg-[#f0fdf9] text-[#0f766e] hover:bg-[#e6faf4]",
+    danger: "border-[#fecaca] bg-[#fff5f5] text-[#b42318] hover:bg-[#ffecec]",
+  };
+
+  return (
+    <button
+      className={`rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer transition ${tones[tone]}`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function DocumentsPage() {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+
+  const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const [subjects, setSubjects] = useState([]);
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [sharingDoc, setSharingDoc] = useState(null);
+  const [actionError, setActionError] = useState("");
+
+  const queryParams = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      subjectId: subjectFilter || undefined,
+    }),
+    [search, subjectFilter]
+  );
+
+  const { documents, isLoading, error, reload } = useDocuments(queryParams);
+  const uploadDoc = useUploadDoc({ onUploaded: () => reload() });
+
+  const ownedCount = documents.filter((doc) => canManageDocument(doc, user)).length;
+  const sharedCount = documents.length - ownedCount;
+
+  const loadSubjects = useCallback(async () => {
+    try {
+      setSubjects(await listSubjects());
+    } catch {
+      setSubjects([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSubjects();
+  }, [loadSubjects]);
+
+  async function handlePreview(doc) {
+    setActionError("");
+    try {
+      const { signedUrl } = await getDocumentSignedUrl(doc.id);
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      const message = err.response?.data?.error || "Could not open preview.";
+      setActionError(message);
+      addToast({ type: "error", title: "Preview failed", message });
+    }
+  }
+
+  async function handleDownload(doc) {
+    setActionError("");
+    try {
+      const { signedUrl } = await getDocumentSignedUrl(doc.id);
+      const link = window.document.createElement("a");
+      link.href = signedUrl;
+      link.download = doc.title || "document";
+      link.click();
+    } catch (err) {
+      const message = err.response?.data?.error || "Could not download file.";
+      setActionError(message);
+      addToast({ type: "error", title: "Download failed", message });
+    }
+  }
+
+  async function handleDelete(doc) {
+    const ok = window.confirm(`Delete "${doc.title}"? This cannot be undone.`);
+    if (!ok) return;
+
+    setActionError("");
+    try {
+      await deleteDocument(doc.id);
+      addToast({
+        type: "success",
+        title: "Document deleted",
+        message: `"${doc.title}" was removed.`,
+      });
+      reload();
+    } catch (err) {
+      const message = err.response?.data?.error || "Could not delete document.";
+      setActionError(message);
+      addToast({ type: "error", title: "Delete failed", message });
+    }
+  }
+
+  return (
+    <main className="min-h-[calc(100vh-64px)] bg-[#f4f6fb] px-4 py-8 md:px-8">
+      <div className="mx-auto max-w-[1280px]">
+        <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-[#4648d4] to-[#6366f1] p-6 text-white shadow-[0_12px_30px_rgba(70,72,212,0.25)] md:p-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="m-0 text-xs font-bold uppercase tracking-widest text-white/75">Documents</p>
+              <h1 className="m-0 mt-2 text-3xl font-bold">My Study Library</h1>
+              <p className="m-0 mt-2 max-w-2xl text-sm text-white/90">
+                Upload, organize, share and manage your PDF study materials in one place.
+              </p>
+            </div>
+            <button
+              className="inline-flex items-center gap-2 rounded-xl border-0 bg-white px-5 py-3 text-sm font-bold text-[#4648d4] cursor-pointer shadow-[0_8px_20px_rgba(15,23,42,0.15)]"
+              onClick={uploadDoc.open}
+              type="button"
+            >
+              <span className="text-lg leading-none">+</span>
+              Upload Document
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <article className="rounded-xl bg-white/12 px-4 py-3 backdrop-blur-sm">
+              <p className="m-0 text-xs text-white/75">Total documents</p>
+              <strong className="text-2xl">{documents.length}</strong>
+            </article>
+            <article className="rounded-xl bg-white/12 px-4 py-3 backdrop-blur-sm">
+              <p className="m-0 text-xs text-white/75">Owned by you</p>
+              <strong className="text-2xl">{ownedCount}</strong>
+            </article>
+            <article className="rounded-xl bg-white/12 px-4 py-3 backdrop-blur-sm">
+              <p className="m-0 text-xs text-white/75">Shared with you</p>
+              <strong className="text-2xl">{sharedCount}</strong>
+            </article>
+          </div>
+        </section>
+
+        <section className="mb-5 rounded-2xl border border-[#e5e9ef] bg-white p-4 shadow-sm">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+            <input
+              className="rounded-xl border border-[#dbe3ed] px-4 py-3 text-sm outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/10"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by title or tag..."
+              value={search}
+            />
+            <select
+              className="rounded-xl border border-[#dbe3ed] px-4 py-3 text-sm outline-none focus:border-[#4648d4]"
+              onChange={(event) => setSubjectFilter(event.target.value)}
+              value={subjectFilter}
+            >
+              <option value="">All subjects</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
+        {(error || actionError) ? (
+          <div className="mb-5 rounded-xl bg-[#fff0f0] px-4 py-3 text-sm font-bold text-[#b42318]">
+            {error || actionError}
+          </div>
+        ) : null}
+
+        {isLoading ? (
+          <div className="rounded-2xl border border-[#e5e9ef] bg-white p-10 text-center text-[#66758a]">
+            Loading your documents...
+          </div>
+        ) : documents.length ? (
+          <div className="grid gap-4">
+            {documents.map((doc) => {
+              const isOwner = canManageDocument(doc, user);
+              return (
+                <article
+                  className="rounded-2xl border border-[#e5e9ef] bg-white p-5 shadow-sm transition hover:shadow-md"
+                  key={doc.id}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex min-w-0 flex-1 items-start gap-4">
+                      <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444]">
+                        {getMimeLabel(doc.cloud_files?.mime_type)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="m-0 truncate text-base font-bold text-[#172033]">{doc.title}</h2>
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${isOwner ? "bg-[#e8f0ff] text-[#4648d4]" : "bg-[#f2f4f6] text-[#66758a]"}`}
+                          >
+                            {isOwner ? "Private" : "Shared"}
+                          </span>
+                        </div>
+                        <p className="m-0 mt-1 text-sm text-[#66758a]">
+                          {doc.subjects?.name || "No subject"} · {formatDate(doc.created_at)} · {formatFileSize(doc.cloud_files?.size_bytes)}
+                        </p>
+                        {doc.tags?.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {doc.tags.map((tag) => (
+                              <span
+                                className="inline-flex rounded-full bg-[#f2f4f6] px-2.5 py-0.5 text-xs font-bold text-[#66758a]"
+                                key={tag.id}
+                              >
+                                #{tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <ActionButton onClick={() => handlePreview(doc)}>Preview</ActionButton>
+                      <ActionButton onClick={() => handleDownload(doc)}>Download</ActionButton>
+                      {isOwner ? (
+                        <>
+                          <ActionButton onClick={() => setEditingDoc(doc)} tone="muted">Edit</ActionButton>
+                          <ActionButton onClick={() => setSharingDoc(doc)} tone="share">Share</ActionButton>
+                          <ActionButton onClick={() => handleDelete(doc)} tone="danger">Delete</ActionButton>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#c7d2fe] bg-white px-6 py-16 text-center">
+            <span className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eef0ff] text-2xl text-[#4648d4]">
+              📄
+            </span>
+            <h2 className="m-0 text-lg font-bold text-[#172033]">No documents yet</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#66758a]">
+              Upload your first PDF or DOCX to start building your study library.
+            </p>
+            <button
+              className="mt-5 rounded-xl border-0 bg-[#4648d4] px-5 py-3 text-sm font-bold text-white cursor-pointer"
+              onClick={uploadDoc.open}
+              type="button"
+            >
+              Upload your first document
+            </button>
+          </div>
+        )}
+      </div>
+
+      <UploadDocModal
+        isOpen={uploadDoc.isOpen}
+        subjects={subjects}
+        onClose={uploadDoc.close}
+        onSuccess={uploadDoc.onSuccess}
+        onError={uploadDoc.onError}
+      />
+
+      <EditDocumentModal
+        document={editingDoc}
+        isOpen={Boolean(editingDoc)}
+        subjects={subjects}
+        onClose={() => setEditingDoc(null)}
+        onSuccess={() => {
+          addToast({
+            type: "success",
+            title: "Document updated",
+            message: "Changes saved successfully.",
+          });
+          reload();
+        }}
+      />
+
+      <ShareDocumentModal
+        document={sharingDoc}
+        isOpen={Boolean(sharingDoc)}
+        onClose={() => setSharingDoc(null)}
+        onSuccess={() => {
+          addToast({
+            type: "success",
+            title: "Share updated",
+            message: "Document sharing settings were saved.",
+          });
+        }}
+      />
+    </main>
+  );
+}
