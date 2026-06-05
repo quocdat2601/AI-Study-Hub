@@ -21,7 +21,7 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
         </button>
         {isLoading ? (
           <span className="inline-flex min-h-[38px] w-[104px] animate-pulse rounded-full border border-[#c7c4d7] bg-[#eef2f8]" aria-label="Checking session" />
-        ) : isAuthenticated ? (
+        ) : isAuthenticated && onLogout ? (
           <button className="inline-flex items-center justify-center rounded-full text-sm font-extrabold min-h-[38px] px-6 bg-white border border-[#4648d4] text-[#4648d4] auth-btn-slide" onClick={onLogout} type="button">
             Log out
           </button>

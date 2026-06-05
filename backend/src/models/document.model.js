@@ -167,6 +167,42 @@ class DocumentModel {
     return count || 0;
   }
 
+  static async findAdminOverviewDocuments(sinceDate) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(`
+        id,
+        status,
+        extraction_status,
+        created_at,
+        subject_id,
+        subjects (name, code),
+        cloud_files (size_bytes)
+      `)
+      .gte('created_at', sinceDate.toISOString())
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async findAllForAdminOverview() {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(`
+        id,
+        status,
+        extraction_status,
+        created_at,
+        subject_id,
+        subjects (name, code),
+        cloud_files (size_bytes)
+      `);
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async findRecentByUserId(userId, limit = 5) {
     const { data, error } = await supabase
       .from('documents')

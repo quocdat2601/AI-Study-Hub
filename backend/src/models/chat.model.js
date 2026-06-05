@@ -11,6 +11,16 @@ class ChatModel {
     return count || 0;
   }
 
+  static async countUserMessages() {
+    const { count, error } = await supabase
+      .from('chat_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'user');
+
+    if (error) throw error;
+    return count || 0;
+  }
+
   static async findOrCreateSession(userId, docId) {
     // Check if session exists
     const { data: session, error: findError } = await supabase

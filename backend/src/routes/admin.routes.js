@@ -15,6 +15,18 @@ router.use(verifyToken, requireRole('admin'));
 
 /**
  * @swagger
+ * /api/admin/overview:
+ *   get:
+ *     summary: Admin dashboard overview metrics
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Overview metrics and chart data }
+ */
+router.get('/overview', adminController.getOverview);
+
+/**
+ * @swagger
  * /api/admin/users:
  *   get:
  *     summary: List all users

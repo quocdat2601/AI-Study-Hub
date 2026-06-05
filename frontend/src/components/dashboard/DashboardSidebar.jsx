@@ -54,6 +54,29 @@ function SidebarIcon({ name }) {
         <path d="M19.4 15a8.3 8.3 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8.8 8.8 0 0 0-1.7-1L15 6.5h-4L10.6 9a8.8 8.8 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a8.3 8.3 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a8.8 8.8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8.8 8.8 0 0 0 1.7-1l2.4 1 2-3.5-2.2-1.5Z" />
       </>
     ),
+    users: (
+      <>
+        <path d="M16 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+        <path d="M8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+        <path d="M3.5 20c.5-3 2.1-4.5 4.5-4.5 2.2 0 3.7 1.2 4.3 3.5" />
+        <path d="M12.5 19.5c.6-3.2 2.3-4.8 5-4.8 2.3 0 3.8 1.3 4.5 3.8" />
+      </>
+    ),
+    reports: (
+      <>
+        <path d="M5 20V4h14v16H5Z" />
+        <path d="M9 16V9" />
+        <path d="M12 16V6" />
+        <path d="M15 16v-4" />
+      </>
+    ),
+    activity: (
+      <>
+        <path d="M12 7v5l3 2" />
+        <path d="M21 12a9 9 0 1 1-2.6-6.4" />
+        <path d="M21 4v5h-5" />
+      </>
+    ),
   };
 
   return (
@@ -77,10 +100,13 @@ function navItemClass(isCollapsed, isActive) {
 
 export default function DashboardSidebar({
   activeSection,
+  items = dashboardSidebarItems,
   isCollapsed,
   onSectionChange,
   onToggleCollapse,
   userName,
+  newDocumentTo = "/library",
+  newDocumentLabel = "New Document",
 }) {
   const initials = (userName || "User").slice(0, 2).toUpperCase();
 
@@ -108,14 +134,14 @@ export default function DashboardSidebar({
             ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
             : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
         }
-        to="/library"
+        to={newDocumentTo}
       >
         <span>+</span>
-        <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>New Document</b>
+        <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>{newDocumentLabel}</b>
       </Link>
 
       <nav className="mt-5 grid content-start gap-2">
-        {dashboardSidebarItems.map((item) => (
+        {items.map((item) => (
           <button
             className={navItemClass(isCollapsed, activeSection === item.id)}
             key={item.id}

@@ -11,6 +11,14 @@ async function getAllUsers(req, res, next) {
   }
 }
 
+async function getOverview(req, res, next) {
+  try {
+    res.json(await adminService.getOverview());
+  } catch (err) {
+    next(err);
+  }
+}
+
 /**
  * Update user status or storage limit
  */
@@ -65,6 +73,7 @@ async function getActivityLogs(req, res, next) {
 
 module.exports = {
   getAllUsers,
+  getOverview,
   updateUser,
   getAllSubjects,
   createSubject,

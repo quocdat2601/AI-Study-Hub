@@ -61,6 +61,25 @@ class UserModel {
   static async updateStatus(id, status) {
     return this.update(id, { status, updated_at: new Date().toISOString() });
   }
+
+  static async countAll() {
+    const { count, error } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) throw error;
+    return count || 0;
+  }
+
+  static async findCreatedSince(date) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, created_at')
+      .gte('created_at', date.toISOString());
+
+    if (error) throw error;
+    return data || [];
+  }
 }
 
 module.exports = UserModel;

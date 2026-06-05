@@ -5,6 +5,11 @@ export async function listAdminUsers() {
   return response.data;
 }
 
+export async function getAdminOverview() {
+  const response = await api.get("/admin/overview");
+  return response.data;
+}
+
 export async function updateAdminUser(id, updates) {
   const response = await api.patch(`/admin/users/${id}`, updates);
   return response.data;
