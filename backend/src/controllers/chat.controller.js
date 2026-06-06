@@ -1,5 +1,15 @@
 const chatService = require('../services/chat.service');
 
+async function listSessions(req, res, next) {
+  try {
+    res.json(await chatService.listSessions({
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getOrCreateSession(req, res, next) {
   try {
     res.json(await chatService.getOrCreateSession({
@@ -81,6 +91,7 @@ async function revokePublicLink(req, res, next) {
 }
 
 module.exports = {
+  listSessions,
   getOrCreateSession,
   getMessages,
   sendMessage,

@@ -125,6 +125,26 @@ async function getOrCreateSession({ userId, docId }) {
   return session;
 }
 
+async function listSessions({ userId }) {
+  const sessions = await chatModel.listOwnedSessions(userId);
+
+  return Promise.all((sessions || []).map(async (session) => {
+    const documents = await chatModel.listSessionDocuments(session.id);
+    const documentsWithThumbnails = await withDocumentPreviews(documents);
+
+    return {
+      session: {
+        id: session.id,
+        title: session.title,
+        createdAt: session.created_at,
+        updatedAt: session.updated_at,
+        lastActivityAt: session.last_activity_at,
+      },
+      documents: documentsWithThumbnails.map(buildChatDocumentPreview),
+    };
+  }));
+}
+
 async function getMessages({ sessionId, userId }) {
   const session = await canReadChatSession(userId, sessionId);
   if (!session) {
@@ -298,6 +318,7 @@ async function getPublicChatShare(token) {
 }
 
 module.exports = {
+  listSessions,
   getOrCreateSession,
   getMessages,
   sendMessage,

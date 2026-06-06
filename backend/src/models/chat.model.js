@@ -90,6 +90,18 @@ class ChatModel {
     return data;
   }
 
+  static async listOwnedSessions(userId) {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('last_activity_at', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async attachDocuments(sessionId, docIds) {
     if (!docIds.length) return [];
 

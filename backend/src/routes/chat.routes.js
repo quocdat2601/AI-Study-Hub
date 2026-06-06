@@ -27,6 +27,7 @@ const verifyToken = require('../middleware/auth');
  */
 router.use(verifyToken);
 
+router.get('/sessions', chatController.listSessions);
 router.get('/session/:docId', chatController.getOrCreateSession);
 
 /**

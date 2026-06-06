@@ -1,6 +1,17 @@
 const supabase = require('../config/supabase');
 
 class NotificationModel {
+  static async create(notificationData) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([notificationData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async findByUserId(userId) {
     const { data, error } = await supabase
       .from('notifications')
