@@ -5,6 +5,8 @@ import AdminRoute from "./components/AdminRoute.jsx";
 import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
+import CommunityPage from "./pages/CommunityPage.jsx";
+import CommunityPostPage from "./pages/CommunityPostPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
@@ -37,6 +39,18 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route
+          path="/community"
+          element={<CommunityPage />}
+        />
+        <Route
+          path="/community/subjects/:code"
+          element={<CommunityPage />}
+        />
+        <Route
+          path="/community/posts/:id"
+          element={<CommunityPostPage />}
+        />
         <Route
           path="/dashboard"
           element={

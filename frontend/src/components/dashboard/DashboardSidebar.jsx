@@ -5,6 +5,7 @@ export const dashboardSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard" },
   { id: "study-sets", icon: "book", label: "Study Sets" },
   { id: "documents", icon: "document", label: "Documents" },
+  { id: "community", icon: "community", label: "Community", to: "/community" },
   { id: "ai-workspace", icon: "chat", label: "AI Workspace" },
   { id: "analytics", icon: "analytics", label: "Analytics" },
 ];
@@ -31,6 +32,14 @@ function SidebarIcon({ name }) {
         <path d="M14 3.5v4h4" />
         <path d="M9 12h6" />
         <path d="M9 16h6" />
+      </>
+    ),
+    community: (
+      <>
+        <path d="M7.5 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+        <path d="M16.5 10.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
+        <path d="M4 18c.4-2.4 1.9-3.7 4.5-3.7S12.6 15.6 13 18" />
+        <path d="M13.5 17.5c.4-1.9 1.7-3 3.8-3 1.8 0 3 .9 3.4 2.8" />
       </>
     ),
     chat: (
@@ -89,13 +98,13 @@ function SidebarIcon({ name }) {
 function navItemClass(isCollapsed, isActive) {
   if (isCollapsed) {
     return isActive
-      ? "flex h-10 w-full items-center justify-center rounded-md border-0 bg-[#d5e3fc] text-[#344154] transition"
-      : "flex h-10 w-full items-center justify-center rounded-md border-0 bg-transparent text-[#344154] transition hover:bg-white";
+      ? "flex h-10 w-full items-center justify-center rounded-md border-0 bg-[#d5e3fc] text-[#344154] no-underline transition"
+      : "flex h-10 w-full items-center justify-center rounded-md border-0 bg-transparent text-[#344154] no-underline transition hover:bg-white";
   }
 
   return isActive
-    ? "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-[#d5e3fc] px-3 text-left text-[13px] font-extrabold text-[#344154] transition"
-    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] transition hover:bg-white";
+    ? "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-[#d5e3fc] px-3 text-left text-[13px] font-extrabold text-[#344154] no-underline transition"
+    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] no-underline transition hover:bg-white";
 }
 
 export default function DashboardSidebar({
@@ -145,17 +154,30 @@ export default function DashboardSidebar({
 
       <nav className={showNewDocument ? "mt-5 grid content-start gap-2" : "grid content-start gap-2"}>
         {items.map((item) => (
-          <button
-            className={navItemClass(isCollapsed, activeSection === item.id)}
-            key={item.id}
-            onClick={() => onSectionChange(item.id)}
-            type="button"
-          >
-            <span className="flex h-5 w-5 flex-none items-center justify-center">
-              <SidebarIcon name={item.icon} />
-            </span>
-            {!isCollapsed && <b className="truncate">{item.label}</b>}
-          </button>
+          item.to ? (
+            <Link
+              className={navItemClass(isCollapsed, activeSection === item.id)}
+              key={item.id}
+              to={item.to}
+            >
+              <span className="flex h-5 w-5 flex-none items-center justify-center">
+                <SidebarIcon name={item.icon} />
+              </span>
+              {!isCollapsed && <b className="truncate">{item.label}</b>}
+            </Link>
+          ) : (
+            <button
+              className={navItemClass(isCollapsed, activeSection === item.id)}
+              key={item.id}
+              onClick={() => onSectionChange(item.id)}
+              type="button"
+            >
+              <span className="flex h-5 w-5 flex-none items-center justify-center">
+                <SidebarIcon name={item.icon} />
+              </span>
+              {!isCollapsed && <b className="truncate">{item.label}</b>}
+            </button>
+          )
         ))}
       </nav>
 

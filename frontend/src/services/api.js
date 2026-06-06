@@ -20,7 +20,7 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !error.config?.suppressAuthRedirect) {
       await supabase.auth.signOut();
       if (window.location.pathname !== '/login') {
         window.location.assign('/login');

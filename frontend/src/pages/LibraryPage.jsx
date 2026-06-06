@@ -73,6 +73,14 @@ export default function LibraryPage() {
                 <span className={`inline-flex rounded-full text-xs font-extrabold px-[10px] py-[5px] ${STATUS_CLASSES[doc.extraction_status || "pending"] ?? ""}`}>
                   {getStatusLabel(doc.extraction_status)}
                 </span>
+                {doc.status === "indexed" && doc.extraction_status === "ready" ? (
+                  <Link
+                    className="inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] border border-[#cbd5e1] bg-white text-[#172033] no-underline"
+                    to={`/community?compose=document&documentId=${doc.id}`}
+                  >
+                    Share to Community
+                  </Link>
+                ) : null}
                 <button
                   className={`inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] border ${bookmarkedDocIds.has(doc.id) ? "bg-white border-[#cbd5e1] text-[#172033]" : "bg-[#f8fafc] border-[#dbe3ed] text-[#42526a]"}`}
                   onClick={() => handleToggleBookmark(doc.id)}

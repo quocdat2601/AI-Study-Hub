@@ -13,7 +13,7 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
 
       <nav className="order-3 flex min-w-0 flex-1 items-center justify-start gap-5 overflow-x-auto md:order-none md:justify-center md:gap-8 md:overflow-visible" aria-label="Primary navigation">
         <Link className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" to={libraryPath}>{libraryLabel}</Link>
-        <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#community">Community</a>
+        <Link className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" to="/community">Community</Link>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#universities">Universities</a>
         <a className="text-[#57657a] text-sm font-bold no-underline whitespace-nowrap" href="#courses">Courses</a>
       </nav>

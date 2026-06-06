@@ -4,8 +4,12 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import {
   createAdminSubject,
   getAdminOverview,
+  listAdminCommunityReports,
   listAdminSubjects,
   listAdminUsers,
+  moderateAdminCommunityPost,
+  moderateAdminCommunityReply,
+  resolveAdminCommunityReport,
   updateAdminUser,
 } from "../services/adminApi.js";
 
@@ -282,6 +286,7 @@ export default function AdminPage() {
   const [overview, setOverview] = useState(null);
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [reports, setReports] = useState([]);
   const [subjectForm, setSubjectForm] = useState(emptySubject);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -300,18 +305,28 @@ export default function AdminPage() {
     setError("");
 
     try {
-      const [overviewData, userData, subjectData] = await Promise.all([
+      const [overviewData, userData, subjectData, reportData] = await Promise.all([
         getAdminOverview(),
         listAdminUsers(),
         listAdminSubjects(),
+        listAdminCommunityReports(),
       ]);
       setOverview(overviewData);
       setUsers(userData);
       setSubjects(subjectData);
+      setReports(reportData);
     } catch (err) {
       setError(messageFromError(err));
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function refreshReports() {
+    try {
+      setReports(await listAdminCommunityReports());
+    } catch (err) {
+      setError(messageFromError(err));
     }
   }
 
@@ -347,6 +362,45 @@ export default function AdminPage() {
       setSuccess("Subject created");
       resetSubjectForm();
       await loadAdminData();
+    } catch (err) {
+      setError(messageFromError(err));
+    }
+  }
+
+  async function resolveReport(reportId, status) {
+    setError("");
+    setSuccess("");
+
+    try {
+      await resolveAdminCommunityReport(reportId, status);
+      setSuccess(`Report ${status}`);
+      await refreshReports();
+    } catch (err) {
+      setError(messageFromError(err));
+    }
+  }
+
+  async function moderatePost(postId, status) {
+    setError("");
+    setSuccess("");
+
+    try {
+      await moderateAdminCommunityPost(postId, status);
+      setSuccess(`Post marked as ${status}`);
+      await refreshReports();
+    } catch (err) {
+      setError(messageFromError(err));
+    }
+  }
+
+  async function moderateReply(replyId, status) {
+    setError("");
+    setSuccess("");
+
+    try {
+      await moderateAdminCommunityReply(replyId, status);
+      setSuccess(`Reply marked as ${status}`);
+      await refreshReports();
     } catch (err) {
       setError(messageFromError(err));
     }
@@ -476,12 +530,90 @@ export default function AdminPage() {
     );
   }
 
+  function renderReports() {
+    return (
+      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_18px_50px_rgba(20,31,48,0.08)]">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="m-0 text-2xl font-extrabold">Community Reports</h1>
+            <p className="mt-1 mb-0 text-sm text-[#66758a]">Review reported posts and replies, then moderate or resolve them.</p>
+          </div>
+          <button className="inline-flex items-center justify-center rounded-lg border border-[#cbd5e1] bg-white px-4 py-2 text-sm font-extrabold text-[#172033]" onClick={refreshReports} type="button">
+            Refresh
+          </button>
+        </div>
+
+        {reports.length === 0 ? (
+          <p className="mt-6 text-[#66758a]">No community reports found.</p>
+        ) : (
+          <div className="mt-6 grid gap-4">
+            {reports.map((report) => (
+              <article className="rounded-lg border border-[#e5e9ef] p-5" key={report.id}>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={report.status === "open" ? "rounded-full bg-[#fff7e6] px-3 py-1 text-xs font-extrabold text-[#975a16]" : "rounded-full bg-[#eef2f7] px-3 py-1 text-xs font-extrabold text-[#42526a]"}>
+                        {report.status}
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-[0.08em] text-[#66758a]">
+                        {report.reply ? "Reply Report" : "Post Report"}
+                      </span>
+                    </div>
+                    <h2 className="mt-3 mb-0 text-lg font-extrabold text-[#191c1e]">
+                      {report.post?.title || `Post #${report.reply?.postId || "Unknown"}`}
+                    </h2>
+                    <p className="mt-3 mb-0 text-sm leading-6 text-[#526173]">{report.reason}</p>
+                    {report.reply ? (
+                      <p className="mt-3 mb-0 text-sm text-[#66758a]">Reply: {report.reply.body}</p>
+                    ) : null}
+                    <p className="mt-3 mb-0 text-xs text-[#66758a]">
+                      Reported by {report.reporter?.email || "Unknown"} - {new Date(report.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {report.post?.id ? (
+                      <>
+                        <button className="rounded-lg border border-[#cbd5e1] px-3 py-2 text-xs font-extrabold text-[#172033]" onClick={() => moderatePost(report.post.id, "hidden")} type="button">
+                          Hide Post
+                        </button>
+                        <button className="rounded-lg border border-[#fecaca] px-3 py-2 text-xs font-extrabold text-[#991b1b]" onClick={() => moderatePost(report.post.id, "removed")} type="button">
+                          Remove Post
+                        </button>
+                      </>
+                    ) : null}
+                    {report.reply?.id ? (
+                      <>
+                        <button className="rounded-lg border border-[#cbd5e1] px-3 py-2 text-xs font-extrabold text-[#172033]" onClick={() => moderateReply(report.reply.id, "hidden")} type="button">
+                          Hide Reply
+                        </button>
+                        <button className="rounded-lg border border-[#fecaca] px-3 py-2 text-xs font-extrabold text-[#991b1b]" onClick={() => moderateReply(report.reply.id, "removed")} type="button">
+                          Remove Reply
+                        </button>
+                      </>
+                    ) : null}
+                    <button className="rounded-lg bg-[#172033] px-3 py-2 text-xs font-extrabold text-white" onClick={() => resolveReport(report.id, "resolved")} type="button">
+                      Resolve
+                    </button>
+                    <button className="rounded-lg border border-[#dbe3ed] px-3 py-2 text-xs font-extrabold text-[#172033]" onClick={() => resolveReport(report.id, "dismissed")} type="button">
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderContent() {
     if (isLoading) return <OverviewSkeleton />;
     if (activeSection === "users") return renderUsers();
     if (activeSection === "settings") return renderSubjects();
     if (activeSection === "documents") return renderPlaceholder("Documents", "Document moderation and review tools will live here.");
-    if (activeSection === "reports") return renderPlaceholder("Reports", "Exportable platform reports will be added in a later increment.");
+    if (activeSection === "reports") return renderReports();
     if (activeSection === "activity-logs") {
       return (
         <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_18px_50px_rgba(20,31,48,0.08)]">
