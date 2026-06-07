@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed:demo": "node scripts/seed-demo-data.js"
+    "seed:demo": "node scripts/seed-demo-data.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
@@ -20,6 +22,9 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
     "nodemon": "^3.1.4"
   }
 }
