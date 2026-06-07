@@ -47,7 +47,7 @@ async function renderPdfFirstPage(pdfPath, outputPrefix) {
     ]);
 
     return `${outputPrefix}.png`;
-  } catch (popplerError) {
+  } catch (_popplerError) {
     const outputPath = `${outputPrefix}.png`;
     await execFile(getMuToolPath(), [
       'draw',

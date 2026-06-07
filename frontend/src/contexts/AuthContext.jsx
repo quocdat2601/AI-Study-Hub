@@ -73,7 +73,7 @@ export function AuthProvider({ children }) {
         if (isMounted) {
           setUser(currentUser);
         }
-      } catch (err) {
+      } catch (_err) {
         await logoutAuth().catch(() => {});
         if (isMounted) {
           setUser(null);
