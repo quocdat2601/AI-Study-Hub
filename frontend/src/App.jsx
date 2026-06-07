@@ -6,7 +6,7 @@ import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
 import CommunityPage from "./pages/CommunityPage.jsx";
-import CommunityPostPage from "./pages/CommunityPostPage.jsx";
+import CommunityPostDetailPage from "./pages/CommunityPostDetailPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
@@ -49,7 +49,7 @@ function AppRoutes() {
         />
         <Route
           path="/community/posts/:id"
-          element={<CommunityPostPage />}
+          element={<CommunityPostDetailPage />}
         />
         <Route
           path="/dashboard"

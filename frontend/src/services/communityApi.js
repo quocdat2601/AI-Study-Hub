@@ -15,7 +15,11 @@ export async function createCommunityPost(payload) {
   return response.data;
 }
 
-export async function createCommunityReply(postId, body) {
+export async function createCommunityReply(postId, payload) {
+  const body = typeof payload === "string"
+    ? payload
+    : payload?.body ?? payload?.content ?? "";
+
   const response = await api.post(`/community/posts/${postId}/replies`, { body });
   return response.data;
 }
@@ -38,4 +42,8 @@ export async function acceptCommunityReply(postId, replyId) {
 export async function reportCommunityPost(postId, payload) {
   const response = await api.post(`/community/posts/${postId}/report`, payload);
   return response.data;
+}
+
+export async function getCommunityPostDetail(postId) {
+  return getCommunityPost(postId);
 }
