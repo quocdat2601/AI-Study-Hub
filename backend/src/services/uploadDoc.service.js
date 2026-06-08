@@ -106,6 +106,7 @@ async function upload({ userId, file, title, subjectId, tags }) {
       targetType: 'document',
       targetId: savedDocument.id,
       metadata: {
+        title: savedDocument.title,
         mimeType: file.mimetype,
         extractionStatus: savedDocument.extraction_status,
       },

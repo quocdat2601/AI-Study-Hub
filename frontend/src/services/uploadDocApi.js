@@ -39,7 +39,6 @@ export async function uploadDocument({ file, title, subjectId, tags, onProgress,
   if (tags?.trim()) formData.append("tags", tags.trim());
 
   const response = await api.post("/upload-doc", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
     signal,
     onUploadProgress: (event) => {
       if (!onProgress || !event.total) return;

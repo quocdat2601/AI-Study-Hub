@@ -4,7 +4,8 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate:account": "node scripts/run-account-migration.js"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
@@ -19,6 +20,7 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "pg": "^8.21.0"
   }
 }

@@ -1,11 +1,13 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
+import { PreferencesProvider } from "./contexts/PreferencesContext.jsx";
 import { ToastProvider } from "./contexts/ToastContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
+import AccountPage from "./pages/AccountPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
@@ -18,7 +20,7 @@ function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const dashboardShellRoutes = ["/dashboard"];
+  const dashboardShellRoutes = ["/dashboard", "/account"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
     && !dashboardShellRoutes.includes(location.pathname);
 
@@ -41,6 +43,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <AccountPage />
             </ProtectedRoute>
           }
         />
@@ -78,11 +88,13 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </ToastProvider>
+      <PreferencesProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ToastProvider>
+      </PreferencesProvider>
     </AuthProvider>
   );
 }

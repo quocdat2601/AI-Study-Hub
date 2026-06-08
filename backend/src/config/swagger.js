@@ -34,6 +34,7 @@ const options = {
       { name: 'UploadDoc', description: 'Upload tài liệu' },
       { name: 'Subjects', description: 'Subject management' },
       { name: 'Dashboard', description: 'Dashboard data' },
+      { name: 'Account', description: 'User account profile and settings' },
     ],
   },
   // Scan all route files for JSDoc @swagger annotations

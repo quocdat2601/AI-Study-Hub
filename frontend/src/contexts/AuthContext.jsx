@@ -202,6 +202,20 @@ export function AuthProvider({ children }) {
     await logoutAuth().catch(() => {});
   }
 
+  async function refreshUser() {
+    const session = await getAuthSession();
+    if (!session?.access_token) {
+      setUser(null);
+      setHasSession(false);
+      return null;
+    }
+
+    const currentUser = await loadCurrentUser(session.access_token);
+    setUser(currentUser);
+    setHasSession(true);
+    return currentUser;
+  }
+
   const value = useMemo(
     () => ({
       user,
@@ -214,6 +228,7 @@ export function AuthProvider({ children }) {
       requestPasswordReset,
       updatePassword,
       logout,
+      refreshUser,
     }),
     [user, hasSession, isLoading, isRecoveryMode]
   );

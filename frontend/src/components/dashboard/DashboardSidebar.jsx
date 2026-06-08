@@ -1,12 +1,13 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import useTranslation from "../../hooks/useTranslation.js";
 
 export const dashboardSidebarItems = [
-  { id: "dashboard", icon: "dashboard", label: "Dashboard" },
-  { id: "study-sets", icon: "book", label: "Study Sets" },
-  { id: "documents", icon: "document", label: "Documents" },
-  { id: "ai-workspace", icon: "chat", label: "AI Workspace" },
-  { id: "analytics", icon: "analytics", label: "Analytics" },
+  { id: "dashboard", icon: "dashboard", labelKey: "nav.dashboard", path: "/dashboard" },
+  { id: "study-sets", icon: "book", labelKey: "nav.studySets", path: "/dashboard" },
+  { id: "documents", icon: "document", labelKey: "nav.documents", path: "/documents" },
+  { id: "ai-workspace", icon: "chat", labelKey: "nav.aiWorkspace", path: "/dashboard" },
+  { id: "analytics", icon: "analytics", labelKey: "nav.analytics", path: "/dashboard" },
 ];
 
 function SidebarIcon({ name }) {
@@ -70,18 +71,23 @@ function SidebarIcon({ name }) {
 
 function navItemClass(isActive) {
   return isActive
-    ? "relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 transition before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-indigo-600"
-    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900";
+    ? "relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 no-underline transition before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300"
+    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 no-underline transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white";
 }
 
-export default function DashboardSidebar({
-  activeSection,
-  onSectionChange,
-  onLogout,
-}) {
+function isNavItemActive(pathname, item) {
+  if (item.id === "dashboard") return pathname === "/dashboard";
+  if (item.id === "documents") return pathname.startsWith("/documents");
+  return false;
+}
+
+export default function DashboardSidebar({ onLogout, userName, userPlan, avatarUrl }) {
+  const pathname = useLocation().pathname;
+  const { t } = useTranslation();
+
   return (
     <aside
-      className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5"
+      className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"
       aria-label="Dashboard navigation"
     >
       <Link className="mb-6 flex items-center gap-3 no-underline" to="/dashboard">
@@ -89,8 +95,8 @@ export default function DashboardSidebar({
           A
         </span>
         <span className="min-w-0">
-          <strong className="block truncate text-[15px] font-bold tracking-tight text-slate-900">AI Study Hub</strong>
-          <small className="block truncate text-[11px] font-medium text-slate-500">Academic Pro</small>
+          <strong className="block truncate text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-100">AI Study Hub</strong>
+          <small className="block truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">Academic Pro</small>
         </span>
       </Link>
 
@@ -101,46 +107,57 @@ export default function DashboardSidebar({
         <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
           <path d="M12 5v14M5 12h14" strokeLinecap="round" />
         </svg>
-        <span>New Document</span>
+        <span>{t("nav.newDocument")}</span>
       </Link>
 
       <nav className="grid content-start gap-1">
         {dashboardSidebarItems.map((item) => (
-          <button
-            className={navItemClass(activeSection === item.id)}
+          <Link
+            className={navItemClass(isNavItemActive(pathname, item))}
             key={item.id}
-            onClick={() => onSectionChange(item.id)}
-            type="button"
+            to={item.path}
           >
             <span className="flex h-5 w-5 flex-none items-center justify-center">
               <SidebarIcon name={item.icon} />
             </span>
-            <span className="truncate">{item.label}</span>
-          </button>
+            <span className="truncate">{t(item.labelKey)}</span>
+          </Link>
         ))}
       </nav>
 
-      <div className="mt-auto grid gap-1 border-t border-slate-100 pt-4">
-        <button
-          className={navItemClass(activeSection === "settings")}
-          onClick={() => onSectionChange("settings")}
-          type="button"
-        >
+      <div className="mt-auto grid gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
+        {userName ? (
+          <div className="mb-2 flex items-center gap-2 px-3 py-1">
+            {avatarUrl ? (
+              <img alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" src={avatarUrl} />
+            ) : (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                {userName.slice(0, 2).toUpperCase()}
+              </span>
+            )}
+            <span className="min-w-0">
+              <strong className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{userName}</strong>
+              <small className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{userPlan || "Student Plan"}</small>
+            </span>
+          </div>
+        ) : null}
+
+        <Link className={navItemClass(pathname === "/account")} to="/account">
           <span className="flex h-5 w-5 flex-none items-center justify-center">
             <SidebarIcon name="settings" />
           </span>
-          <span className="truncate">Settings</span>
-        </button>
+          <span className="truncate">{t("nav.settings")}</span>
+        </Link>
 
         <button
-          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/30 dark:hover:text-red-400"
           onClick={onLogout}
           type="button"
         >
           <span className="flex h-5 w-5 flex-none items-center justify-center">
             <SidebarIcon name="logout" />
           </span>
-          <span className="truncate">Log Out</span>
+          <span className="truncate">{t("nav.logout")}</span>
         </button>
       </div>
     </aside>

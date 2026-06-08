@@ -14,6 +14,7 @@ const bookmarkRoutes = require('./routes/bookmark.routes');
 const chatRoutes = require('./routes/chat.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const adminRoutes = require('./routes/admin.routes');
+const accountRoutes = require('./routes/account.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -38,6 +39,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/account', accountRoutes);
 
 app.use(errorHandler);
 
