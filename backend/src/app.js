@@ -6,6 +6,7 @@ const swaggerSpec = require('./config/swagger');
 const healthRoutes = require('./routes/health.routes');
 const authRoutes = require('./routes/auth.routes');
 const documentRoutes = require('./routes/document.routes');
+const uploadDocRoutes = require('./routes/uploadDoc.routes');
 const subjectRoutes = require('./routes/subject.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const userRoutes = require('./routes/user.routes');
@@ -14,6 +15,7 @@ const chatRoutes = require('./routes/chat.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const adminRoutes = require('./routes/admin.routes');
 const publicRoutes = require('./routes/public.routes');
+const accountRoutes = require('./routes/account.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -32,12 +34,14 @@ app.use('/api/public', publicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/upload-doc', uploadDocRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/account', accountRoutes);
 
 app.use(errorHandler);
 

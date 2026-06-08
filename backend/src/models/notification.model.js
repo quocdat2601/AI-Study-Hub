@@ -32,6 +32,22 @@ class NotificationModel {
     if (error) throw error;
     return true;
   }
+
+  static async create({ userId, type = 'share', message, refDocId = null }) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([{
+        user_id: userId,
+        type,
+        message,
+        ref_doc_id: refDocId,
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
 
 module.exports = NotificationModel;

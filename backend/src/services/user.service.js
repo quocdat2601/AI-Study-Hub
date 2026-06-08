@@ -1,13 +1,18 @@
 const userModel = require('../models/user.model');
 const createError = require('../utils/createError');
 
+function normalizeRole(role) {
+  if (role === 'user') return 'student';
+  return role;
+}
+
 function publicUser(user) {
   if (!user) return null;
 
   return {
     id: user.id,
     email: user.email,
-    role: user.role,
+    role: normalizeRole(user.role),
     status: user.status,
     storage_limit_bytes: user.storage_limit_bytes,
     storageLimitBytes: user.storage_limit_bytes,
@@ -35,4 +40,5 @@ module.exports = {
   listUsers,
   getUserById,
   publicUser,
+  normalizeRole,
 };

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const dashboardController = require('../controllers/dashboard.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
+const MEMBER_ROLES = requireRole.MEMBER_ROLES;
 
 /**
  * @swagger
@@ -21,6 +22,6 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: Dashboard data }
  */
-router.get('/', verifyToken, requireRole('user'), dashboardController.getDashboardData);
+router.get('/', verifyToken, requireRole(...MEMBER_ROLES), dashboardController.getDashboardData);
 
 module.exports = router;

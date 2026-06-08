@@ -16,22 +16,6 @@ async function getAllDocuments(req, res, next) {
 }
 
 /**
- * Upload document
- */
-async function uploadDocument(req, res, next) {
-  try {
-    res.status(201).json(await documentService.uploadDocument({
-      userId: req.user.id,
-      file: req.file,
-      title: req.body.title,
-      subjectId: req.body.subjectId,
-    }));
-  } catch (err) {
-    next(err);
-  }
-}
-
-/**
  * Get one document
  */
 async function getDocumentById(req, res, next) {
@@ -59,12 +43,63 @@ async function getSignedUrl(req, res, next) {
   }
 }
 
-async function updateVisibility(req, res, next) {
+/**
+ * Cập nhật tiêu đề / môn học (chỉ chủ tài liệu hoặc admin)
+ */
+async function updateDocument(req, res, next) {
   try {
-    res.json(await documentService.updateVisibility({
-      id: req.params.id,
+    res.json(await documentService.updateDocument({
+      document: req.document,
+      title: req.body.title,
+      subjectId: req.body.subjectId,
+      tags: req.body.tags,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Xóa tài liệu (DB + Supabase Storage)
+ */
+async function deleteDocument(req, res, next) {
+  try {
+    res.json(await documentService.deleteDocument({
+      document: req.document,
       userId: req.user.id,
-      isPublic: req.body.isPublic,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listDocumentShares(req, res, next) {
+  try {
+    res.json(await documentService.listDocumentShares({
+      document: req.document,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function shareDocument(req, res, next) {
+  try {
+    res.status(201).json(await documentService.shareDocument({
+      document: req.document,
+      userId: req.user.id,
+      email: req.body.email,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function revokeDocumentShare(req, res, next) {
+  try {
+    res.json(await documentService.revokeDocumentShare({
+      document: req.document,
+      shareId: req.params.shareId,
     }));
   } catch (err) {
     next(err);
@@ -73,8 +108,11 @@ async function updateVisibility(req, res, next) {
 
 module.exports = {
   getAllDocuments,
-  uploadDocument,
   getDocumentById,
   getSignedUrl,
-  updateVisibility
+  updateDocument,
+  deleteDocument,
+  listDocumentShares,
+  shareDocument,
+  revokeDocumentShare,
 };

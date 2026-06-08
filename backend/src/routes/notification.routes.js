@@ -2,6 +2,7 @@ const router = require('express').Router();
 const notificationController = require('../controllers/notification.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
+const MEMBER_ROLES = requireRole.MEMBER_ROLES;
 
 /**
  * @swagger
@@ -21,7 +22,7 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: List of notifications }
  */
-router.get('/', verifyToken, requireRole('user'), notificationController.getAllNotifications);
+router.get('/', verifyToken, requireRole(...MEMBER_ROLES), notificationController.getAllNotifications);
 
 /**
  * @swagger
@@ -34,7 +35,7 @@ router.get('/', verifyToken, requireRole('user'), notificationController.getAllN
  *     responses:
  *       200: { description: Success }
  */
-router.patch('/read-all', verifyToken, requireRole('user'), notificationController.markAllRead);
+router.patch('/read-all', verifyToken, requireRole(...MEMBER_ROLES), notificationController.markAllRead);
 
 /**
  * @swagger
@@ -52,6 +53,6 @@ router.patch('/read-all', verifyToken, requireRole('user'), notificationControll
  *     responses:
  *       200: { description: Success }
  */
-router.patch('/:id/read', verifyToken, requireRole('user'), notificationController.markRead);
+router.patch('/:id/read', verifyToken, requireRole(...MEMBER_ROLES), notificationController.markRead);
 
 module.exports = router;
