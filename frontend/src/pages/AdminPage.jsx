@@ -10,12 +10,12 @@ import {
 const emptySubject = { name: "", code: "", description: "" };
 
 const STATUS_CLASSES = {
-  active: "bg-[#e8f5ee] text-[#087443]",
-  disabled: "bg-[#fff0f0] text-[#b42318]",
-  ready: "bg-[#e8f5ee] text-[#087443]",
-  empty: "bg-[#fff0f0] text-[#b42318]",
-  failed: "bg-[#fff0f0] text-[#b42318]",
-  pending: "bg-[#fff7e6] text-[#975a16]",
+  active: "bg-[#e8f5ee] text-[#087443] dark:bg-emerald-950 dark:text-emerald-300",
+  disabled: "bg-[#fff0f0] text-[#b42318] dark:bg-red-950 dark:text-red-300",
+  ready: "bg-[#e8f5ee] text-[#087443] dark:bg-emerald-950 dark:text-emerald-300",
+  empty: "bg-[#fff0f0] text-[#b42318] dark:bg-red-950 dark:text-red-300",
+  failed: "bg-[#fff0f0] text-[#b42318] dark:bg-red-950 dark:text-red-300",
+  pending: "bg-[#fff7e6] text-[#975a16] dark:bg-amber-950 dark:text-amber-300",
 };
 
 function messageFromError(err) {
@@ -91,14 +91,14 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1120px] px-6 my-8">
-      <header className="flex items-center justify-between mb-[22px]">
+    <main className="mx-auto my-8 max-w-[1120px] px-6 text-slate-900 dark:text-slate-100">
+      <header className="mb-[22px] flex items-center justify-between">
         <div>
-          <p className="text-[#0f766e] text-[13px] font-extrabold uppercase m-0">Admin</p>
-          <h1 className="mt-2 mb-2.5">Platform control</h1>
+          <p className="m-0 text-[13px] font-extrabold uppercase text-teal-700 dark:text-teal-300">Admin</p>
+          <h1 className="mb-2.5 mt-2">Platform control</h1>
         </div>
         <button
-          className="inline-flex items-center justify-center rounded-lg cursor-pointer font-extrabold min-h-11 px-[18px] bg-white border border-[#cbd5e1] text-[#172033]"
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-[18px] font-extrabold text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           type="button"
           onClick={loadAdminData}
         >
@@ -108,28 +108,28 @@ export default function AdminPage() {
 
       <div className="flex gap-2 mb-[18px]">
         <button
-          className={`border-0 rounded-lg cursor-pointer font-extrabold min-h-[42px] px-[18px] ${activeTab === "users" ? "bg-[#0f766e] text-white" : "bg-[#e9eef4] text-[#526173]"}`}
+          className={`min-h-[42px] cursor-pointer rounded-lg border-0 px-[18px] font-extrabold ${activeTab === "users" ? "bg-teal-700 text-white dark:bg-teal-600" : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}
           onClick={() => setActiveTab("users")}
         >
           Users
         </button>
         <button
-          className={`border-0 rounded-lg cursor-pointer font-extrabold min-h-[42px] px-[18px] ${activeTab === "subjects" ? "bg-[#0f766e] text-white" : "bg-[#e9eef4] text-[#526173]"}`}
+          className={`min-h-[42px] cursor-pointer rounded-lg border-0 px-[18px] font-extrabold ${activeTab === "subjects" ? "bg-teal-700 text-white dark:bg-teal-600" : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}
           onClick={() => setActiveTab("subjects")}
         >
           Subjects
         </button>
       </div>
 
-      {error && <div className="rounded-lg font-bold my-4 px-[14px] py-3 bg-[#fff0f0] text-[#b42318]">{error}</div>}
-      {success && <div className="rounded-lg font-bold my-4 px-[14px] py-3 bg-[#e8f5ee] text-[#087443]">{success}</div>}
-      {isLoading ? <div className="text-[#66758a] py-4">Loading admin data...</div> : null}
+      {error && <div className="my-4 rounded-lg bg-red-50 px-[14px] py-3 font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
+      {success && <div className="my-4 rounded-lg bg-emerald-50 px-[14px] py-3 font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{success}</div>}
+      {isLoading ? <div className="py-4 text-slate-500 dark:text-slate-400">Loading admin data...</div> : null}
 
       {!isLoading && activeTab === "users" ? (
-        <section className="bg-white border border-[#dfe4ea] rounded-lg shadow-[0_18px_50px_rgba(20,31,48,0.08)] p-6">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-xl m-0 mb-2.5">User management</h2>
           {users.length === 0 ? (
-            <p className="text-[#66758a]">No users found.</p>
+            <p className="text-slate-500 dark:text-slate-400">No users found.</p>
           ) : (
             <div className="overflow-x-auto">
               <table>
@@ -155,7 +155,7 @@ export default function AdminPage() {
                       <td>{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
                       <td>
                         {item.id === user.id ? (
-                          <span className="text-[#66758a]">Current admin</span>
+                          <span className="text-slate-500 dark:text-slate-400">Current admin</span>
                         ) : item.status === "active" ? (
                           <button className="bg-transparent border-0 text-[#0f766e] cursor-pointer font-extrabold p-0" onClick={() => updateStatus(item, "disabled")}>
                             Disable
@@ -177,7 +177,7 @@ export default function AdminPage() {
 
       {!isLoading && activeTab === "subjects" ? (
         <section className="grid items-start gap-[18px] grid-cols-[360px_1fr]">
-          <form className="bg-white border border-[#dfe4ea] rounded-lg shadow-[0_18px_50px_rgba(20,31,48,0.08)] p-6 grid gap-4" onSubmit={saveSubject}>
+          <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" onSubmit={saveSubject}>
             <h2 className="text-xl m-0 mb-2.5">Create subject</h2>
             <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
               Name
@@ -216,17 +216,17 @@ export default function AdminPage() {
             </div>
           </form>
 
-          <div className="bg-white border border-[#dfe4ea] rounded-lg shadow-[0_18px_50px_rgba(20,31,48,0.08)] p-6">
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <h2 className="text-xl m-0 mb-2.5">Subjects</h2>
             {subjects.length === 0 ? (
-              <p className="text-[#66758a]">No subjects created yet.</p>
+              <p className="text-slate-500 dark:text-slate-400">No subjects created yet.</p>
             ) : (
               <div className="grid gap-3 mt-[18px]">
                 {subjects.map((subject) => (
                   <article className="flex items-start justify-between gap-[18px] border border-[#e5e9ef] rounded-lg p-4" key={subject.id}>
                     <div>
                       <strong>{subject.name}</strong>
-                      <span className="block text-[#66758a]">{subject.code}</span>
+                      <span className="block text-slate-500 dark:text-slate-400">{subject.code}</span>
                       {subject.description ? <p className="mt-2 mb-0 text-sm text-[#526173]">{subject.description}</p> : null}
                     </div>
                   </article>

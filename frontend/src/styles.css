@@ -132,4 +132,13 @@ textarea {
     font-size: 13px;
     text-transform: uppercase;
   }
+
+  html.dark th,
+  html.dark td {
+    border-bottom-color: #334155;
+  }
+
+  html.dark th {
+    color: #94a3b8;
+  }
 }

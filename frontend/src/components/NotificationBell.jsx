@@ -116,7 +116,7 @@ export default function NotificationBell() {
   return (
     <div className="relative" ref={panelRef}>
       <button
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 cursor-pointer transition hover:border-slate-300 hover:text-indigo-600"
+        className="relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-indigo-400"
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
@@ -133,17 +133,17 @@ export default function NotificationBell() {
       </button>
 
       {isOpen ? (
-        <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-[#e5e9ef] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.14)]">
-          <div className="flex items-center justify-between border-b border-[#e5e9ef] px-4 py-3">
+        <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/40">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
             <div>
-              <strong className="text-sm text-[#172033]">Notifications</strong>
+              <strong className="text-sm text-slate-900 dark:text-slate-100">Notifications</strong>
               {unreadCount > 0 ? (
-                <p className="m-0 mt-0.5 text-xs text-[#66758a]">{unreadCount} unread</p>
+                <p className="m-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">{unreadCount} unread</p>
               ) : null}
             </div>
             {unreadCount > 0 ? (
               <button
-                className="border-0 bg-transparent text-xs font-bold text-[#4648d4] cursor-pointer"
+                className="cursor-pointer border-0 bg-transparent text-xs font-bold text-indigo-600 dark:text-indigo-400"
                 onClick={handleMarkAllRead}
                 type="button"
               >
@@ -154,34 +154,34 @@ export default function NotificationBell() {
 
           <div className="max-h-[320px] overflow-y-auto">
             {isLoading ? (
-              <p className="px-4 py-6 text-sm text-[#66758a]">Loading...</p>
+              <p className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">Loading...</p>
             ) : error ? (
-              <p className="px-4 py-6 text-sm font-bold text-[#b42318]">{error}</p>
+              <p className="px-4 py-6 text-sm font-bold text-red-600 dark:text-red-300">{error}</p>
             ) : notifications.length ? (
               <ul className="m-0 list-none p-0">
                 {notifications.map((notification) => (
                   <li key={notification.id}>
                     <button
-                      className={`flex w-full items-start gap-3 border-0 px-4 py-3 text-left cursor-pointer transition hover:bg-[#f8faff] ${notification.is_read ? "bg-white" : "bg-[#f0f4ff]"}`}
+                      className={`flex w-full cursor-pointer items-start gap-3 border-0 px-4 py-3 text-left transition hover:bg-indigo-50 dark:hover:bg-slate-800 ${notification.is_read ? "bg-white dark:bg-slate-900" : "bg-indigo-50 dark:bg-indigo-950/30"}`}
                       onClick={() => handleNotificationClick(notification)}
                       type="button"
                     >
-                      <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-[#e8f0ff] text-xs font-black text-[#4648d4]">
+                      <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-indigo-100 text-xs font-black text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300">
                         {notification.type === "share" ? "S" : "N"}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <strong className="block text-sm text-[#172033]">
+                        <strong className="block text-sm text-slate-900 dark:text-slate-100">
                           {getNotificationLabel(notification.type)}
                         </strong>
-                        <span className="mt-1 block text-sm text-[#66758a]">
+                        <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
                           {notification.message}
                         </span>
-                        <span className="mt-1 block text-xs text-[#94a3b8]">
+                        <span className="mt-1 block text-xs text-slate-400 dark:text-slate-500">
                           {formatNotificationTime(notification.created_at)}
                         </span>
                       </span>
                       {!notification.is_read ? (
-                        <span className="mt-2 h-2 w-2 flex-none rounded-full bg-[#4648d4]" />
+                        <span className="mt-2 h-2 w-2 flex-none rounded-full bg-indigo-600 dark:bg-indigo-400" />
                       ) : null}
                     </button>
                   </li>
@@ -189,8 +189,8 @@ export default function NotificationBell() {
               </ul>
             ) : (
               <div className="px-4 py-8 text-center">
-                <p className="m-0 text-sm font-bold text-[#172033]">No notifications yet</p>
-                <p className="m-0 mt-1 text-xs text-[#66758a]">
+                <p className="m-0 text-sm font-bold text-slate-900 dark:text-slate-100">No notifications yet</p>
+                <p className="m-0 mt-1 text-xs text-slate-500 dark:text-slate-400">
                   You will see alerts here when someone shares a document with you.
                 </p>
               </div>

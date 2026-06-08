@@ -27,28 +27,28 @@ export default function AccountEditProfileModal({ initialValues, onClose, onSave
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 dark:bg-black/60">
       <form
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
         onSubmit={handleSubmit}
       >
-        <h2 className="m-0 text-lg font-bold text-slate-900">Edit Profile</h2>
-        <p className="m-0 mt-1 text-sm text-slate-500">Update your personal details.</p>
+        <h2 className="m-0 text-lg font-bold text-slate-900 dark:text-slate-100">Edit Profile</h2>
+        <p className="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">Update your personal details.</p>
 
-        <label className="mt-5 block text-sm font-semibold text-slate-700">
+        <label className="mt-5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
           Display name
           <input
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-indigo-400"
+            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             onChange={(event) => setDisplayName(event.target.value)}
             required
             value={displayName}
           />
         </label>
 
-        <label className="mt-4 block text-sm font-semibold text-slate-700">
+        <label className="mt-4 block text-sm font-semibold text-slate-700 dark:text-slate-300">
           Handle
           <input
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-indigo-400"
+            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             onChange={(event) => setHandle(event.target.value)}
             placeholder="user1"
             required
@@ -56,10 +56,10 @@ export default function AccountEditProfileModal({ initialValues, onClose, onSave
           />
         </label>
 
-        <label className="mt-4 block text-sm font-semibold text-slate-700">
+        <label className="mt-4 block text-sm font-semibold text-slate-700 dark:text-slate-300">
           Major / bio
           <input
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-indigo-400"
+            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             onChange={(event) => setMajor(event.target.value)}
             placeholder="Student · AI Study Hub"
             value={major}
@@ -70,7 +70,7 @@ export default function AccountEditProfileModal({ initialValues, onClose, onSave
 
         <div className="mt-6 flex justify-end gap-2">
           <button
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
             onClick={onClose}
             type="button"
           >

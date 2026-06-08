@@ -72,16 +72,16 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#172033]/45 p-4">
-      <div className="w-full max-w-[520px] rounded-2xl bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.2)]">
-        <h2 className="m-0 text-xl font-bold text-[#172033]">Share Document</h2>
-        <p className="mt-1 text-sm text-[#66758a]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#172033]/45 p-4 dark:bg-black/60">
+      <div className="w-full max-w-[520px] rounded-2xl bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.2)] dark:border dark:border-slate-700 dark:bg-slate-900">
+        <h2 className="m-0 text-xl font-bold text-[#172033] dark:text-slate-100">Share Document</h2>
+        <p className="mt-1 text-sm text-[#66758a] dark:text-slate-400">
           Share <strong>{document.title}</strong> with another student by email.
         </p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
           <input
-            className="rounded-lg border border-[#dbe3ed] px-3 py-2.5 text-sm outline-none focus:border-[#4648d4]"
+            className="rounded-lg border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             onChange={(event) => setEmail(event.target.value)}
             placeholder="student@example.com"
             type="email"
@@ -98,22 +98,22 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
         </div>
 
         <div className="mt-6">
-          <h3 className="m-0 text-sm font-bold text-[#344154]">Shared with</h3>
+          <h3 className="m-0 text-sm font-bold text-[#344154] dark:text-slate-300">Shared with</h3>
 
           {isLoading ? (
-            <p className="mt-3 text-sm text-[#66758a]">Loading shares...</p>
+            <p className="mt-3 text-sm text-[#66758a] dark:text-slate-400">Loading shares...</p>
           ) : shares.length ? (
             <ul className="mt-3 grid gap-2 p-0 list-none">
               {shares.map((share) => (
                 <li
-                  className="flex items-center justify-between rounded-lg border border-[#e5e9ef] px-3 py-2.5"
+                  className="flex items-center justify-between rounded-lg border border-[#e5e9ef] px-3 py-2.5 dark:border-slate-700"
                   key={share.id}
                 >
-                  <span className="text-sm text-[#172033]">
+                  <span className="text-sm text-[#172033] dark:text-slate-100">
                     {share.sharedTo?.email || "Unknown user"}
                   </span>
                   <button
-                    className="rounded-md border border-[#fecaca] bg-[#fff5f5] px-2.5 py-1.5 text-xs font-bold text-[#b42318] cursor-pointer"
+                    className="rounded-md border border-[#fecaca] bg-[#fff5f5] px-2.5 py-1.5 text-xs font-bold text-[#b42318] cursor-pointer dark:border-red-900 dark:bg-red-950 dark:text-red-300"
                     onClick={() => handleRevoke(share.id)}
                     type="button"
                   >
@@ -123,19 +123,19 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
               ))}
             </ul>
           ) : (
-            <p className="mt-3 text-sm text-[#66758a]">Not shared with anyone yet.</p>
+            <p className="mt-3 text-sm text-[#66758a] dark:text-slate-400">Not shared with anyone yet.</p>
           )}
         </div>
 
         {error ? (
-          <p className="mt-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-sm font-bold text-[#b42318]">
+          <p className="mt-4 rounded-lg bg-[#fff0f0] px-3 py-2 text-sm font-bold text-[#b42318] dark:bg-red-950/40 dark:text-red-300">
             {error}
           </p>
         ) : null}
 
         <div className="mt-6 flex justify-end">
           <button
-            className="rounded-lg border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold cursor-pointer"
+            className="rounded-lg border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             onClick={onClose}
             type="button"
           >

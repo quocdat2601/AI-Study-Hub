@@ -123,9 +123,9 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4 backdrop-blur-[2px] dark:bg-black/60">
       <div
-        className="w-full max-w-[600px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
+        className="w-full max-w-[600px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] dark:border dark:border-slate-700 dark:bg-slate-900"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-doc-title"
@@ -156,7 +156,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
         <div className="px-6 py-5">
           {!file ? (
             <button
-              className="group flex w-full cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-[#c7d2fe] bg-[#f8faff] px-6 py-12 text-center transition hover:border-[#4648d4] hover:bg-[#f3f5ff]"
+              className="group flex w-full cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-[#c7d2fe] bg-[#f8faff] px-6 py-12 text-center transition hover:border-[#4648d4] hover:bg-[#f3f5ff] dark:border-slate-600 dark:bg-slate-800/60 dark:hover:border-indigo-500 dark:hover:bg-slate-800"
               onClick={() => inputRef.current?.click()}
               onDragOver={(event) => event.preventDefault()}
               onDrop={handleDrop}
@@ -165,22 +165,22 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
               <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#4648d4] text-3xl text-white shadow-[0_10px_24px_rgba(70,72,212,0.35)] transition group-hover:scale-105">
                 ↑
               </span>
-              <strong className="text-[#172033]">Drop your file here</strong>
-              <span className="mt-1 text-sm text-[#66758a]">or click to browse</span>
+              <strong className="text-[#172033] dark:text-slate-100">Drop your file here</strong>
+              <span className="mt-1 text-sm text-[#66758a] dark:text-slate-400">or click to browse</span>
             </button>
           ) : (
-            <div className="rounded-2xl border border-[#e5e9ef] bg-[#fafbff] p-4">
+            <div className="rounded-2xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <div className="flex items-center gap-3">
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444]">
                   {getUploadDocFileLabel(file)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm text-[#172033]">{file.name}</strong>
-                  <span className="text-xs text-[#66758a]">{formatFileSize(file.size)}</span>
+                  <strong className="block truncate text-sm text-[#172033] dark:text-slate-100">{file.name}</strong>
+                  <span className="text-xs text-[#66758a] dark:text-slate-400">{formatFileSize(file.size)}</span>
                 </div>
                 {!isUploading ? (
                   <button
-                    className="rounded-lg border border-[#e5e9ef] bg-white px-2.5 py-1.5 text-xs font-bold text-[#66758a] cursor-pointer"
+                    className="rounded-lg border border-[#e5e9ef] bg-white px-2.5 py-1.5 text-xs font-bold text-[#66758a] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
                     onClick={() => setFile(null)}
                     type="button"
                   >
@@ -190,12 +190,12 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
               </div>
 
               {isUploading ? (
-                <div className="mt-4 rounded-xl bg-white p-3">
-                  <div className="mb-2 flex justify-between text-xs font-bold text-[#66758a]">
+                <div className="mt-4 rounded-xl bg-white p-3 dark:bg-slate-900">
+                  <div className="mb-2 flex justify-between text-xs font-bold text-[#66758a] dark:text-slate-400">
                     <span>{progressLabel}</span>
                     <span>{isProcessing ? "..." : `${progress}%`}</span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-[#e6e8ea]">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-[#e6e8ea] dark:bg-slate-700">
                     {isProcessing ? (
                       <span className="block h-full w-full animate-pulse rounded-full bg-gradient-to-r from-[#4648d4] via-[#7c7ef8] to-[#4648d4]" />
                     ) : (
@@ -228,10 +228,10 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
           />
 
           <div className="mt-5 grid gap-4">
-            <label className="grid gap-2 text-sm font-bold text-[#344154]">
+            <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
               Document Title
               <input
-                className="rounded-xl border border-[#dbe3ed] px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/15"
+                className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/15 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 disabled={isUploading}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Lecture Notes Week 3"
@@ -240,10 +240,10 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-bold text-[#344154]">
+              <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
                 Subject
                 <select
-                  className="rounded-xl border border-[#dbe3ed] px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4]"
+                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   disabled={isUploading}
                   onChange={(event) => setSubjectId(event.target.value)}
                   value={subjectId}
@@ -257,10 +257,10 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm font-bold text-[#344154]">
+              <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
                 Tags
                 <input
-                  className="rounded-xl border border-[#dbe3ed] px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4]"
+                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   disabled={isUploading}
                   onChange={(event) => setTags(event.target.value)}
                   placeholder="midterm, lecture"
@@ -271,16 +271,16 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
           </div>
 
           {error ? (
-            <p className="mt-4 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-sm font-bold text-[#b42318]">
+            <p className="mt-4 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-sm font-bold text-[#b42318] dark:bg-red-950/40 dark:text-red-300">
               {error}
             </p>
           ) : null}
         </div>
 
-        <footer className="flex justify-end gap-3 border-t border-[#e5e9ef] bg-[#fafbff] px-6 py-4">
+        <footer className="flex justify-end gap-3 border-t border-[#e5e9ef] bg-[#fafbff] px-6 py-4 dark:border-slate-700 dark:bg-slate-800/60">
           {isUploading ? (
             <button
-              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer"
+              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
               onClick={handleCancelUpload}
               type="button"
             >
@@ -288,7 +288,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
             </button>
           ) : (
             <button
-              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer"
+              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
               onClick={handleClose}
               type="button"
             >

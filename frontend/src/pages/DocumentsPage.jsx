@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 import useDocuments from "../hooks/useDocuments.js";
@@ -35,10 +36,10 @@ function canManageDocument(doc, user) {
 
 function ActionButton({ children, onClick, tone = "default" }) {
   const tones = {
-    default: "border-[#dbe3ed] bg-white text-[#4648d4] hover:bg-[#f8faff]",
-    muted: "border-[#dbe3ed] bg-white text-[#344154] hover:bg-[#f8fafc]",
-    share: "border-[#b8e8df] bg-[#f0fdf9] text-[#0f766e] hover:bg-[#e6faf4]",
-    danger: "border-[#fecaca] bg-[#fff5f5] text-[#b42318] hover:bg-[#ffecec]",
+    default: "border-[#dbe3ed] bg-white text-[#4648d4] hover:bg-[#f8faff] dark:border-slate-600 dark:bg-slate-800 dark:text-indigo-300 dark:hover:bg-slate-700",
+    muted: "border-[#dbe3ed] bg-white text-[#344154] hover:bg-[#f8fafc] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+    share: "border-[#b8e8df] bg-[#f0fdf9] text-[#0f766e] hover:bg-[#e6faf4] dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900",
+    danger: "border-[#fecaca] bg-[#fff5f5] text-[#b42318] hover:bg-[#ffecec] dark:border-red-900 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900",
   };
 
   return (
@@ -137,8 +138,8 @@ export default function DocumentsPage() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-[#f4f6fb] px-4 py-8 md:px-8">
-      <div className="mx-auto max-w-[1280px]">
+    <DashboardShell>
+      <div className="mx-auto w-full max-w-[1280px]">
         <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-[#4648d4] to-[#6366f1] p-6 text-white shadow-[0_12px_30px_rgba(70,72,212,0.25)] md:p-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -174,16 +175,16 @@ export default function DocumentsPage() {
           </div>
         </section>
 
-        <section className="mb-5 rounded-2xl border border-[#e5e9ef] bg-white p-4 shadow-sm">
+        <section className="mb-5 rounded-2xl border border-[#e5e9ef] bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="grid gap-3 md:grid-cols-[1fr_220px]">
             <input
-              className="rounded-xl border border-[#dbe3ed] px-4 py-3 text-sm outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/10"
+              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/10 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500 dark:focus:ring-indigo-900"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by title or tag..."
               value={search}
             />
             <select
-              className="rounded-xl border border-[#dbe3ed] px-4 py-3 text-sm outline-none focus:border-[#4648d4]"
+              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               onChange={(event) => setSubjectFilter(event.target.value)}
               value={subjectFilter}
             >
@@ -198,13 +199,13 @@ export default function DocumentsPage() {
         </section>
 
         {(error || actionError) ? (
-          <div className="mb-5 rounded-xl bg-[#fff0f0] px-4 py-3 text-sm font-bold text-[#b42318]">
+          <div className="mb-5 rounded-xl bg-[#fff0f0] px-4 py-3 text-sm font-bold text-[#b42318] dark:bg-red-950/40 dark:text-red-300">
             {error || actionError}
           </div>
         ) : null}
 
         {isLoading ? (
-          <div className="rounded-2xl border border-[#e5e9ef] bg-white p-10 text-center text-[#66758a]">
+          <div className="rounded-2xl border border-[#e5e9ef] bg-white p-10 text-center text-[#66758a] dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
             Loading your documents...
           </div>
         ) : documents.length ? (
@@ -213,31 +214,31 @@ export default function DocumentsPage() {
               const isOwner = canManageDocument(doc, user);
               return (
                 <article
-                  className="rounded-2xl border border-[#e5e9ef] bg-white p-5 shadow-sm transition hover:shadow-md"
+                  className="rounded-2xl border border-[#e5e9ef] bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:shadow-lg dark:hover:shadow-black/20"
                   key={doc.id}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-start gap-4">
-                      <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444]">
+                      <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444] dark:bg-red-950 dark:text-red-300">
                         {getMimeLabel(doc.cloud_files?.mime_type)}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="m-0 truncate text-base font-bold text-[#172033]">{doc.title}</h2>
+                          <h2 className="m-0 truncate text-base font-bold text-[#172033] dark:text-slate-100">{doc.title}</h2>
                           <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${isOwner ? "bg-[#e8f0ff] text-[#4648d4]" : "bg-[#f2f4f6] text-[#66758a]"}`}
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${isOwner ? "bg-[#e8f0ff] text-[#4648d4] dark:bg-indigo-950 dark:text-indigo-300" : "bg-[#f2f4f6] text-[#66758a] dark:bg-slate-800 dark:text-slate-400"}`}
                           >
                             {isOwner ? "Private" : "Shared"}
                           </span>
                         </div>
-                        <p className="m-0 mt-1 text-sm text-[#66758a]">
+                        <p className="m-0 mt-1 text-sm text-[#66758a] dark:text-slate-400">
                           {doc.subjects?.name || "No subject"} · {formatDate(doc.created_at)} · {formatFileSize(doc.cloud_files?.size_bytes)}
                         </p>
                         {doc.tags?.length ? (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {doc.tags.map((tag) => (
                               <span
-                                className="inline-flex rounded-full bg-[#f2f4f6] px-2.5 py-0.5 text-xs font-bold text-[#66758a]"
+                                className="inline-flex rounded-full bg-[#f2f4f6] px-2.5 py-0.5 text-xs font-bold text-[#66758a] dark:bg-slate-800 dark:text-slate-400"
                                 key={tag.id}
                               >
                                 #{tag.name}
@@ -265,12 +266,12 @@ export default function DocumentsPage() {
             })}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-[#c7d2fe] bg-white px-6 py-16 text-center">
-            <span className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eef0ff] text-2xl text-[#4648d4]">
+          <div className="rounded-2xl border border-dashed border-[#c7d2fe] bg-white px-6 py-16 text-center dark:border-slate-700 dark:bg-slate-900">
+            <span className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#eef0ff] text-2xl text-[#4648d4] dark:bg-indigo-950 dark:text-indigo-300">
               📄
             </span>
-            <h2 className="m-0 text-lg font-bold text-[#172033]">No documents yet</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm text-[#66758a]">
+            <h2 className="m-0 text-lg font-bold text-[#172033] dark:text-slate-100">No documents yet</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#66758a] dark:text-slate-400">
               Upload your first PDF or DOCX to start building your study library.
             </p>
             <button
@@ -319,6 +320,6 @@ export default function DocumentsPage() {
           });
         }}
       />
-    </main>
+    </DashboardShell>
   );
 }

@@ -171,19 +171,19 @@ export function DocxFileIcon({ className = "h-5 w-5" }) {
 export function SectionTitle({ icon, children }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         {icon}
       </span>
-      <h2 className="m-0 text-lg font-semibold text-slate-900">{children}</h2>
+      <h2 className="m-0 text-lg font-semibold text-slate-900 dark:text-slate-100">{children}</h2>
     </div>
   );
 }
 
 export const statIconStyles = {
-  storage: "bg-sky-50 text-sky-600 ring-1 ring-sky-100",
-  documents: "bg-blue-50 text-blue-600 ring-1 ring-blue-100",
-  bookmarks: "bg-amber-50 text-amber-600 ring-1 ring-amber-100",
-  chats: "bg-violet-50 text-violet-600 ring-1 ring-violet-100",
+  storage: "bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-950 dark:text-sky-300 dark:ring-sky-900",
+  documents: "bg-blue-50 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-950 dark:text-blue-300 dark:ring-blue-900",
+  bookmarks: "bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-900",
+  chats: "bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-950 dark:text-violet-300 dark:ring-violet-900",
 };
 
 export function StatIconBadge({ tone, children }) {
@@ -202,7 +202,7 @@ export function DocumentTypeIcon({ mimeType, className = "h-8 w-8" }) {
     return <DocxFileIcon className={className} />;
   }
   return (
-    <span className={`inline-flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 ${className}`}>
+    <span className={`inline-flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 ${className}`}>
       <DocumentFileIcon className="h-4 w-4" />
     </span>
   );
