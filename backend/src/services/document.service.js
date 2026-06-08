@@ -12,7 +12,7 @@ const activityService = require('./activity.service');
 
 const createError = require('../utils/createError');
 
-
+const PUBLIC_PREVIEW_MAX_CHARS = 150;
 
 function mapDocument(doc) {
 
@@ -72,12 +72,81 @@ function filterDocuments(documents, { search, subjectId }) {
 
 
 
+function normalizePreviewText(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  if (normalized.length <= PUBLIC_PREVIEW_MAX_CHARS) return normalized;
+  return `${normalized.slice(0, PUBLIC_PREVIEW_MAX_CHARS)}...`;
+}
+
+function getDocumentFileType(doc) {
+  const mimeType = doc.cloud_files?.mime_type || '';
+  if (mimeType.includes('pdf')) return 'PDF';
+  if (mimeType.includes('word')) return 'DOC';
+  return 'DOC';
+}
+
+function buildPublicDocumentPreview(doc) {
+  return {
+    id: doc.id,
+    title: doc.title,
+    subject: doc.subjects?.name || null,
+    subjectCode: doc.subjects?.code || null,
+    viewCount: Number(doc.view_count || 0),
+    fileType: getDocumentFileType(doc),
+    thumbnailUrl: doc.thumbnailUrl || null,
+    previewText: normalizePreviewText(doc.extracted_text),
+    createdAt: doc.created_at,
+    fileSizeBytes: Number(doc.cloud_files?.size_bytes || 0),
+  };
+}
+
+async function canReadDocument(userId, id) {
+  return documentModel.findAccessibleById(id, userId);
+}
+
+async function canUseDocumentInChat(userId, id) {
+  return canReadDocument(userId, id);
+}
+
+async function canEditDocument(userId, id) {
+  return documentModel.findOwnedById(id, userId);
+}
+
+async function addThumbnailUrls(documents) {
+  return Promise.all((documents || []).map(async (doc) => {
+    if (!doc.thumbnail_path || doc.thumbnail_status !== 'ready') {
+      return { ...doc, thumbnailUrl: null };
+    }
+
+    try {
+      return {
+        ...doc,
+        thumbnailUrl: await supabaseService.getSignedUrl(doc.thumbnail_path),
+      };
+    } catch {
+      return { ...doc, thumbnailUrl: null };
+    }
+  }));
+}
+
+async function updateVisibility({ id, userId, isPublic }) {
+  const doc = await canEditDocument(userId, id);
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+
+  const updatedDocument = await documentModel.updateVisibility(id, Boolean(isPublic));
+  const [documentWithThumbnail] = await addThumbnailUrls([updatedDocument]);
+  return {
+    message: isPublic ? 'Document is now public' : 'Document is now private',
+    document: mapDocument(documentWithThumbnail),
+  };
+}
+
 async function listDocuments({ userId, search, subjectId }) {
-
   const documents = (await documentModel.findByUserId(userId)).map(mapDocument);
-
-  return filterDocuments(documents, { search, subjectId });
-
+  return addThumbnailUrls(filterDocuments(documents, { search, subjectId }));
 }
 
 
@@ -399,24 +468,20 @@ async function revokeDocumentShare({ document, shareId }) {
 
 
 module.exports = {
-
   mapDocument,
-
   listDocuments,
-
   getDocumentById,
-
   getSignedUrl,
-
+  addThumbnailUrls,
+  buildPublicDocumentPreview,
+  canReadDocument,
+  canUseDocumentInChat,
+  canEditDocument,
+  updateVisibility,
   updateDocument,
-
   deleteDocument,
-
   listDocumentShares,
-
   shareDocument,
-
   revokeDocumentShare,
-
 };
 
