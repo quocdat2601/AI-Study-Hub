@@ -32,8 +32,10 @@ const options = {
       { name: 'Auth', description: 'Authentication endpoints' },
       { name: 'Admin', description: 'Admin-only platform management' },
       { name: 'Documents', description: 'Document management' },
+      { name: 'UploadDoc', description: 'Upload tài liệu' },
       { name: 'Subjects', description: 'Subject management' },
       { name: 'Dashboard', description: 'Dashboard data' },
+      { name: 'Account', description: 'User account profile and settings' },
     ],
   },
   // Scan all route files for JSDoc @swagger annotations

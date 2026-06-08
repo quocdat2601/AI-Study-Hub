@@ -30,13 +30,34 @@ export function hasRecoveryContext(locationLike = window.location) {
   return hasRecoveryParams(locationLike) || safeSessionStorage((storage) => storage.getItem(RECOVERY_FLAG_KEY) === "1", false);
 }
 
+function isInvalidRefreshTokenError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "refresh_token_not_found" ||
+    message.includes("invalid refresh token") ||
+    message.includes("refresh token not found")
+  );
+}
+
+export async function clearStaleAuthSession() {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // Ignore cleanup errors for already-invalid sessions.
+  }
+}
+
 export async function getAuthSession() {
   const { data, error } = await supabase.auth.getSession();
   if (error) {
+    if (isInvalidRefreshTokenError(error)) {
+      await clearStaleAuthSession();
+      return null;
+    }
     throw error;
   }
 
-  return data.session;
+  return data.session ?? null;
 }
 
 export function onAuthStateChange(callback) {
@@ -91,6 +112,10 @@ export async function registerWithPassword(details) {
 export async function logoutAuth() {
   const { error } = await supabase.auth.signOut();
   if (error) {
+    if (isInvalidRefreshTokenError(error)) {
+      await clearStaleAuthSession();
+      return;
+    }
     throw error;
   }
 }

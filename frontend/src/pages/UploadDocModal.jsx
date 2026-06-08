@@ -1,0 +1,311 @@
+import React, { useEffect, useRef, useState } from "react";
+import {
+  UPLOAD_DOC_ACCEPT_ATTR,
+  UPLOAD_DOC_MAX_SIZE_MB,
+  getUploadDocFileLabel,
+  uploadDocument,
+  validateUploadDocFile,
+} from "../services/uploadDocApi.js";
+import { formatFileSize } from "../lib/formatFileSize.js";
+
+export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, onError }) {
+  const inputRef = useRef(null);
+  const abortRef = useRef(null);
+
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [tags, setTags] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState("");
+
+  function resetForm() {
+    setFile(null);
+    setTitle("");
+    setSubjectId("");
+    setTags("");
+    setProgress(0);
+    setIsUploading(false);
+    setIsProcessing(false);
+    setError("");
+    abortRef.current = null;
+  }
+
+  function handleClose() {
+    if (isUploading) return;
+    resetForm();
+    onClose();
+  }
+
+  useEffect(() => {
+    if (!isOpen) resetForm();
+  }, [isOpen]);
+
+  function pickFile(nextFile) {
+    const validationError = validateUploadDocFile(nextFile);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError("");
+    setFile(nextFile);
+
+    if (!title.trim()) {
+      setTitle(nextFile.name.replace(/\.[^.]+$/, ""));
+    }
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    const dropped = event.dataTransfer.files?.[0];
+    if (dropped) pickFile(dropped);
+  }
+
+  function handleProgress(value) {
+    setProgress(value);
+    if (value >= 100) setIsProcessing(true);
+  }
+
+  async function handleUpload() {
+    if (!file || isUploading) return;
+
+    setError("");
+    setIsUploading(true);
+    setIsProcessing(false);
+    setProgress(0);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const result = await uploadDocument({
+        file,
+        title: title.trim() || file.name,
+        subjectId: subjectId || undefined,
+        tags: tags.trim() || undefined,
+        onProgress: handleProgress,
+        signal: controller.signal,
+      });
+
+      resetForm();
+      onSuccess(result);
+      onClose();
+    } catch (err) {
+      if (err.code === "ERR_CANCELED") {
+        setError("Upload cancelled.");
+      } else {
+        const message = err.response?.data?.error || "Upload failed. Please try again.";
+        setError(message);
+        onError?.(message);
+      }
+      setProgress(0);
+      setIsProcessing(false);
+    } finally {
+      setIsUploading(false);
+      abortRef.current = null;
+    }
+  }
+
+  function handleCancelUpload() {
+    abortRef.current?.abort();
+    setIsUploading(false);
+    setIsProcessing(false);
+    setProgress(0);
+  }
+
+  const progressLabel = isProcessing
+    ? "Saving and analyzing document..."
+    : "Uploading file...";
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4 backdrop-blur-[2px] dark:bg-black/60">
+      <div
+        className="w-full max-w-[600px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] dark:border dark:border-slate-700 dark:bg-slate-900"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upload-doc-title"
+      >
+        <header className="bg-gradient-to-r from-[#4648d4] to-[#5b5ef0] px-6 py-5 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="m-0 text-xs font-bold uppercase tracking-wide text-white/80">Upload</p>
+              <h2 id="upload-doc-title" className="m-0 mt-1 text-xl font-bold">
+                Add New Document
+              </h2>
+              <p className="m-0 mt-1 text-sm text-white/85">
+                PDF or DOCX up to {UPLOAD_DOC_MAX_SIZE_MB}MB
+              </p>
+            </div>
+            <button
+              className="border-0 bg-white/15 text-xl leading-none text-white cursor-pointer rounded-lg h-9 w-9 disabled:opacity-40"
+              onClick={handleClose}
+              disabled={isUploading}
+              type="button"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+        </header>
+
+        <div className="px-6 py-5">
+          {!file ? (
+            <button
+              className="group flex w-full cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-[#c7d2fe] bg-[#f8faff] px-6 py-12 text-center transition hover:border-[#4648d4] hover:bg-[#f3f5ff] dark:border-slate-600 dark:bg-slate-800/60 dark:hover:border-indigo-500 dark:hover:bg-slate-800"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleDrop}
+              type="button"
+            >
+              <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#4648d4] text-3xl text-white shadow-[0_10px_24px_rgba(70,72,212,0.35)] transition group-hover:scale-105">
+                ↑
+              </span>
+              <strong className="text-[#172033] dark:text-slate-100">Drop your file here</strong>
+              <span className="mt-1 text-sm text-[#66758a] dark:text-slate-400">or click to browse</span>
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444]">
+                  {getUploadDocFileLabel(file)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <strong className="block truncate text-sm text-[#172033] dark:text-slate-100">{file.name}</strong>
+                  <span className="text-xs text-[#66758a] dark:text-slate-400">{formatFileSize(file.size)}</span>
+                </div>
+                {!isUploading ? (
+                  <button
+                    className="rounded-lg border border-[#e5e9ef] bg-white px-2.5 py-1.5 text-xs font-bold text-[#66758a] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                    onClick={() => setFile(null)}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+
+              {isUploading ? (
+                <div className="mt-4 rounded-xl bg-white p-3 dark:bg-slate-900">
+                  <div className="mb-2 flex justify-between text-xs font-bold text-[#66758a] dark:text-slate-400">
+                    <span>{progressLabel}</span>
+                    <span>{isProcessing ? "..." : `${progress}%`}</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-[#e6e8ea] dark:bg-slate-700">
+                    {isProcessing ? (
+                      <span className="block h-full w-full animate-pulse rounded-full bg-gradient-to-r from-[#4648d4] via-[#7c7ef8] to-[#4648d4]" />
+                    ) : (
+                      <span
+                        className="block h-full rounded-full bg-[#4648d4] transition-all duration-200"
+                        style={{ width: `${progress}%` }}
+                      />
+                    )}
+                  </div>
+                  {isProcessing ? (
+                    <p className="m-0 mt-2 text-xs text-[#66758a]">
+                      Large files may take a moment while we extract text for AI.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <input
+            ref={inputRef}
+            accept={UPLOAD_DOC_ACCEPT_ATTR}
+            className="hidden"
+            onChange={(event) => {
+              const picked = event.target.files?.[0];
+              if (picked) pickFile(picked);
+              event.target.value = "";
+            }}
+            type="file"
+          />
+
+          <div className="mt-5 grid gap-4">
+            <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
+              Document Title
+              <input
+                className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/15 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                disabled={isUploading}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Lecture Notes Week 3"
+                value={title}
+              />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
+                Subject
+                <select
+                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  disabled={isUploading}
+                  onChange={(event) => setSubjectId(event.target.value)}
+                  value={subjectId}
+                >
+                  <option value="">Select subject</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
+                Tags
+                <input
+                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  disabled={isUploading}
+                  onChange={(event) => setTags(event.target.value)}
+                  placeholder="midterm, lecture"
+                  value={tags}
+                />
+              </label>
+            </div>
+          </div>
+
+          {error ? (
+            <p className="mt-4 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-sm font-bold text-[#b42318] dark:bg-red-950/40 dark:text-red-300">
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <footer className="flex justify-end gap-3 border-t border-[#e5e9ef] bg-[#fafbff] px-6 py-4 dark:border-slate-700 dark:bg-slate-800/60">
+          {isUploading ? (
+            <button
+              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              onClick={handleCancelUpload}
+              type="button"
+            >
+              Cancel upload
+            </button>
+          ) : (
+            <button
+              className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              onClick={handleClose}
+              type="button"
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            className="inline-flex items-center gap-2 rounded-xl border-0 bg-[#4648d4] px-5 py-2.5 text-sm font-bold text-white cursor-pointer shadow-[0_8px_20px_rgba(70,72,212,0.28)] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!file || isUploading}
+            onClick={handleUpload}
+            type="button"
+          >
+            {isUploading ? "Please wait..." : "Upload Document"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}

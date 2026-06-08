@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import api from "../services/api.js";
 import {
   clearRecoveryMode,
+  clearStaleAuthSession,
   getAuthSession,
   hasRecoveryContext,
   loginWithGoogle,
@@ -88,8 +89,18 @@ export function AuthProvider({ children }) {
     }
 
     async function initializeAuth() {
-      const session = await getAuthSession();
-      await hydrateFromSession(session, hasRecoveryContext());
+      try {
+        const session = await getAuthSession();
+        await hydrateFromSession(session, hasRecoveryContext());
+      } catch {
+        await clearStaleAuthSession();
+        if (isMounted) {
+          setUser(null);
+          setHasSession(false);
+          setIsRecoveryMode(false);
+          setIsLoading(false);
+        }
+      }
     }
 
     initializeAuth();
@@ -112,7 +123,7 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      if (event === "SIGNED_IN" && manualAuthInProgressRef.current) {
+      if (manualAuthInProgressRef.current) {
         return;
       }
 
@@ -209,6 +220,20 @@ export function AuthProvider({ children }) {
     await logoutAuth().catch(() => {});
   }
 
+  async function refreshUser() {
+    const session = await getAuthSession();
+    if (!session?.access_token) {
+      setUser(null);
+      setHasSession(false);
+      return null;
+    }
+
+    const currentUser = await loadCurrentUser(session.access_token);
+    setUser(currentUser);
+    setHasSession(true);
+    return currentUser;
+  }
+
   const value = useMemo(
     () => ({
       user,
@@ -222,6 +247,7 @@ export function AuthProvider({ children }) {
       requestPasswordReset,
       updatePassword,
       logout,
+      refreshUser,
     }),
     [user, hasSession, isLoading, isRecoveryMode]
   );

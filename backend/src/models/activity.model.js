@@ -28,6 +28,18 @@ class ActivityModel {
     if (error) throw error;
     return data || [];
   }
+
+  static async listByUserId(userId, limit = 10) {
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(Math.min(Number(limit) || 10, 50));
+
+    if (error) throw error;
+    return data || [];
+  }
 }
 
 module.exports = ActivityModel;

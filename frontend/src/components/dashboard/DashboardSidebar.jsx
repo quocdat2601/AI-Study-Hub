@@ -1,22 +1,23 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import useTranslation from "../../hooks/useTranslation.js";
 
 export const dashboardSidebarItems = [
-  { id: "dashboard", icon: "dashboard", label: "Dashboard" },
-  { id: "study-sets", icon: "book", label: "Study Sets" },
-  { id: "documents", icon: "document", label: "Documents" },
-  { id: "ai-workspace", icon: "chat", label: "AI Workspace" },
-  { id: "analytics", icon: "analytics", label: "Analytics" },
+  { id: "dashboard", icon: "dashboard", labelKey: "nav.dashboard", path: "/dashboard" },
+  { id: "study-sets", icon: "book", labelKey: "nav.studySets", path: "/dashboard" },
+  { id: "documents", icon: "document", labelKey: "nav.documents", path: "/documents" },
+  { id: "ai-workspace", icon: "chat", labelKey: "nav.aiWorkspace", path: "/dashboard" },
+  { id: "analytics", icon: "analytics", labelKey: "nav.analytics", path: "/dashboard" },
 ];
 
 function SidebarIcon({ name }) {
   const paths = {
     dashboard: (
       <>
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
       </>
     ),
     book: (
@@ -44,8 +45,6 @@ function SidebarIcon({ name }) {
       <>
         <path d="M4 16l4-4 3 3 6-8" />
         <path d="M17 7h3v3" />
-        <circle cx="7" cy="18" r="2" />
-        <circle cx="17" cy="18" r="2" />
       </>
     ),
     settings: (
@@ -54,128 +53,111 @@ function SidebarIcon({ name }) {
         <path d="M19.4 15a8.3 8.3 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8.8 8.8 0 0 0-1.7-1L15 6.5h-4L10.6 9a8.8 8.8 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a8.3 8.3 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a8.8 8.8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8.8 8.8 0 0 0 1.7-1l2.4 1 2-3.5-2.2-1.5Z" />
       </>
     ),
-    users: (
+    logout: (
       <>
-        <path d="M16 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-        <path d="M8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-        <path d="M3.5 20c.5-3 2.1-4.5 4.5-4.5 2.2 0 3.7 1.2 4.3 3.5" />
-        <path d="M12.5 19.5c.6-3.2 2.3-4.8 5-4.8 2.3 0 3.8 1.3 4.5 3.8" />
-      </>
-    ),
-    reports: (
-      <>
-        <path d="M5 20V4h14v16H5Z" />
-        <path d="M9 16V9" />
-        <path d="M12 16V6" />
-        <path d="M15 16v-4" />
-      </>
-    ),
-    activity: (
-      <>
-        <path d="M12 7v5l3 2" />
-        <path d="M21 12a9 9 0 1 1-2.6-6.4" />
-        <path d="M21 4v5h-5" />
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <path d="M16 17l5-5-5-5" />
+        <path d="M21 12H9" />
       </>
     ),
   };
 
   return (
-    <svg className="h-[18px] w-[18px] stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className="h-5 w-5 shrink-0 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths[name]}
     </svg>
   );
 }
 
-function navItemClass(isCollapsed, isActive) {
-  if (isCollapsed) {
-    return isActive
-      ? "flex h-10 w-full items-center justify-center rounded-md border-0 bg-[#d5e3fc] text-[#344154] transition"
-      : "flex h-10 w-full items-center justify-center rounded-md border-0 bg-transparent text-[#344154] transition hover:bg-white";
-  }
-
+function navItemClass(isActive) {
   return isActive
-    ? "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-[#d5e3fc] px-3 text-left text-[13px] font-extrabold text-[#344154] transition"
-    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] transition hover:bg-white";
+    ? "relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 no-underline transition before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300"
+    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 no-underline transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white";
 }
 
-export default function DashboardSidebar({
-  activeSection,
-  items = dashboardSidebarItems,
-  isCollapsed,
-  onSectionChange,
-  onToggleCollapse,
-  userName,
-  newDocumentTo = "/library",
-  newDocumentLabel = "New Document",
-  showNewDocument = true,
-}) {
-  const initials = (userName || "User").slice(0, 2).toUpperCase();
+function isNavItemActive(pathname, item) {
+  if (item.id === "dashboard") return pathname === "/dashboard";
+  if (item.id === "documents") return pathname.startsWith("/documents");
+  return false;
+}
+
+export default function DashboardSidebar({ onLogout, userName, userPlan, avatarUrl }) {
+  const pathname = useLocation().pathname;
+  const { t } = useTranslation();
 
   return (
     <aside
-      className={
-        isCollapsed
-          ? "sticky top-16 flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-visible border-r border-[#c7c4d7] bg-[#f2f4f6] px-[10px] py-4"
-          : "sticky top-16 flex h-[calc(100vh-64px)] min-w-0 flex-col overflow-visible border-r border-[#c7c4d7] bg-[#f2f4f6] px-3 py-4"
-      }
+      className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"
       aria-label="Dashboard navigation"
     >
-      <button
-        className="absolute right-[-13px] top-1/2 z-10 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
-        aria-label={isCollapsed ? "Show sidebar" : "Hide sidebar"}
-        onClick={onToggleCollapse}
-        type="button"
+      <Link className="mb-6 flex items-center gap-3 no-underline" to="/dashboard">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.28)]">
+          A
+        </span>
+        <span className="min-w-0">
+          <strong className="block truncate text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-100">AI Study Hub</strong>
+          <small className="block truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">Academic Pro</small>
+        </span>
+      </Link>
+
+      <Link
+        className="mb-6 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-[13px] font-semibold text-white no-underline shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
+        to="/documents?upload=true"
       >
-        {isCollapsed ? ">" : "<"}
-      </button>
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+        </svg>
+        <span>{t("nav.newDocument")}</span>
+      </Link>
 
-      {showNewDocument ? (
-        <Link
-          className={
-            isCollapsed
-              ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-              : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-          }
-          to={newDocumentTo}
-        >
-          <span>+</span>
-          <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>{newDocumentLabel}</b>
-        </Link>
-      ) : null}
-
-      <nav className={showNewDocument ? "mt-5 grid content-start gap-2" : "grid content-start gap-2"}>
-        {items.map((item) => (
-          <button
-            className={navItemClass(isCollapsed, activeSection === item.id)}
+      <nav className="grid content-start gap-1">
+        {dashboardSidebarItems.map((item) => (
+          <Link
+            className={navItemClass(isNavItemActive(pathname, item))}
             key={item.id}
-            onClick={() => onSectionChange(item.id)}
-            type="button"
+            to={item.path}
           >
             <span className="flex h-5 w-5 flex-none items-center justify-center">
               <SidebarIcon name={item.icon} />
             </span>
-            {!isCollapsed && <b className="truncate">{item.label}</b>}
-          </button>
+            <span className="truncate">{t(item.labelKey)}</span>
+          </Link>
         ))}
       </nav>
 
-      <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
-        <div className={isCollapsed ? "flex justify-center" : "flex items-center gap-2 px-1"}>
-          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
-            {initials}
-          </span>
-          {!isCollapsed && <strong className="block min-w-0 truncate text-xs text-[#172033]">{userName || "User"}</strong>}
-        </div>
+      <div className="mt-auto grid gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
+        {userName ? (
+          <div className="mb-2 flex items-center gap-2 px-3 py-1">
+            {avatarUrl ? (
+              <img alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" src={avatarUrl} />
+            ) : (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                {userName.slice(0, 2).toUpperCase()}
+              </span>
+            )}
+            <span className="min-w-0">
+              <strong className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{userName}</strong>
+              <small className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{userPlan || "Student Plan"}</small>
+            </span>
+          </div>
+        ) : null}
 
-        <button
-          className={navItemClass(isCollapsed, activeSection === "settings")}
-          onClick={() => onSectionChange("settings")}
-          type="button"
-        >
-          <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
+        <Link className={navItemClass(pathname === "/account")} to="/account">
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
             <SidebarIcon name="settings" />
           </span>
-          {!isCollapsed && <b className="truncate">Settings</b>}
+          <span className="truncate">{t("nav.settings")}</span>
+        </Link>
+
+        <button
+          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+          onClick={onLogout}
+          type="button"
+        >
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
+            <SidebarIcon name="logout" />
+          </span>
+          <span className="truncate">{t("nav.logout")}</span>
         </button>
       </div>
     </aside>

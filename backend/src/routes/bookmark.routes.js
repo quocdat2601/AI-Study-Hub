@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bookmarkController = require('../controllers/bookmark.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
+const MEMBER_ROLES = requireRole.MEMBER_ROLES;
 
 /**
  * @swagger
@@ -21,7 +22,7 @@ const requireRole = require('../middleware/requireRole');
  *     responses:
  *       200: { description: List of bookmarks }
  */
-router.get('/', verifyToken, requireRole('user'), bookmarkController.getAllBookmarks);
+router.get('/', verifyToken, requireRole(...MEMBER_ROLES), bookmarkController.getAllBookmarks);
 
 /**
  * @swagger
@@ -39,7 +40,7 @@ router.get('/', verifyToken, requireRole('user'), bookmarkController.getAllBookm
  *     responses:
  *       201: { description: Bookmarked }
  */
-router.post('/:docId', verifyToken, requireRole('user'), bookmarkController.addBookmark);
+router.post('/:docId', verifyToken, requireRole(...MEMBER_ROLES), bookmarkController.addBookmark);
 
 /**
  * @swagger
@@ -57,6 +58,6 @@ router.post('/:docId', verifyToken, requireRole('user'), bookmarkController.addB
  *     responses:
  *       200: { description: Removed }
  */
-router.delete('/:docId', verifyToken, requireRole('user'), bookmarkController.removeBookmark);
+router.delete('/:docId', verifyToken, requireRole(...MEMBER_ROLES), bookmarkController.removeBookmark);
 
 module.exports = router;

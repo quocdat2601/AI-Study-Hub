@@ -3,9 +3,10 @@ const supabase = require('../config/supabase');
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'documents';
 
 async function uploadFile(buffer, storagePath, mimeType, options = {}) {
+  const { upsert = false } = options;
   const { error } = await supabase.storage
     .from(BUCKET)
-    .upload(storagePath, buffer, { contentType: mimeType, upsert: Boolean(options.upsert) });
+    .upload(storagePath, buffer, { contentType: mimeType, upsert });
 
   if (error) {
     const err = new Error(error.message);
