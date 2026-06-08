@@ -36,6 +36,20 @@ router.get('/', verifyToken, documentController.getAllDocuments);
 
 /**
  * @swagger
+ * /api/documents/trash:
+ *   get:
+ *     summary: List soft-deleted documents (trash) of current user
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: List of trashed documents }
+ *       401: { description: Unauthorized }
+ */
+router.get('/trash', verifyToken, documentController.listTrash);
+
+/**
+ * @swagger
  * /api/documents/{id}:
  *   get:
  *     summary: Get one document (owner or shared)
@@ -184,6 +198,56 @@ router.delete(
   requireRole('student', 'admin'),
   requireDocumentOwner(),
   documentController.deleteDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}/restore:
+ *   post:
+ *     summary: Restore a soft-deleted document from trash (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Document restored }
+ *       403: { description: Forbidden }
+ *       404: { description: Document not found in trash }
+ */
+router.post(
+  '/:id/restore',
+  verifyToken,
+  requireRole('student', 'admin'),
+  documentController.restoreDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}/purge:
+ *   delete:
+ *     summary: Permanently delete a document (admin only)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Document permanently deleted }
+ *       403: { description: Forbidden (admin only) }
+ *       404: { description: Document not found }
+ */
+router.delete(
+  '/:id/purge',
+  verifyToken,
+  requireRole('admin'),
+  documentController.purgeDocument
 );
 
 module.exports = router;
