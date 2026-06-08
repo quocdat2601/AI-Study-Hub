@@ -15,6 +15,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
+import WorkspacePage from "./pages/WorkspacePage.jsx";
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
@@ -73,6 +74,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <LibraryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workspace"
+          element={
+            <ProtectedRoute>
+              <WorkspacePage />
             </ProtectedRoute>
           }
         />
