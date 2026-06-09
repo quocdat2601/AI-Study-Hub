@@ -60,12 +60,52 @@ async function updateDocument(req, res, next) {
 }
 
 /**
- * Xóa tài liệu (DB + Supabase Storage)
+ * Xóa mềm tài liệu (chủ/admin) — chuyển vào thùng rác, file vẫn trên cloud
  */
 async function deleteDocument(req, res, next) {
   try {
-    res.json(await documentService.deleteDocument({
+    res.json(await documentService.softDeleteDocument({
       document: req.document,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Danh sách thùng rác của user
+ */
+async function listTrash(req, res, next) {
+  try {
+    res.json(await documentService.listTrash({ userId: req.user.id }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Khôi phục tài liệu từ thùng rác (chủ/admin)
+ */
+async function restoreDocument(req, res, next) {
+  try {
+    res.json(await documentService.restoreDocument({
+      id: req.params.id,
+      userId: req.user.id,
+      role: req.user.role,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Xóa cứng vĩnh viễn (chỉ admin)
+ */
+async function purgeDocument(req, res, next) {
+  try {
+    res.json(await documentService.purgeDocument({
+      id: req.params.id,
       userId: req.user.id,
     }));
   } catch (err) {
@@ -112,6 +152,9 @@ module.exports = {
   getSignedUrl,
   updateDocument,
   deleteDocument,
+  listTrash,
+  restoreDocument,
+  purgeDocument,
   listDocumentShares,
   shareDocument,
   revokeDocumentShare,
