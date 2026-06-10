@@ -99,6 +99,54 @@ router.post('/subjects', adminController.createSubject);
 
 /**
  * @swagger
+ * /api/admin/subjects/{id}:
+ *   patch:
+ *     summary: Update subject
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, code]
+ *             properties:
+ *               name: { type: string }
+ *               code: { type: string }
+ *               description: { type: string }
+ *     responses:
+ *       200: { description: Updated }
+ *       404: { description: Subject not found }
+ */
+router.patch('/subjects/:id', adminController.updateSubject);
+
+/**
+ * @swagger
+ * /api/admin/subjects/{id}:
+ *   delete:
+ *     summary: Delete subject
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ *       400: { description: Cannot delete a subject with assigned documents }
+ *       404: { description: Subject not found }
+ */
+router.delete('/subjects/:id', adminController.deleteSubject);
+
+/**
+ * @swagger
  * /api/admin/activity-logs:
  *   get:
  *     summary: Paginated activity log
@@ -108,5 +156,17 @@ router.post('/subjects', adminController.createSubject);
  *       200: { description: List of logs }
  */
 router.get('/activity-logs', adminController.getActivityLogs);
+
+/**
+ * @swagger
+ * /api/admin/documents:
+ *   get:
+ *     summary: List all documents on platform
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: List of documents }
+ */
+router.get('/documents', adminController.getAllDocuments);
 
 module.exports = router;

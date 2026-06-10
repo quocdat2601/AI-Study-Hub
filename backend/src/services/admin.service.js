@@ -1,6 +1,7 @@
 const userModel = require('../models/user.model');
 const documentModel = require('../models/document.model');
 const chatModel = require('../models/chat.model');
+const supabase = require('../config/supabase');
 const subjectService = require('./subject.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
@@ -55,6 +56,7 @@ function formatActivity(log) {
     description: log.target_type ? `${log.target_type}${log.target_id ? ` #${log.target_id}` : ''}` : 'Platform activity',
     created_at: log.created_at,
     action: log.action,
+    userEmail: log.users?.email || 'System',
   };
 }
 
@@ -171,11 +173,59 @@ async function updateUser({ targetUserId, updates, currentUserId }) {
   return publicUser(user);
 }
 
+async function listDocuments({ search, subjectId, isDeleted } = {}) {
+  const { data, error } = await supabase
+    .from('documents')
+    .select(`
+      id,
+      title,
+      user_id,
+      subject_id,
+      file_id,
+      status,
+      created_at,
+      updated_at,
+      deleted_at,
+      users (email),
+      subjects (name, code),
+      cloud_files (storage_path, mime_type, size_bytes)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  let filtered = data || [];
+
+  if (isDeleted !== undefined && isDeleted !== '') {
+    const checkDeleted = String(isDeleted) === 'true';
+    filtered = filtered.filter((doc) => (doc.deleted_at !== null) === checkDeleted);
+  }
+
+  if (subjectId) {
+    filtered = filtered.filter((doc) => Number(doc.subject_id) === Number(subjectId));
+  }
+
+  if (search) {
+    const term = String(search).trim().toLowerCase();
+    filtered = filtered.filter((doc) => {
+      const titleMatch = doc.title?.toLowerCase().includes(term);
+      const emailMatch = doc.users?.email?.toLowerCase().includes(term);
+      const subjectMatch = doc.subjects?.name?.toLowerCase().includes(term) || doc.subjects?.code?.toLowerCase().includes(term);
+      return titleMatch || emailMatch || subjectMatch;
+    });
+  }
+
+  return filtered;
+}
+
 module.exports = {
   listUsers,
   getOverview,
   updateUser,
+  listDocuments,
   listSubjects: subjectService.listSubjects,
   createSubject: subjectService.createSubject,
+  updateSubject: subjectService.updateSubject,
+  deleteSubject: subjectService.deleteSubject,
   listActivityLogs: activityService.listLatest,
 };

@@ -71,11 +71,50 @@ async function getActivityLogs(req, res, next) {
   }
 }
 
+async function getAllDocuments(req, res, next) {
+  try {
+    res.json(await adminService.listDocuments({
+      search: req.query.search,
+      subjectId: req.query.subjectId,
+      isDeleted: req.query.isDeleted,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Update subject (Admin)
+ */
+async function updateSubject(req, res, next) {
+  try {
+    const subject = await adminService.updateSubject(req.params.id, req.body);
+    res.json(subject);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Delete subject (Admin)
+ */
+async function deleteSubject(req, res, next) {
+  try {
+    const subject = await adminService.deleteSubject(req.params.id);
+    res.json(subject);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getOverview,
   updateUser,
   getAllSubjects,
   createSubject,
-  getActivityLogs
+  updateSubject,
+  deleteSubject,
+  getActivityLogs,
+  getAllDocuments
 };

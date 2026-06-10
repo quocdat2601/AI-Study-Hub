@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const ws = require('ws');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -8,7 +9,14 @@ if (!supabaseUrl || !serviceRoleKey) {
   console.warn('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey);
+const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+  realtime: {
+    transport: ws,
+  },
+});
 
 function createUserScopedClient(accessToken) {
   if (!supabaseUrl || !anonKey) {
@@ -16,6 +24,12 @@ function createUserScopedClient(accessToken) {
   }
 
   return createClient(supabaseUrl, anonKey, {
+    auth: {
+      persistSession: false,
+    },
+    realtime: {
+      transport: ws,
+    },
     global: {
       headers: {
         Authorization: `Bearer ${accessToken}`,

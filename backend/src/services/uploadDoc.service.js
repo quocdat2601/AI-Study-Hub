@@ -2,6 +2,7 @@ const documentModel = require('../models/document.model');
 const tagModel = require('../models/tag.model');
 const userModel = require('../models/user.model');
 const documentService = require('./document.service');
+const notificationService = require('./notification.service');
 const supabaseService = require('./supabase.service');
 const documentTextService = require('./document-text.service');
 const activityService = require('./activity.service');
@@ -110,6 +111,13 @@ async function upload({ userId, file, title, subjectId, tags }) {
         mimeType: file.mimetype,
         extractionStatus: savedDocument.extraction_status,
       },
+    });
+
+    // Notify administrators of the new upload
+    await notificationService.notifyAdmins({
+      type: 'system',
+      message: `User ${user.email} uploaded a new document: "${savedDocument.title}"`,
+      refDocId: savedDocument.id,
     });
 
     return {
