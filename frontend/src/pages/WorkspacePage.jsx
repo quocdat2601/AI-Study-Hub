@@ -63,12 +63,17 @@ function buildAssistantMessage(data) {
 }
 
 function mapStoredMessage(message) {
+  const metadata = message.metadata || {};
   return {
     id: message.id || `${message.role}-${message.created_at}`,
     role: message.role,
     content: message.content,
-    sources: [],
-    mode: "stored",
+    sources: metadata.sources || [],
+    mode: metadata.mode || "stored",
+    provider: metadata.provider,
+    model: metadata.model,
+    usedRag: Boolean(metadata.usedRag),
+    needsProcessing: Boolean(metadata.needsProcessing),
   };
 }
 

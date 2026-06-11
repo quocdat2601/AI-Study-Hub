@@ -58,11 +58,11 @@ function buildModeInstruction(mode) {
 
   return [
     'Answer mode: hybrid.',
-    'Start with a section titled "Based on the document".',
-    'Use the source chunks for that section only.',
-    'If the source chunks are insufficient, explicitly say: "The document does not provide enough information to fully answer this."',
-    'Then, when useful, add a separate section titled "Additional explanation" using general academic or software knowledge.',
-    'Do not pretend general knowledge came from the document.',
+    'Always use two sections titled exactly "Based on the document" and "Additional study explanation".',
+    'In "Based on the document", answer only from the provided source chunks.',
+    'If the chunks are insufficient, explicitly say: "The document does not provide enough information to fully answer this."',
+    'In "Additional study explanation", add concise general academic or software knowledge that helps the student understand the topic.',
+    'Do not cite or imply that general knowledge came from the document.',
     'Keep the answer concise and useful.',
   ].join('\n');
 }

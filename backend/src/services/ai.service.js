@@ -13,6 +13,9 @@ const createError = require('../utils/createError');
 
 const MAX_QUESTION_CHARS = 2000;
 const ANSWER_MODES = new Set(['hybrid', 'document_only']);
+const RAG_CONTEXT_LIMIT = 4;
+const VECTOR_SCORE_WEIGHT = 0.7;
+const KEYWORD_SCORE_WEIGHT = 0.3;
 
 function normalizeNumericId(value, fieldName) {
   const numericValue = Number(value);
@@ -152,31 +155,130 @@ async function getOrCreateChunksForAsk({ doc, userId }) {
   return { chunks, autoProcessed: true };
 }
 
+function getChunkKey(chunk) {
+  return chunk.id == null ? `index:${chunk.chunk_index}` : `id:${chunk.id}`;
+}
+
+function mergeHybridChunks({ vectorChunks, keywordChunks, embeddingModel, limit = RAG_CONTEXT_LIMIT }) {
+  const maxKeywordScore = Math.max(
+    0,
+    ...keywordChunks.map((chunk) => Number(chunk.score || 0))
+  );
+  const merged = new Map();
+
+  for (const chunk of vectorChunks) {
+    const vectorScore = Number(chunk.similarity || chunk.score || 0);
+    merged.set(getChunkKey(chunk), {
+      ...chunk,
+      similarity: chunk.similarity == null ? vectorScore : Number(chunk.similarity),
+      vectorScore,
+      keywordScore: 0,
+    });
+  }
+
+  for (const chunk of keywordChunks) {
+    const key = getChunkKey(chunk);
+    const keywordScore = Number(chunk.score || 0);
+    const existing = merged.get(key);
+
+    if (existing) {
+      merged.set(key, {
+        ...existing,
+        keywordScore,
+        metadata: {
+          ...(existing.metadata || {}),
+          ...(chunk.metadata || {}),
+        },
+      });
+    } else {
+      merged.set(key, {
+        ...chunk,
+        similarity: null,
+        vectorScore: 0,
+        keywordScore,
+      });
+    }
+  }
+
+  return [...merged.values()]
+    .map((chunk) => {
+      const normalizedKeywordScore = maxKeywordScore > 0
+        ? Number(chunk.keywordScore || 0) / maxKeywordScore
+        : 0;
+      const vectorScore = Number(chunk.vectorScore || 0);
+      const hasVector = vectorScore > 0;
+      const hasKeyword = Number(chunk.keywordScore || 0) > 0;
+      const retrieval = hasVector && hasKeyword ? 'hybrid' : hasVector ? 'vector' : 'keyword';
+      const combinedScore = (VECTOR_SCORE_WEIGHT * vectorScore)
+        + (KEYWORD_SCORE_WEIGHT * normalizedKeywordScore);
+
+      return {
+        ...chunk,
+        score: combinedScore,
+        metadata: {
+          ...(chunk.metadata || {}),
+          retrieval,
+          embeddingModel,
+          vectorScore,
+          keywordScore: Number(chunk.keywordScore || 0),
+          normalizedKeywordScore,
+        },
+      };
+    })
+    .sort((a, b) => b.score - a.score || Number(a.chunk_index || 0) - Number(b.chunk_index || 0))
+    .slice(0, limit);
+}
+
+function buildAssistantMetadata({
+  provider,
+  model,
+  mode,
+  usedRag,
+  sources = [],
+  needsProcessing = false,
+  processingError = null,
+}) {
+  const retrievalTypes = [...new Set(
+    sources
+      .map((source) => source.metadata?.retrieval)
+      .filter(Boolean)
+  )];
+
+  return {
+    provider,
+    model,
+    mode,
+    usedRag: Boolean(usedRag),
+    needsProcessing: Boolean(needsProcessing),
+    processingError,
+    retrieval: retrievalTypes.length === 1 ? retrievalTypes[0] : retrievalTypes,
+    sources,
+  };
+}
+
 async function retrieveChunksForQuestion({ docId, question, chunks }) {
+  const keywordChunks = ragService.retrieveRelevantChunks(question, chunks, RAG_CONTEXT_LIMIT);
+
   try {
     const queryEmbedding = await embeddingService.embedQuery(question);
     const vectorChunks = await documentChunkModel.matchByEmbedding({
       docId,
       embedding: queryEmbedding.embedding,
-      limit: 4,
+      limit: RAG_CONTEXT_LIMIT,
     });
 
     if (vectorChunks.length) {
-      return vectorChunks.map((chunk) => ({
-        ...chunk,
-        score: Number(chunk.similarity || 0),
-        metadata: {
-          ...(chunk.metadata || {}),
-          retrieval: 'vector',
-          embeddingModel: queryEmbedding.model,
-        },
-      }));
+      return mergeHybridChunks({
+        vectorChunks,
+        keywordChunks,
+        embeddingModel: queryEmbedding.model,
+      });
     }
   } catch (err) {
     console.error('Vector retrieval failed, falling back to keyword retrieval:', err.message);
   }
 
-  return ragService.retrieveRelevantChunks(question, chunks).map((chunk) => ({
+  return keywordChunks.map((chunk) => ({
     ...chunk,
     metadata: {
       ...(chunk.metadata || {}),
@@ -202,7 +304,15 @@ async function askDocument({ id, userId, question, mode, model }) {
   } catch (err) {
     if (err.statusCode !== 400) throw err;
     const answer = 'I could not prepare this document for AI automatically. Please make sure it is a readable text-based PDF, then try asking again.';
-    const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
+    const assistantMetadata = buildAssistantMetadata({
+      provider: 'system',
+      model: null,
+      mode: answerMode,
+      usedRag: false,
+      needsProcessing: true,
+      processingError: err.message,
+    });
+    const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer, assistantMetadata);
     await safeTouchSession(session.id);
 
     return {
@@ -281,7 +391,15 @@ async function askDocument({ id, userId, question, mode, model }) {
   }
 
   const answer = generationResult.answer;
-  const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
+  const sources = ragService.buildSourcePayload(relevantChunks);
+  const assistantMetadata = buildAssistantMetadata({
+    provider: selectedProvider,
+    model: selectedModel,
+    mode: answerMode,
+    usedRag: true,
+    sources,
+  });
+  const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer, assistantMetadata);
   await safeTouchSession(session.id);
   const usage = await aiUsageService.getUsage({ model: selectedModel, userId }).catch((err) => {
     console.error('AI usage refresh failed after answer:', err.message);
@@ -290,7 +408,7 @@ async function askDocument({ id, userId, question, mode, model }) {
 
   return {
     answer,
-    sources: ragService.buildSourcePayload(relevantChunks),
+    sources,
     document: {
       id: doc.id,
       title: doc.title,
