@@ -1,0 +1,223 @@
+const chatModel = require('../models/chat.model');
+const documentChunkModel = require('../models/document-chunk.model');
+const documentModel = require('../models/document.model');
+const chatService = require('./chat.service');
+const aiUsageService = require('./ai-usage.service');
+const aiProviderService = require('./ai-provider.service');
+const documentService = require('./document.service');
+const documentTextService = require('./document-text.service');
+const ragService = require('./rag.service');
+const supabaseService = require('./supabase.service');
+const createError = require('../utils/createError');
+
+const MAX_QUESTION_CHARS = 2000;
+const ANSWER_MODES = new Set(['hybrid', 'document_only']);
+
+function normalizeNumericId(value, fieldName) {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue <= 0) {
+    throw createError(400, `${fieldName} is invalid`);
+  }
+  return numericValue;
+}
+
+function cleanQuestion(question) {
+  const cleaned = String(question || '').trim();
+  if (!cleaned) {
+    throw createError(400, 'Question is required');
+  }
+  if (cleaned.length > MAX_QUESTION_CHARS) {
+    throw createError(400, `Question is too long. Maximum is ${MAX_QUESTION_CHARS} characters`);
+  }
+  return cleaned;
+}
+
+function normalizeAnswerMode(mode) {
+  const normalizedMode = String(mode || 'hybrid').trim().toLowerCase();
+  if (!ANSWER_MODES.has(normalizedMode)) {
+    throw createError(400, 'Answer mode must be hybrid or document_only');
+  }
+  return normalizedMode;
+}
+
+function getMimeType(doc) {
+  return doc.cloud_files?.mime_type || '';
+}
+
+function estimatePromptTokens({ question, chunks }) {
+  const chars = String(question || '').length + (chunks || []).reduce((total, chunk) => {
+    return total + String(chunk.content || '').length;
+  }, 0);
+  return Math.ceil(chars / 4);
+}
+
+async function extractTextFromStorage(doc) {
+  const storagePath = doc.cloud_files?.storage_path;
+  const mimeType = getMimeType(doc);
+
+  if (!storagePath) {
+    throw createError(404, 'Document file not found');
+  }
+
+  if (mimeType !== documentTextService.MIME_TYPES.PDF) {
+    throw createError(400, 'Only text-based PDF processing is supported in this temporary workspace');
+  }
+
+  const buffer = await supabaseService.downloadFile(storagePath);
+  return documentTextService.extractTextFromBuffer(buffer, mimeType);
+}
+
+async function getProcessableDocument({ id, userId }) {
+  const docId = normalizeNumericId(id, 'documentId');
+  const doc = await documentService.canUseDocumentInChat(userId, docId);
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+  return doc;
+}
+
+async function processDocument({ id, userId }) {
+  const doc = await getProcessableDocument({ id, userId });
+  const existingText = String(doc.extracted_text || '').trim();
+  let text = existingText;
+  let extractionStatus = doc.extraction_status;
+  let extractionError = doc.extraction_error || null;
+  let savedDoc = doc;
+
+  if (!text || extractionStatus !== 'ready') {
+    const extraction = await extractTextFromStorage(doc);
+    text = extraction.text;
+    extractionStatus = extraction.status;
+    extractionError = extraction.error;
+    savedDoc = await documentModel.updateExtraction(doc.id, extraction);
+  }
+
+  if (extractionStatus !== 'ready' || !text) {
+    throw createError(400, extractionError || 'No readable document text is available');
+  }
+
+  const chunks = ragService.splitTextIntoChunks(text, {
+    documentId: doc.id,
+    documentTitle: savedDoc.title,
+  });
+
+  if (!chunks.length) {
+    throw createError(400, 'No readable document chunks could be created');
+  }
+
+  const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunks);
+
+  return {
+    document: {
+      id: savedDoc.id,
+      title: savedDoc.title,
+      extractionStatus: savedDoc.extraction_status,
+    },
+    chunkCount: savedChunks.length,
+    status: 'ready',
+  };
+}
+
+async function ensureChunks({ id, userId }) {
+  const doc = await getProcessableDocument({ id, userId });
+  let chunks = await documentChunkModel.findByDocumentId(doc.id);
+
+  if (!chunks.length) {
+    await processDocument({ id: doc.id, userId });
+    chunks = await documentChunkModel.findByDocumentId(doc.id);
+  }
+
+  if (!chunks.length) {
+    throw createError(400, 'No document chunks are available');
+  }
+
+  return { doc, chunks };
+}
+
+async function askDocument({ id, userId, question, mode, model }) {
+  const cleanedQuestion = cleanQuestion(question);
+  const answerMode = normalizeAnswerMode(mode);
+  const selectedProviderModel = aiUsageService.resolveModel(model);
+  const selectedModel = selectedProviderModel.model;
+  const selectedProvider = selectedProviderModel.provider;
+  const { doc, chunks } = await ensureChunks({ id, userId });
+  const relevantChunks = ragService.retrieveRelevantChunks(cleanedQuestion, chunks);
+
+  if (!relevantChunks.length) {
+    throw createError(400, 'No document context is available for this question');
+  }
+
+  const estimatedTokens = estimatePromptTokens({ question: cleanedQuestion, chunks: relevantChunks });
+  if (selectedProvider === 'gemini') {
+    await aiUsageService.assertQuota({ model: selectedModel, userId, estimatedTokens });
+  }
+
+  const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
+  const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
+  let generationResult;
+
+  try {
+    generationResult = await aiProviderService.generateAnswer({
+      provider: selectedProvider,
+      question: cleanedQuestion,
+      documentTitle: doc.title,
+      chunks: relevantChunks,
+      mode: answerMode,
+      model: selectedModel,
+    });
+
+    await aiUsageService.logGeminiRequest({
+      userId,
+      docId: doc.id,
+      provider: selectedProvider,
+      model: selectedModel,
+      requestType: 'document_qa',
+      promptTokens: generationResult.usageMetadata?.promptTokens,
+      completionTokens: generationResult.usageMetadata?.completionTokens,
+      totalTokens: generationResult.usageMetadata?.totalTokens,
+      success: true,
+    });
+  } catch (err) {
+    await aiUsageService.logGeminiRequest({
+      userId,
+      docId: doc.id,
+      provider: selectedProvider,
+      model: selectedModel,
+      requestType: 'document_qa',
+      success: false,
+      errorCode: err.code || err.statusCode || err.name || 'gemini_error',
+    });
+    if (err.publicMessage) {
+      throw err;
+    }
+    throw createError(503, 'AI service is temporarily unavailable. Please try again');
+  }
+
+  const answer = generationResult.answer;
+  const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
+  await chatModel.touchSession(session.id);
+  const usage = await aiUsageService.getUsage({ model: selectedModel, userId });
+
+  return {
+    answer,
+    sources: ragService.buildSourcePayload(relevantChunks),
+    document: {
+      id: doc.id,
+      title: doc.title,
+    },
+    sessionId: session.id,
+    mode: answerMode,
+    provider: selectedProvider,
+    model: selectedModel,
+    usage,
+    messages: {
+      user: userMessage,
+      assistant: assistantMessage,
+    },
+  };
+}
+
+module.exports = {
+  processDocument,
+  askDocument,
+};

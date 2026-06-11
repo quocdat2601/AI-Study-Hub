@@ -2,9 +2,13 @@ import api from "./api.js";
 
 const CHAT_TIMEOUT_MS = 120000;
 
-export async function getOrCreateChatSession(docId) {
+export async function getOrCreateDocumentChatSession(docId) {
   const response = await api.get(`/chat/session/${docId}`);
   return response.data;
+}
+
+export async function getOrCreateChatSession(docId) {
+  return getOrCreateDocumentChatSession(docId);
 }
 
 export async function getChatSessionMessages(sessionId) {
