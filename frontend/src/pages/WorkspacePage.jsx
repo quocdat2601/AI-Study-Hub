@@ -58,6 +58,7 @@ function buildAssistantMessage(data) {
     provider: data.provider || "system",
     model: data.model,
     usedRag: Boolean(data.usedRag),
+    needsProcessing: Boolean(data.needsProcessing),
   };
 }
 
@@ -430,11 +431,28 @@ export default function WorkspacePage() {
         return nextProcessResult;
       });
     } catch (err) {
-      if (err.response?.data?.usage) {
-        cacheWorkspaceState({ usage: err.response.data.usage });
-        setUsage(err.response.data.usage);
+      const responseData = err.response?.data;
+      if (responseData?.answer) {
+        const assistantMessage = buildAssistantMessage(responseData);
+        setMessages((current) => {
+          const nextMessages = [...current, assistantMessage];
+          cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+          return nextMessages;
+        });
+        const nextSessionId = responseData.sessionId || sessionId;
+        cacheDocumentChat(selectedDocument.id, { sessionId: nextSessionId });
+        setSessionId(nextSessionId);
+        if (responseData.usage) {
+          cacheWorkspaceState({ usage: responseData.usage });
+          setUsage(responseData.usage);
+        }
+      } else {
+        if (responseData?.usage) {
+          cacheWorkspaceState({ usage: responseData.usage });
+          setUsage(responseData.usage);
+        }
+        setError(responseData?.message || responseData?.error || "Could not ask AI about this document");
       }
-      setError(err.response?.data?.message || err.response?.data?.error || "Could not ask AI about this document");
     } finally {
       setIsAsking(false);
     }

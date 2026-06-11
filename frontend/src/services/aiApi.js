@@ -6,7 +6,7 @@ export async function processDocumentForAi(id) {
 }
 
 export async function askDocument(id, question, mode = "hybrid", model) {
-  const response = await api.post(`/ai/documents/${id}/ask`, { question, mode, model });
+  const response = await api.post(`/ai/documents/${id}/ask`, { question, mode, model }, { timeout: 90000 });
   return response.data;
 }
 

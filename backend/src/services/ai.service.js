@@ -127,15 +127,29 @@ async function processDocument({ id, userId }) {
   };
 }
 
-async function getExistingChunksForAsk({ id, userId }) {
-  const doc = await getProcessableDocument({ id, userId });
-  const chunks = await documentChunkModel.findByDocumentId(doc.id);
+async function safeTouchSession(sessionId) {
+  try {
+    await chatModel.touchSession(sessionId);
+  } catch (err) {
+    console.error('Chat session touch failed:', err.message);
+  }
+}
 
-  if (!chunks.length) {
-    throw createError(400, 'No document chunks are available');
+async function getOrCreateChunksForAsk({ doc, userId }) {
+  let chunks = await documentChunkModel.findByDocumentId(doc.id);
+
+  if (chunks.length) {
+    return { chunks, autoProcessed: false };
   }
 
-  return { doc, chunks };
+  await processDocument({ id: doc.id, userId });
+  chunks = await documentChunkModel.findByDocumentId(doc.id);
+
+  if (!chunks.length) {
+    throw createError(400, 'No document chunks are available after processing');
+  }
+
+  return { chunks, autoProcessed: true };
 }
 
 async function retrieveChunksForQuestion({ docId, question, chunks }) {
@@ -182,13 +196,14 @@ async function askDocument({ id, userId, question, mode, model }) {
   const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
 
   let chunks;
+  let autoProcessed = false;
   try {
-    ({ chunks } = await getExistingChunksForAsk({ id: doc.id, userId }));
+    ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId }));
   } catch (err) {
     if (err.statusCode !== 400) throw err;
-    const answer = 'This document is not processed for AI yet. Please click "Process for AI" first, then ask your question again.';
+    const answer = 'I could not process this document for AI automatically. Please make sure it is a readable text-based PDF, or try the "Process for AI" button before asking again.';
     const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
-    await chatModel.touchSession(session.id);
+    await safeTouchSession(session.id);
 
     return {
       answer,
@@ -200,6 +215,7 @@ async function askDocument({ id, userId, question, mode, model }) {
       sessionId: session.id,
       mode: answerMode,
       needsProcessing: true,
+      processingError: err.message,
       usedRag: false,
       provider: 'system',
       model: null,
@@ -266,7 +282,7 @@ async function askDocument({ id, userId, question, mode, model }) {
 
   const answer = generationResult.answer;
   const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
-  await chatModel.touchSession(session.id);
+  await safeTouchSession(session.id);
   const usage = await aiUsageService.getUsage({ model: selectedModel, userId }).catch((err) => {
     console.error('AI usage refresh failed after answer:', err.message);
     return null;
@@ -282,6 +298,7 @@ async function askDocument({ id, userId, question, mode, model }) {
     sessionId: session.id,
     mode: answerMode,
     usedRag: true,
+    autoProcessed,
     provider: selectedProvider,
     model: selectedModel,
     usage,
