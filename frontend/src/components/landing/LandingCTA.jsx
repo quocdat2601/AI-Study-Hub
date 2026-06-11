@@ -39,9 +39,9 @@ export default function LandingCTA() {
             </Link>
             <Link
               className="landing-btn-outline inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full px-6 py-3 text-[15px] font-semibold transition"
-              to="/ai-workspace"
+              to="/workspace"
             >
-              Try AI Workspace
+              Open Workspace
             </Link>
           </div>
         </div>

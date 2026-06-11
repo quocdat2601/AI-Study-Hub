@@ -5,17 +5,13 @@ const SUBJECT_COLORS = {
 };
 
 export function getSubjectColor(code) {
-  if (!code) return "#5b6af8";
-  const normalized = String(code).toUpperCase();
-  return SUBJECT_COLORS[normalized] || "#5b6af8";
+  const key = String(code || "").toUpperCase();
+  return SUBJECT_COLORS[key] || "#5b6af8";
 }
 
 export function formatWorkspaceDate(value) {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export function getFileTypeLabel(mimeType) {
@@ -32,20 +28,18 @@ export function getExtractionStatus(doc) {
   return doc?.extraction_status || doc?.extractionStatus || "pending";
 }
 
+/** Chỉ gọi reextract khi backend chưa xử lý xong. */
 export function needsTextExtraction(doc) {
-  const status = getExtractionStatus(doc);
-  // Chỉ thử lại khi đang pending — empty/failed đã biết kết quả, không cần gọi lại.
-  return status === "pending";
+  return getExtractionStatus(doc) === "pending";
 }
 
 export function mapWorkspaceDocument(doc, bookmarkIds, userId) {
   const mimeType = doc.cloud_files?.mime_type || "";
-  const subjectCode = doc.subjects?.code || doc.subjects?.name || "OTHER";
 
   return {
     id: String(doc.id),
     title: doc.title || "Untitled document",
-    subject: subjectCode,
+    subject: doc.subjects?.code || doc.subjects?.name || "OTHER",
     date: formatWorkspaceDate(doc.updated_at || doc.created_at),
     type: getFileTypeLabel(mimeType),
     mimeType,
@@ -53,4 +47,55 @@ export function mapWorkspaceDocument(doc, bookmarkIds, userId) {
     isShared: String(doc.user_id) !== String(userId),
     raw: doc,
   };
+}
+
+/** Lọc danh sách tài liệu theo tab, search, filter. */
+export function filterWorkspaceDocuments(docs, filters) {
+  const { activeTab, search, subjectFilter, fileTypeFilter } = filters;
+  let list = [...docs];
+
+  if (activeTab === "recent") {
+    list.sort((a, b) => {
+      const timeA = new Date(a.raw.updated_at || a.raw.created_at).getTime();
+      const timeB = new Date(b.raw.updated_at || b.raw.created_at).getTime();
+      return timeB - timeA;
+    });
+  }
+
+  if (activeTab === "bookmarked") {
+    list = list.filter((doc) => doc.bookmarked);
+  }
+
+  if (activeTab === "shared") {
+    list = list.filter((doc) => doc.isShared);
+  }
+
+  const keyword = search.trim().toLowerCase();
+  if (keyword) {
+    list = list.filter((doc) => doc.title.toLowerCase().includes(keyword));
+  }
+
+  if (subjectFilter) {
+    list = list.filter((doc) => String(doc.raw.subject_id) === String(subjectFilter));
+  }
+
+  if (fileTypeFilter) {
+    list = list.filter((doc) => doc.type === fileTypeFilter);
+  }
+
+  return list;
+}
+
+/** Thông báo trạng thái hiển thị trong panel chat. */
+export function getChatStatusMessage({ isLoadingChat, isPreparingText, extractionStatus }) {
+  if (isLoadingChat) return "Loading chat session...";
+  if (isPreparingText) return "Preparing document text for AI...";
+  if (extractionStatus === "empty") return "Scanned PDF — no readable text for AI.";
+  if (extractionStatus === "failed") return "Text extraction failed. You can still view the file.";
+  if (extractionStatus === "pending") return "Document is still processing...";
+  return "";
+}
+
+export function getApiError(err, fallback) {
+  return err?.response?.data?.error || fallback;
 }
