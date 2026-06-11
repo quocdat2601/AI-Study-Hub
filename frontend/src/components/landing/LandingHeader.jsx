@@ -22,7 +22,7 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
         <nav className="hidden flex-1 items-center justify-center gap-2 lg:flex" aria-label="Primary navigation">
           <Link className={NAV_LINK} to={libraryPath}>{libraryLabel}</Link>
           <Link className={NAV_LINK} to={isAuthenticated ? "/documents" : "/login"}>My Documents</Link>
-          <Link className={NAV_LINK} to={isAuthenticated ? "/ai-workspace" : "/login"}>AI Workspace</Link>
+          <Link className={NAV_LINK} to={isAuthenticated ? "/workspace" : "/login"}>Workspace</Link>
           <a className={NAV_LINK} href="#trending">Trending</a>
         </nav>
 

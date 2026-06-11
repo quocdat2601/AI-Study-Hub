@@ -1,23 +1,10 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Clock, Sparkles } from "lucide-react";
+import { getChatStatusMessage } from "../../lib/workspaceUtils.js";
 import ChatInput from "./ChatInput.jsx";
 import ChatMessage from "./ChatMessage.jsx";
 import ChatTypingIndicator from "./ChatTypingIndicator.jsx";
 
-function getStatusMessage({ isLoadingChat, isPreparingText, extractionStatus }) {
-  if (isLoadingChat) return "Loading chat session...";
-  if (isPreparingText) return "Preparing document text for AI...";
-  if (extractionStatus === "empty") {
-    return "Scanned PDF — no readable text for AI. Use a text-based PDF.";
-  }
-  if (extractionStatus === "failed") {
-    return "Text extraction failed. You can still view the file.";
-  }
-  if (extractionStatus === "pending") return "Document is still processing...";
-  return "";
-}
-
-/** Panel chat bên phải — thiết kế theo mockup Ask AI. */
 export default function ChatPanel({
   selectedDocument,
   messages,
@@ -28,13 +15,14 @@ export default function ChatPanel({
   chatError,
   sendMessage,
 }) {
-  const scrollRef = React.useRef(null);
-  const statusMessage = getStatusMessage({ isLoadingChat, isPreparingText, extractionStatus });
+  const scrollRef = useRef(null);
+  const statusMessage = getChatStatusMessage({ isLoadingChat, isPreparingText, extractionStatus });
   const isBusy = isLoadingChat || isPreparingText || isAITyping;
 
-  React.useEffect(() => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages, isAITyping]);
 
   return (
@@ -54,34 +42,28 @@ export default function ChatPanel({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto workspace-scroll-hidden px-5 py-5" ref={scrollRef}>
-        {!selectedDocument ? (
+        {!selectedDocument && (
           <p className="text-[15px] text-[var(--text-muted)]">Select a document to chat with AI.</p>
-        ) : null}
+        )}
 
-        {selectedDocument && statusMessage ? (
-          <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-secondary)]">{statusMessage}</p>
-        ) : null}
+        {selectedDocument && statusMessage && (
+          <p className="mb-4 text-[13px] text-[var(--text-secondary)]">{statusMessage}</p>
+        )}
 
-        {selectedDocument && messages.length === 0 && !isBusy ? (
-          <p className="mb-4 text-[15px] leading-relaxed text-[var(--text-secondary)]">
-            Ask anything about{" "}
-            <strong className="font-semibold text-[var(--text-primary)]">
-              {selectedDocument.title}
-            </strong>
-            .
+        {selectedDocument && messages.length === 0 && !isBusy && (
+          <p className="mb-4 text-[15px] text-[var(--text-secondary)]">
+            Ask anything about <strong>{selectedDocument.title}</strong>.
           </p>
-        ) : null}
+        )}
 
         <div className="flex flex-col gap-7">
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} />
           ))}
-          {isAITyping ? <ChatTypingIndicator /> : null}
+          {isAITyping && <ChatTypingIndicator />}
         </div>
 
-        {chatError ? (
-          <p className="mt-4 text-[13px] text-red-400">{chatError}</p>
-        ) : null}
+        {chatError && <p className="mt-4 text-[13px] text-red-400">{chatError}</p>}
       </div>
 
       <ChatInput disabled={!selectedDocument || isBusy} onSend={sendMessage} />

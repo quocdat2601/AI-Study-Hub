@@ -135,7 +135,7 @@ export default function DashboardPage() {
           </Link>
           <Link
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white no-underline transition hover:bg-indigo-700 active:scale-[0.98]"
-            to="/ai-workspace"
+            to="/workspace"
           >
             <SparklesIcon className="h-4 w-4" />
             Open AI Workspace
