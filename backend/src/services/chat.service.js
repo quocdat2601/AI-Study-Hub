@@ -9,6 +9,44 @@ const createError = require('../utils/createError');
 const MAX_MESSAGE_CHARS = 4000;
 const PUBLIC_CHAT_TOKEN_BYTES = 24;
 const MAX_CONTEXT_CHARS = 16000;
+const NO_DOCUMENT_TEXT = 'No attached document text is available yet.';
+
+function hasReadyDocumentText(documents) {
+  return (documents || []).some((doc) => (
+    doc.extraction_status === 'ready' && String(doc.extracted_text || '').trim()
+  ));
+}
+
+function buildExtractionReply(documents) {
+  const doc = (documents || [])[0];
+  if (!doc) {
+    return 'No document is attached to this chat session yet.';
+  }
+
+  if (doc.extraction_status === 'pending') {
+    return 'This document is still being processed. Please wait a moment and try again.';
+  }
+
+  if (doc.extraction_status === 'empty') {
+    return 'This document has no readable text (for example, a scanned PDF). AI answers need selectable text in the file.';
+  }
+
+  if (doc.extraction_status === 'failed') {
+    return doc.extraction_error || 'Text extraction failed for this document. Please upload the file again or use a text-based PDF.';
+  }
+
+  return 'Document text is not ready yet. Please try again in a moment.';
+}
+
+function mapSessionResponse(session) {
+  return {
+    id: session.id,
+    title: session.title,
+    createdAt: session.created_at,
+    updatedAt: session.updated_at,
+    lastActivityAt: session.last_activity_at,
+  };
+}
 
 function cleanMessage(content) {
   const cleaned = String(content || '').trim();
@@ -95,7 +133,7 @@ async function buildChatContext(documents) {
     .filter((doc) => doc.text);
 
   if (!readyTexts.length) {
-    return 'No attached document text is available yet.';
+    return NO_DOCUMENT_TEXT;
   }
 
   let context = '';
@@ -105,7 +143,25 @@ async function buildChatContext(documents) {
     context += nextChunk;
   }
 
-  return context.trim() || 'No attached document text is available yet.';
+  return context.trim() || NO_DOCUMENT_TEXT;
+}
+
+async function ensureDocumentsHaveText({ documents, userId, sessionId }) {
+  if (hasReadyDocumentText(documents)) {
+    return documents;
+  }
+
+  const firstDocument = (documents || [])[0];
+  if (!firstDocument?.id) {
+    return documents;
+  }
+
+  await documentService.reextractDocumentText({
+    id: firstDocument.id,
+    userId,
+  });
+
+  return chatModel.listSessionDocuments(sessionId);
 }
 
 async function getOrCreateSession({ userId, docId }) {
@@ -117,12 +173,12 @@ async function getOrCreateSession({ userId, docId }) {
 
   const existingSession = await chatModel.findMostRecentOwnedSessionByDocument(userId, normalizedDocId);
   if (existingSession) {
-    return chatModel.findSessionById(existingSession.id);
+    return mapSessionResponse(existingSession);
   }
 
   const session = await chatModel.createSession(userId, document.title || 'New chat');
   await chatModel.attachDocuments(session.id, [normalizedDocId]);
-  return session;
+  return mapSessionResponse(session);
 }
 
 async function getMessages({ sessionId, userId }) {
@@ -148,19 +204,35 @@ async function sendMessage({ sessionId, userId, content }) {
   }
 
   const cleanedContent = cleanMessage(content);
-  const documents = await chatModel.listSessionDocuments(session.id);
+  let documents = await chatModel.listSessionDocuments(session.id);
+  documents = await ensureDocumentsHaveText({
+    documents,
+    userId,
+    sessionId: session.id,
+  });
   const context = await buildChatContext(documents);
 
   const userMessage = await chatModel.addMessage(session.id, 'user', cleanedContent);
-  const aiResponse = await geminiService.queryDocument(cleanedContent, context);
-  const assistantMessage = await chatModel.addMessage(session.id, 'assistant', aiResponse);
+
+  let assistantMessage;
+  if (context === NO_DOCUMENT_TEXT) {
+    assistantMessage = await chatModel.addMessage(
+      session.id,
+      'assistant',
+      buildExtractionReply(documents)
+    );
+  } else {
+    const aiResponse = await geminiService.queryDocument(cleanedContent, context);
+    assistantMessage = await chatModel.addMessage(session.id, 'assistant', aiResponse);
+  }
+
   await chatModel.touchSession(session.id);
 
   activityService.log({
     userId,
     action: 'chat.message.send',
-    targetType: 'chat_session',
-    targetId: session.id,
+    targetType: 'document',
+    targetId: documents[0]?.id || null,
   });
 
   return { userMessage, assistantMessage };

@@ -1,56 +1,72 @@
 import React from "react";
+import { Eye, FileText } from "lucide-react";
 
-function Thumbnail({ document, className }) {
+function Thumbnail({ document }) {
   if (document.image) {
-    return <img className={className} src={document.image} alt="" loading="lazy" />;
+    return (
+      <img
+        alt=""
+        className="h-full w-full object-cover object-top"
+        loading="lazy"
+        src={document.image}
+      />
+    );
   }
 
   return (
-    <div className={`${className} flex items-center justify-center bg-[#f7f9fb]`}>
-      <div className="flex h-[72%] w-[58%] flex-col gap-2 rounded border border-[#c7c4d7] bg-white p-3 shadow-sm">
-        <span className="h-2 w-4/5 rounded bg-[#d5e3fc]" />
-        <span className="h-2 w-full rounded bg-[#e8edf5]" />
-        <span className="h-2 w-3/4 rounded bg-[#e8edf5]" />
-        <span className="mt-auto text-[10px] font-black text-[#4648d4]">{document.fileType || "DOC"}</span>
+    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#4648d4]/10 via-[#eef2ff] to-[#f8fafc] p-5">
+      <div className="flex w-full max-w-[200px] flex-col items-center gap-3 rounded-xl border border-[#dbeafe] bg-white/90 p-5 shadow-sm">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eef2ff] text-[#4648d4]">
+          <FileText size={22} />
+        </span>
+        <span className="text-center text-xs font-bold uppercase tracking-wide text-[#4648d4]">
+          {document.fileType || "PDF"}
+        </span>
+        <span className="line-clamp-2 text-center text-[11px] leading-snug text-[#64748b]">
+          {document.title}
+        </span>
       </div>
     </div>
   );
 }
 
-export default function DocumentCard({ document, featured = false }) {
-  if (featured) {
-    return (
-      <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden col-span-2 row-span-2">
-        <div className="bg-[#eceef0] relative h-64">
-          <Thumbnail document={document} className="w-full h-full object-cover object-top" />
-          <span className="absolute top-4 left-4 bg-[#4648d4] text-white text-xs font-bold rounded-full px-3 py-[5px]">{document.badge}</span>
-        </div>
-        <div className="p-6">
-          <p className="text-[#4648d4] text-sm font-extrabold m-0 mb-3">{document.course}</p>
-          <h3 className="text-xl leading-[1.4] m-0 mb-3">{document.title}</h3>
-          <p className="text-[#464554] text-sm leading-[1.45] m-0 mb-6">{document.description}</p>
-          <footer className="flex items-center justify-between border-t border-[#c7c4d7] pt-[17px] text-xs text-[#767586]">
-            <div className="flex items-center gap-2 text-[#172033]">
-              <span className="inline-flex items-center justify-center bg-[#d5e3fc] rounded-full text-[#4648d4] font-extrabold h-8 w-8">{document.initials}</span>
-              <strong>{document.author}</strong>
-            </div>
-            <span>{document.rating}</span>
-          </footer>
-        </div>
-      </article>
-    );
-  }
-
+/** Card tài liệu — cùng chiều cao, placeholder rõ khi không có thumbnail. */
+export default function DocumentCard({ document }) {
   return (
-    <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
-      <div className="bg-[#eceef0] relative h-40">
-        <Thumbnail document={document} className="w-full h-full object-cover object-top" />
-        {document.pages ? <span className="absolute bottom-2 right-2 backdrop-blur-sm bg-white/90 rounded text-[#172033] text-xs font-bold px-2 py-1">{document.pages}</span> : null}
+    <article className="group flex h-full min-h-[380px] flex-col overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-[0_8px_30px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-[#c7d2fe] hover:shadow-[0_16px_40px_rgba(70,72,212,0.12)]">
+      <div className="relative h-48 shrink-0 overflow-hidden bg-[#f1f5f9]">
+        <Thumbnail document={document} />
+        <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#4648d4] px-3 py-1 text-xs font-semibold text-white">
+          <Eye size={12} />
+          {document.badge}
+        </span>
+        {document.pages ? (
+          <span className="absolute bottom-3 right-3 rounded-lg bg-white/95 px-2.5 py-1 text-xs font-semibold text-[#475569] shadow-sm">
+            {document.pages}
+          </span>
+        ) : null}
       </div>
-      <div className="p-4">
-        <p className="text-[#464554] text-xs font-extrabold tracking-[0.6px] uppercase m-0 mb-[6px]">{document.course}</p>
-        <h3 className="text-sm leading-[1.42] m-0 mb-2">{document.title}</h3>
-        <span className="text-[#767586] block text-xs font-bold">{document.school}</span>
+
+      <div className="flex flex-1 flex-col p-5">
+        <p className="m-0 mb-2 text-xs font-bold uppercase tracking-wide text-[#4648d4]">
+          {document.course}
+        </p>
+        <h3 className="m-0 mb-2 line-clamp-2 text-[16px] font-semibold leading-snug text-[#0f172a]">
+          {document.title}
+        </h3>
+        <p className="m-0 mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-[#64748b]">
+          {document.description}
+        </p>
+
+        <footer className="mt-auto flex items-center justify-between border-t border-[#f1f5f9] pt-4 text-sm text-[#64748b]">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eef2ff] text-xs font-bold text-[#4648d4]">
+              {document.initials}
+            </span>
+            <span className="truncate font-medium text-[#334155]">{document.author}</span>
+          </div>
+          <span className="shrink-0 text-xs font-medium">{document.rating}</span>
+        </footer>
       </div>
     </article>
   );

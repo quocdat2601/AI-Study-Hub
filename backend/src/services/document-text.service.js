@@ -22,7 +22,7 @@ async function extractDocxText(buffer) {
 }
 
 async function extractTextFromBuffer(buffer, mimeType) {
-  let rawText = '';
+  let rawText;
 
   if (mimeType === MIME_TYPES.PDF) {
     rawText = await pdfService.extractText(buffer);

@@ -76,6 +76,15 @@ async function resolveAvatarUrl(avatarPath) {
   }
 }
 
+function resolveDisplayName(displayName, email) {
+  const name = String(displayName || '').trim();
+  const placeholders = new Set(['người dùng ẩn danh', 'anonymous user', 'anonymous', 'guest']);
+  if (name && !placeholders.has(name.toLowerCase())) {
+    return name;
+  }
+  return email.split('@')[0] || 'Student';
+}
+
 function mapAccount(user, storage, docCount, activities, avatarUrl) {
   const email = user.email;
   const handle = user.handle || buildDefaultHandle(email);
@@ -84,7 +93,7 @@ function mapAccount(user, storage, docCount, activities, avatarUrl) {
     profile: {
       id: user.id,
       email,
-      displayName: user.display_name || email.split('@')[0],
+      displayName: resolveDisplayName(user.display_name, email),
       handle: `@${handle}`,
       major: user.major || 'Student · AI Study Hub',
       role: normalizeRole(user.role),

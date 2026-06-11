@@ -20,6 +20,19 @@ async function getMe(req, res, next) {
       },
     });
   } catch (err) {
+    // User đăng nhập OK nhưng chưa có profile đầy đủ — vẫn trả thông tin cơ bản.
+    if (err.statusCode === 404) {
+      const email = req.user?.email || '';
+      const localName = email.split('@')[0] || 'Student';
+
+      return res.json({
+        user: {
+          ...req.user,
+          displayName: localName,
+          plan: 'Student Plan',
+        },
+      });
+    }
     next(err);
   }
 }

@@ -30,18 +30,47 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   async function loadCurrentUser(accessToken) {
-    const response = await api.get(
-      "/auth/me",
-      accessToken
-        ? {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        : undefined
-    );
+    let token = accessToken;
+
+    if (!token) {
+      const session = await getAuthSession();
+      token = session?.access_token;
+    }
+
+    if (!token) {
+      const err = new Error("No active session");
+      err.response = { status: 401 };
+      throw err;
+    }
+
+    const response = await api.get("/auth/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
     return response.data.user || response.data;
+  }
+
+  async function tryReloadUser(session) {
+    if (!session?.access_token) {
+      return null;
+    }
+
+    try {
+      return await loadCurrentUser(session.access_token);
+    } catch (err) {
+      if (err.response?.status !== 401) {
+        throw err;
+      }
+
+      const freshSession = await getAuthSession();
+      if (!freshSession?.access_token) {
+        throw err;
+      }
+
+      return loadCurrentUser(freshSession.access_token);
+    }
   }
 
   useEffect(() => {
@@ -70,16 +99,35 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        const currentUser = await loadCurrentUser(session.access_token);
+        const currentUser = await tryReloadUser(session);
         if (isMounted) {
           setUser(currentUser);
         }
       } catch (err) {
-        await logoutAuth().catch(() => {});
-        if (isMounted) {
-          setUser(null);
-          setHasSession(false);
-          setIsRecoveryMode(false);
+        const status = err.response?.status;
+        if (status !== 401) {
+          console.warn("Could not load profile:", err.response?.data?.error || err.message);
+        }
+
+        if (status === 401) {
+          await logoutAuth().catch(() => {});
+          if (isMounted) {
+            setUser(null);
+            setHasSession(false);
+            setIsRecoveryMode(false);
+          }
+        } else if (session?.user && isMounted) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email,
+            displayName:
+              session.user.user_metadata?.full_name
+              || session.user.user_metadata?.name
+              || session.user.email?.split("@")[0]
+              || "Student",
+            role: "student",
+          });
+          setHasSession(true);
         }
       } finally {
         if (isMounted) {

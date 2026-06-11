@@ -33,9 +33,22 @@ async function getSignedUrl(storagePath, expiresInSeconds = 3600) {
   return data.signedUrl;
 }
 
+async function downloadFile(storagePath) {
+  const { data, error } = await supabase.storage.from(BUCKET).download(storagePath);
+
+  if (error) {
+    const err = new Error(error.message);
+    err.publicMessage = 'Could not read document file';
+    err.statusCode = 500;
+    throw err;
+  }
+
+  return Buffer.from(await data.arrayBuffer());
+}
+
 async function deleteFile(storagePath) {
   const { error } = await supabase.storage.from(BUCKET).remove([storagePath]);
   if (error) throw new Error(error.message);
 }
 
-module.exports = { uploadFile, getSignedUrl, deleteFile };
+module.exports = { uploadFile, getSignedUrl, downloadFile, deleteFile };
