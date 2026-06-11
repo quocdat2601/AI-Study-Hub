@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { askDocument, getAiModelStatus, getAiUsage, processDocumentForAi } from "../services/aiApi.js";
 import { getChatSessionMessages, getOrCreateDocumentChatSession } from "../services/chatApi.js";
 import { listDocuments } from "../services/documentApi.js";
+import { cacheDocumentChat, cacheWorkspaceState, getCachedDocumentChat, getWorkspaceCache } from "../utils/workspaceCache.js";
 
 const MODEL_LABELS = {
   "gemini-2.5-flash": "Gemini 2.5 Flash",
@@ -54,8 +55,9 @@ function buildAssistantMessage(data) {
     content: data.answer,
     sources: data.sources || [],
     mode: data.mode || "hybrid",
-    provider: data.provider || "gemini",
+    provider: data.provider || "system",
     model: data.model,
+    usedRag: Boolean(data.usedRag),
   };
 }
 
@@ -102,24 +104,30 @@ function UsageRow({ label, used, limit }) {
 }
 
 export default function WorkspacePage() {
-  const [documents, setDocuments] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [sessionId, setSessionId] = useState(null);
+  const cachedWorkspace = getWorkspaceCache();
+  const initialSelectedId = cachedWorkspace.selectedId || cachedWorkspace.documents?.[0]?.id || null;
+  const initialChat = getCachedDocumentChat(initialSelectedId);
+  const chatScrollRef = useRef(null);
+  const lastSelectedIdRef = useRef(initialSelectedId);
+  const previousMessageCountRef = useRef(initialChat.messages.length);
+  const [documents, setDocuments] = useState(() => cachedWorkspace.documents || []);
+  const [selectedId, setSelectedId] = useState(() => initialSelectedId);
+  const [messages, setMessages] = useState(() => initialChat.messages);
+  const [sessionId, setSessionId] = useState(() => initialChat.sessionId);
   const [question, setQuestion] = useState("");
-  const [answerMode, setAnswerMode] = useState("hybrid");
-  const [selectedModel, setSelectedModel] = useState("");
-  const [availableModels, setAvailableModels] = useState(DEFAULT_MODELS);
-  const [modelStatus, setModelStatus] = useState(null);
-  const [usage, setUsage] = useState(null);
+  const [answerMode, setAnswerMode] = useState(() => cachedWorkspace.answerMode || "hybrid");
+  const [selectedModel, setSelectedModel] = useState(() => cachedWorkspace.selectedModel || "");
+  const [availableModels, setAvailableModels] = useState(() => cachedWorkspace.availableModels || DEFAULT_MODELS);
+  const [modelStatus, setModelStatus] = useState(() => cachedWorkspace.modelStatus || null);
+  const [usage, setUsage] = useState(() => cachedWorkspace.usage || null);
   const [isLoadingUsage, setIsLoadingUsage] = useState(false);
   const [askingStatusIndex, setAskingStatusIndex] = useState(0);
-  const [isLoadingDocs, setIsLoadingDocs] = useState(true);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(() => !cachedWorkspace.documents?.length);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState("");
-  const [processResult, setProcessResult] = useState(null);
+  const [processResult, setProcessResult] = useState(() => initialChat.processResult);
 
   const selectedDocument = useMemo(
     () => documents.find((doc) => Number(doc.id) === Number(selectedId)) || null,
@@ -134,12 +142,22 @@ export default function WorkspacePage() {
 
     async function loadDocuments() {
       try {
-        setIsLoadingDocs(true);
+        if (!getWorkspaceCache().documents?.length) {
+          setIsLoadingDocs(true);
+        }
         setError("");
         const data = await listDocuments();
         if (!isMounted) return;
-        setDocuments(data || []);
-        setSelectedId(data?.[0]?.id || null);
+        const nextDocuments = data || [];
+        cacheWorkspaceState({ documents: nextDocuments });
+        setDocuments(nextDocuments);
+        setSelectedId((current) => {
+          const cachedSelected = getWorkspaceCache().selectedId;
+          const nextSelected = [current, cachedSelected, nextDocuments[0]?.id]
+            .find((candidate) => candidate && nextDocuments.some((doc) => Number(doc.id) === Number(candidate))) || null;
+          cacheWorkspaceState({ selectedId: nextSelected });
+          return nextSelected;
+        });
       } catch (err) {
         if (isMounted) {
           setError(err.response?.data?.error || "Could not load documents");
@@ -166,12 +184,23 @@ export default function WorkspacePage() {
         setModelStatus(status);
         const geminiModels = status.gemini?.models || DEFAULT_GEMINI_MODELS;
         const ollamaModels = status.ollama?.allowedModels || DEFAULT_OLLAMA_MODELS;
-        setAvailableModels([...geminiModels, ...ollamaModels]);
-        setSelectedModel((current) => current || status.defaultModel || "gemini-2.5-flash");
+        const nextModels = [...geminiModels, ...ollamaModels];
+        cacheWorkspaceState({ availableModels: nextModels, modelStatus: status });
+        setAvailableModels(nextModels);
+        setSelectedModel((current) => {
+          const nextModel = current || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-2.5-flash";
+          cacheWorkspaceState({ selectedModel: nextModel });
+          return nextModel;
+        });
       } catch {
         if (isMounted) {
           setAvailableModels(DEFAULT_MODELS);
-          setSelectedModel((current) => current || "gemini-2.5-flash");
+          cacheWorkspaceState({ availableModels: DEFAULT_MODELS });
+          setSelectedModel((current) => {
+            const nextModel = current || getWorkspaceCache().selectedModel || "gemini-2.5-flash";
+            cacheWorkspaceState({ selectedModel: nextModel });
+            return nextModel;
+          });
         }
       }
     }
@@ -185,21 +214,76 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (selectedId) {
-      loadChatHistory(selectedId);
+      cacheWorkspaceState({ selectedId });
+      const cachedChat = getCachedDocumentChat(selectedId);
+      if (cachedChat.messages.length) {
+        setMessages(cachedChat.messages);
+        setSessionId(cachedChat.sessionId);
+        setProcessResult(cachedChat.processResult);
+      }
+      loadChatHistory(selectedId, { showLoader: !cachedChat.messages.length });
     }
   }, [selectedId]);
 
-  async function loadChatHistory(docId) {
+  useEffect(() => {
+    const node = chatScrollRef.current;
+    if (!node || !selectedId) return undefined;
+
+    const cachedChat = getCachedDocumentChat(selectedId);
+    window.requestAnimationFrame(() => {
+      if (Number.isFinite(cachedChat.scrollTop)) {
+        node.scrollTop = cachedChat.scrollTop;
+      } else {
+        node.scrollTop = node.scrollHeight;
+      }
+    });
+
+    return undefined;
+  }, []);
+
+  useEffect(() => {
+    const node = chatScrollRef.current;
+    if (!node) return;
+
+    const selectedChanged = String(lastSelectedIdRef.current || "") !== String(selectedId || "");
+    const messageCountIncreased = messages.length > previousMessageCountRef.current;
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    const wasNearBottom = distanceFromBottom < 160;
+
+    window.requestAnimationFrame(() => {
+      const cachedChat = getCachedDocumentChat(selectedId);
+      if (selectedChanged && Number.isFinite(cachedChat.scrollTop)) {
+        node.scrollTop = cachedChat.scrollTop;
+      } else if (selectedChanged || messageCountIncreased || isAsking || wasNearBottom) {
+        node.scrollTop = node.scrollHeight;
+      }
+    });
+
+    lastSelectedIdRef.current = selectedId;
+    previousMessageCountRef.current = messages.length;
+  }, [messages.length, selectedId, isAsking]);
+
+  async function loadChatHistory(docId, options = {}) {
+    const { showLoader = true } = options;
     try {
-      setIsLoadingMessages(true);
+      if (showLoader) setIsLoadingMessages(true);
       setError("");
       const session = await getOrCreateDocumentChatSession(docId);
-      setSessionId(session.id);
       const payload = await getChatSessionMessages(session.id);
-      setMessages((payload.messages || []).map(mapStoredMessage));
+      const nextMessages = (payload.messages || []).map(mapStoredMessage);
+      cacheDocumentChat(docId, { sessionId: session.id, messages: nextMessages });
+      if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
+        return;
+      }
+      setSessionId(session.id);
+      setMessages(nextMessages);
     } catch (err) {
+      if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
+        return;
+      }
       setSessionId(null);
-      setMessages([]);
+      cacheDocumentChat(docId, { sessionId: null });
+      if (showLoader) setMessages([]);
       setError(err.response?.data?.error || "Could not load chat history");
     } finally {
       setIsLoadingMessages(false);
@@ -210,15 +294,21 @@ export default function WorkspacePage() {
     try {
       setIsLoadingUsage(true);
       const data = await getAiUsage(model || undefined);
+      cacheWorkspaceState({ usage: data });
       setUsage(data);
       if (data.allowedModels?.length) {
+        cacheWorkspaceState({ availableModels: data.allowedModels });
         setAvailableModels(data.allowedModels);
       }
       if (data.provider === "ollama") {
         const status = await getAiModelStatus().catch(() => null);
-        if (status) setModelStatus(status);
+        if (status) {
+          cacheWorkspaceState({ modelStatus: status });
+          setModelStatus(status);
+        }
       }
       if (data.model && data.model !== selectedModel) {
+        cacheWorkspaceState({ selectedModel: data.model });
         setSelectedModel(data.model);
       }
       return data;
@@ -231,8 +321,15 @@ export default function WorkspacePage() {
   }
 
   useEffect(() => {
-    refreshUsage(selectedModel);
+    if (selectedModel) {
+      cacheWorkspaceState({ selectedModel });
+      refreshUsage(selectedModel);
+    }
   }, [selectedModel]);
+
+  useEffect(() => {
+    cacheWorkspaceState({ answerMode });
+  }, [answerMode]);
 
   useEffect(() => {
     if (!isAsking) {
@@ -249,12 +346,20 @@ export default function WorkspacePage() {
   }, [isAsking]);
 
   function selectDocument(docId) {
+    const cachedChat = getCachedDocumentChat(docId);
+    cacheWorkspaceState({ selectedId: docId });
     setSelectedId(docId);
-    setMessages([]);
-    setSessionId(null);
+    setMessages(cachedChat.messages);
+    setSessionId(cachedChat.sessionId);
     setQuestion("");
-    setProcessResult(null);
+    setProcessResult(cachedChat.processResult);
     setError("");
+  }
+
+  function handleChatScroll(event) {
+    if (selectedId) {
+      cacheDocumentChat(selectedId, { scrollTop: event.currentTarget.scrollTop });
+    }
   }
 
   async function handleProcess() {
@@ -264,12 +369,17 @@ export default function WorkspacePage() {
       setIsProcessing(true);
       setError("");
       const result = await processDocumentForAi(selectedDocument.id);
+      cacheDocumentChat(selectedDocument.id, { processResult: result });
       setProcessResult(result);
-      setDocuments((current) => current.map((doc) => (
-        Number(doc.id) === Number(selectedDocument.id)
-          ? { ...doc, extraction_status: "ready", status: "indexed" }
-          : doc
-      )));
+      setDocuments((current) => {
+        const nextDocuments = current.map((doc) => (
+          Number(doc.id) === Number(selectedDocument.id)
+            ? { ...doc, extraction_status: "ready", status: "indexed" }
+            : doc
+        ));
+        cacheWorkspaceState({ documents: nextDocuments });
+        return nextDocuments;
+      });
     } catch (err) {
       setError(err.response?.data?.error || "Could not process this document");
     } finally {
@@ -282,7 +392,12 @@ export default function WorkspacePage() {
     const cleanedQuestion = question.trim();
     if (!selectedDocument || !cleanedQuestion || isAsking) return;
 
-    setMessages((current) => [...current, buildUserMessage(cleanedQuestion)]);
+    const userMessage = buildUserMessage(cleanedQuestion);
+    setMessages((current) => {
+      const nextMessages = [...current, userMessage];
+      cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+      return nextMessages;
+    });
     setQuestion("");
     setError("");
     const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
@@ -290,23 +405,34 @@ export default function WorkspacePage() {
     try {
       setIsAsking(true);
       const result = await askDocument(selectedDocument.id, cleanedQuestion, answerMode, activeModel);
-      setMessages((current) => [...current, buildAssistantMessage(result)]);
-      setSessionId(result.sessionId || sessionId);
+      const assistantMessage = buildAssistantMessage(result);
+      setMessages((current) => {
+        const nextMessages = [...current, assistantMessage];
+        cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+        return nextMessages;
+      });
+      const nextSessionId = result.sessionId || sessionId;
+      cacheDocumentChat(selectedDocument.id, { sessionId: nextSessionId });
+      setSessionId(nextSessionId);
       if (result.usage) {
+        cacheWorkspaceState({ usage: result.usage });
         setUsage(result.usage);
       } else {
-        await refreshUsage(activeModel);
+        refreshUsage(activeModel).catch(() => {});
       }
-      setProcessResult((current) => current || {
-        document: result.document,
-        chunkCount: result.sources?.length || 0,
-        status: "ready",
+      setProcessResult((current) => {
+        const nextProcessResult = current || {
+          document: result.document,
+          chunkCount: result.sources?.length || 0,
+          status: "ready",
+        };
+        cacheDocumentChat(selectedDocument.id, { processResult: nextProcessResult });
+        return nextProcessResult;
       });
     } catch (err) {
       if (err.response?.data?.usage) {
+        cacheWorkspaceState({ usage: err.response.data.usage });
         setUsage(err.response.data.usage);
-      } else {
-        await refreshUsage(activeModel);
       }
       setError(err.response?.data?.message || err.response?.data?.error || "Could not ask AI about this document");
     } finally {
@@ -448,7 +574,7 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" onScroll={handleChatScroll} ref={chatScrollRef}>
           {isLoadingMessages ? (
             <p className="rounded-lg border border-dashed border-[#c7c4d7] p-4 text-sm text-[#66758a]">Loading saved chat...</p>
           ) : messages.length ? messages.map((message) => (
@@ -460,6 +586,8 @@ export default function WorkspacePage() {
                 <p className="mb-2 mt-0 text-[11px] font-bold text-[#66758a]">
                   {message.provider === "ollama" ? "Local Ollama" : "Gemini"} · {MODEL_LABELS[message.model] || message.model}
                 </p>
+              ) : message.role === "assistant" && message.provider === "system" ? (
+                <p className="mb-2 mt-0 text-[11px] font-bold text-[#66758a]">AI Study Hub assistant</p>
               ) : null}
               <p className="m-0 whitespace-pre-wrap">{message.content}</p>
               {message.sources?.length ? (

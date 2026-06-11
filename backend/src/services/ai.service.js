@@ -6,6 +6,7 @@ const aiUsageService = require('./ai-usage.service');
 const aiProviderService = require('./ai-provider.service');
 const documentService = require('./document.service');
 const documentTextService = require('./document-text.service');
+const embeddingService = require('./embedding.service');
 const ragService = require('./rag.service');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
@@ -105,7 +106,15 @@ async function processDocument({ id, userId }) {
     throw createError(400, 'No readable document chunks could be created');
   }
 
-  const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunks);
+  let chunksToSave = chunks;
+  try {
+    chunksToSave = await embeddingService.embedChunks(chunks);
+  } catch (err) {
+    console.error('Document chunk embedding failed:', err.message);
+    chunksToSave = embeddingService.markChunksEmbeddingFailed(chunks, err);
+  }
+
+  const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunksToSave);
 
   return {
     document: {
@@ -118,14 +127,9 @@ async function processDocument({ id, userId }) {
   };
 }
 
-async function ensureChunks({ id, userId }) {
+async function getExistingChunksForAsk({ id, userId }) {
   const doc = await getProcessableDocument({ id, userId });
-  let chunks = await documentChunkModel.findByDocumentId(doc.id);
-
-  if (!chunks.length) {
-    await processDocument({ id: doc.id, userId });
-    chunks = await documentChunkModel.findByDocumentId(doc.id);
-  }
+  const chunks = await documentChunkModel.findByDocumentId(doc.id);
 
   if (!chunks.length) {
     throw createError(400, 'No document chunks are available');
@@ -134,14 +138,83 @@ async function ensureChunks({ id, userId }) {
   return { doc, chunks };
 }
 
+async function retrieveChunksForQuestion({ docId, question, chunks }) {
+  try {
+    const queryEmbedding = await embeddingService.embedQuery(question);
+    const vectorChunks = await documentChunkModel.matchByEmbedding({
+      docId,
+      embedding: queryEmbedding.embedding,
+      limit: 4,
+    });
+
+    if (vectorChunks.length) {
+      return vectorChunks.map((chunk) => ({
+        ...chunk,
+        score: Number(chunk.similarity || 0),
+        metadata: {
+          ...(chunk.metadata || {}),
+          retrieval: 'vector',
+          embeddingModel: queryEmbedding.model,
+        },
+      }));
+    }
+  } catch (err) {
+    console.error('Vector retrieval failed, falling back to keyword retrieval:', err.message);
+  }
+
+  return ragService.retrieveRelevantChunks(question, chunks).map((chunk) => ({
+    ...chunk,
+    metadata: {
+      ...(chunk.metadata || {}),
+      retrieval: 'keyword',
+    },
+  }));
+}
+
 async function askDocument({ id, userId, question, mode, model }) {
   const cleanedQuestion = cleanQuestion(question);
   const answerMode = normalizeAnswerMode(mode);
   const selectedProviderModel = aiUsageService.resolveModel(model);
   const selectedModel = selectedProviderModel.model;
   const selectedProvider = selectedProviderModel.provider;
-  const { doc, chunks } = await ensureChunks({ id, userId });
-  const relevantChunks = ragService.retrieveRelevantChunks(cleanedQuestion, chunks);
+  const doc = await getProcessableDocument({ id, userId });
+  const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
+  const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
+
+  let chunks;
+  try {
+    ({ chunks } = await getExistingChunksForAsk({ id: doc.id, userId }));
+  } catch (err) {
+    if (err.statusCode !== 400) throw err;
+    const answer = 'This document is not processed for AI yet. Please click "Process for AI" first, then ask your question again.';
+    const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
+    await chatModel.touchSession(session.id);
+
+    return {
+      answer,
+      sources: [],
+      document: {
+        id: doc.id,
+        title: doc.title,
+      },
+      sessionId: session.id,
+      mode: answerMode,
+      needsProcessing: true,
+      usedRag: false,
+      provider: 'system',
+      model: null,
+      messages: {
+        user: userMessage,
+        assistant: assistantMessage,
+      },
+    };
+  }
+
+  const relevantChunks = await retrieveChunksForQuestion({
+    docId: doc.id,
+    question: cleanedQuestion,
+    chunks,
+  });
 
   if (!relevantChunks.length) {
     throw createError(400, 'No document context is available for this question');
@@ -152,8 +225,6 @@ async function askDocument({ id, userId, question, mode, model }) {
     await aiUsageService.assertQuota({ model: selectedModel, userId, estimatedTokens });
   }
 
-  const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
-  const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
   let generationResult;
 
   try {
@@ -196,7 +267,10 @@ async function askDocument({ id, userId, question, mode, model }) {
   const answer = generationResult.answer;
   const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
   await chatModel.touchSession(session.id);
-  const usage = await aiUsageService.getUsage({ model: selectedModel, userId });
+  const usage = await aiUsageService.getUsage({ model: selectedModel, userId }).catch((err) => {
+    console.error('AI usage refresh failed after answer:', err.message);
+    return null;
+  });
 
   return {
     answer,
@@ -207,6 +281,7 @@ async function askDocument({ id, userId, question, mode, model }) {
     },
     sessionId: session.id,
     mode: answerMode,
+    usedRag: true,
     provider: selectedProvider,
     model: selectedModel,
     usage,

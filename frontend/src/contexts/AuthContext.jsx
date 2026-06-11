@@ -136,7 +136,9 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      if (isMounted) {
+      const shouldRefreshInBackground = Boolean(userRef.current && session?.access_token && !hasRecoveryContext());
+
+      if (isMounted && !shouldRefreshInBackground) {
         setIsLoading(true);
       }
 

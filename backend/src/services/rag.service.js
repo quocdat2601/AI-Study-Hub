@@ -1,6 +1,7 @@
 const CHUNK_SIZE = 1600;
 const CHUNK_OVERLAP = 220;
 const MAX_CONTEXT_CHARS = 7000;
+const FALLBACK_CHUNK_LIMIT = 2;
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'how',
   'i', 'in', 'is', 'it', 'of', 'on', 'or', 'that', 'the', 'this', 'to',
@@ -80,7 +81,8 @@ function scoreChunk(questionTerms, chunk) {
 
 function retrieveRelevantChunks(question, chunks, limit = 4) {
   const questionTerms = tokenize(question);
-  const ranked = (chunks || [])
+  const availableChunks = chunks || [];
+  const ranked = availableChunks
     .map((chunk) => ({
       ...chunk,
       score: scoreChunk(questionTerms, chunk),
@@ -88,7 +90,11 @@ function retrieveRelevantChunks(question, chunks, limit = 4) {
     .sort((a, b) => b.score - a.score || a.chunk_index - b.chunk_index);
 
   const matched = ranked.filter((chunk) => chunk.score > 0).slice(0, limit);
-  const selected = matched.length ? matched : ranked.slice(0, Math.min(2, limit));
+  const firstChunks = availableChunks
+    .slice()
+    .sort((a, b) => a.chunk_index - b.chunk_index)
+    .slice(0, Math.min(FALLBACK_CHUNK_LIMIT, limit));
+  const selected = matched.length ? matched : firstChunks;
 
   let usedChars = 0;
   return selected.filter((chunk) => {
@@ -105,6 +111,7 @@ function buildSourcePayload(chunks) {
     chunkIndex: chunk.chunk_index,
     content: chunk.content,
     score: Number(chunk.score || 0),
+    similarity: chunk.similarity == null ? null : Number(chunk.similarity),
     metadata: chunk.metadata || {},
   }));
 }

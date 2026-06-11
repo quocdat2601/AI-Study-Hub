@@ -1,5 +1,10 @@
 const supabase = require('../config/supabase');
 
+function toVectorLiteral(values) {
+  if (!Array.isArray(values) || !values.length) return null;
+  return `[${values.map((value) => Number(value)).join(',')}]`;
+}
+
 class DocumentChunkModel {
   static async replaceForDocument(docId, chunks) {
     const numericDocId = Number(docId);
@@ -19,6 +24,10 @@ class DocumentChunkModel {
       content: chunk.content,
       token_estimate: chunk.tokenEstimate,
       metadata: chunk.metadata || {},
+      embedding: toVectorLiteral(chunk.embedding),
+      embedding_model: chunk.embeddingModel || null,
+      embedding_status: chunk.embeddingStatus || (chunk.embedding ? 'ready' : 'pending'),
+      embedding_error: chunk.embeddingError || null,
       updated_at: new Date().toISOString(),
     }));
 
@@ -38,6 +47,17 @@ class DocumentChunkModel {
       .select('*')
       .eq('doc_id', Number(docId))
       .order('chunk_index', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async matchByEmbedding({ docId, embedding, limit = 4 }) {
+    const { data, error } = await supabase.rpc('match_document_chunks', {
+      p_doc_id: Number(docId),
+      p_query_embedding: toVectorLiteral(embedding),
+      p_match_count: Number(limit),
+    });
 
     if (error) throw error;
     return data || [];
