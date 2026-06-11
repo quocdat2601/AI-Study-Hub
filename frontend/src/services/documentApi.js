@@ -44,3 +44,4 @@ export async function revokeDocumentShare(id, shareId) {
   const response = await api.delete(`/documents/${id}/shares/${shareId}`);
   return response.data;
 }
+

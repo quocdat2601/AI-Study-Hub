@@ -465,7 +465,25 @@ async function revokeDocumentShare({ document, shareId }) {
 
 }
 
+async function saveOcrText({ document, text, append }) {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    throw createError(400, 'Text is required');
+  }
 
+  const merged = append && document.extracted_text
+    ? `${String(document.extracted_text).trim()}\n\n${normalized}`
+    : normalized;
+
+  const updated = await documentModel.updateExtraction(document.id, {
+    text: merged,
+    status: merged.length >= 50 ? 'ready' : 'empty',
+    error: null,
+  });
+
+  const [documentWithThumbnail] = await addThumbnailUrls([updated]);
+  return mapDocument(documentWithThumbnail);
+}
 
 module.exports = {
   mapDocument,
@@ -483,5 +501,6 @@ module.exports = {
   listDocumentShares,
   shareDocument,
   revokeDocumentShare,
+  saveOcrText,
 };
 

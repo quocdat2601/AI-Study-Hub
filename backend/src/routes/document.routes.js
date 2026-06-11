@@ -160,6 +160,14 @@ router.patch(
   documentController.updateDocument
 );
 
+router.post(
+  '/:id/ocr-text',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.saveOcrText
+);
+
 /**
  * @swagger
  * /api/documents/{id}:

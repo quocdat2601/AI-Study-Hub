@@ -15,13 +15,14 @@ import LoginPage from "./pages/LoginPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
+import WorkspacePage from "./pages/WorkspacePage.jsx";
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library"];
+  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library", "/workspace"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
     && !dashboardShellRoutes.includes(location.pathname);
 
@@ -73,6 +74,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <LibraryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workspace"
+          element={
+            <ProtectedRoute>
+              <WorkspacePage />
             </ProtectedRoute>
           }
         />
