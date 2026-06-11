@@ -43,6 +43,32 @@ async function getSignedUrl(req, res, next) {
   }
 }
 
+async function streamPreview(req, res, next) {
+  try {
+    const { buffer, mimeType } = await documentService.getPreviewBuffer({
+      id: req.params.id,
+      userId: req.user.id,
+    });
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function reextractDocumentText(req, res, next) {
+  try {
+    res.json(await documentService.reextractDocumentText({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 /**
  * Cập nhật tiêu đề / môn học (chỉ chủ tài liệu hoặc admin)
  */
@@ -150,6 +176,8 @@ module.exports = {
   getAllDocuments,
   getDocumentById,
   getSignedUrl,
+  streamPreview,
+  reextractDocumentText,
   updateDocument,
   deleteDocument,
   listTrash,

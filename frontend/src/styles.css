@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -141,4 +143,205 @@ textarea {
   html.dark th {
     color: #94a3b8;
   }
+}
+
+.workspace-theme {
+  --bg-base: #f8fafc;
+  --bg-panel: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-active: #eef2ff;
+  --bg-viewer: #eef2f7;
+  --bg-chat: #ffffff;
+  --border: #e2e8f0;
+  --accent: #5b6af8;
+  --accent-hover: #4f5de8;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --chat-user-bg: #dbeafe;
+  --chat-user-text: #1e3a5f;
+  --workspace-sidebar-width: 320px;
+  --workspace-chat-width: 420px;
+}
+
+html.dark .workspace-theme {
+  --bg-base: #0f1014;
+  --bg-panel: #18181c;
+  --bg-hover: #232329;
+  --bg-active: rgba(91, 106, 248, 0.12);
+  --bg-viewer: #121216;
+  --bg-chat: #18181c;
+  --border: #2a2a32;
+  --accent: #5b6af8;
+  --accent-hover: #6e7bfa;
+  --text-primary: #f0f0f4;
+  --text-secondary: #9191a0;
+  --text-muted: #5a5a6a;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --chat-user-bg: #dbeafe;
+  --chat-user-text: #1e3a5f;
+}
+
+.workspace-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+html.dark .workspace-scroll {
+  scrollbar-color: #3a3a45 transparent;
+}
+
+.workspace-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workspace-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+html.dark .workspace-scroll::-webkit-scrollbar-thumb {
+  background: #3a3a45;
+}
+
+.workspace-scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.workspace-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Landing page chatbot — animations */
+@keyframes landing-chat-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes landing-chat-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes landing-chat-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-chat-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes landing-chat-ring {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
+@keyframes landing-chat-shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.landing-chat-float {
+  animation: landing-chat-float 2.8s ease-in-out infinite;
+}
+
+.landing-chat-panel-in {
+  animation: landing-chat-panel-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.landing-chat-msg-in {
+  animation: landing-chat-msg-in 0.28s ease-out both;
+}
+
+.landing-chat-dot {
+  animation: landing-chat-dot 1.2s ease-in-out infinite;
+}
+
+.landing-chat-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.landing-chat-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.landing-chat-ring {
+  animation: landing-chat-ring 2.2s ease-out infinite;
+}
+
+.landing-chat-header {
+  background: linear-gradient(135deg, #5856eb 0%, #4648d4 55%, #3b3dc4 100%);
+}
+
+.landing-chat-shimmer:hover {
+  background-image: linear-gradient(
+    110deg,
+    #4648d4 0%,
+    #4648d4 40%,
+    #7c7ef8 50%,
+    #4648d4 60%,
+    #4648d4 100%
+  );
+  background-size: 200% 100%;
+  animation: landing-chat-shimmer 1.8s linear infinite;
+}
+
+/* Avatar tròn — dùng ảnh đã crop sẵn (chatbot-avatar.jpg) */
+.landing-chat-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #eef2ff;
+  box-shadow: inset 0 0 0 1px rgba(70, 72, 212, 0.08);
+}
+
+.landing-chat-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }

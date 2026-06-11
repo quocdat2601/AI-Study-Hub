@@ -15,6 +15,22 @@ export async function getDocumentSignedUrl(id) {
   return response.data;
 }
 
+export async function getDocumentPreview(id) {
+  const response = await api.get(`/documents/${id}/preview`, {
+    responseType: "arraybuffer",
+    timeout: 120000,
+  });
+  return response.data;
+}
+
+/** Trích xuất lại text từ file — backend dùng cho AI chat. */
+export async function reextractDocumentText(id) {
+  const response = await api.post(`/documents/${id}/reextract`, null, {
+    timeout: 120000,
+  });
+  return response.data;
+}
+
 export async function listTrendingDocuments(limit = 5) {
   const response = await api.get("/public/documents/trending", { params: { limit } });
   return response.data;

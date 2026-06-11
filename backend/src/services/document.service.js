@@ -7,6 +7,7 @@ const userModel = require('../models/user.model');
 const notificationModel = require('../models/notification.model');
 
 const supabaseService = require('./supabase.service');
+const documentTextService = require('./document-text.service');
 
 const activityService = require('./activity.service');
 
@@ -185,7 +186,70 @@ async function getSignedUrl({ id, userId }) {
 
 }
 
+async function fetchDocumentBuffer(doc) {
+  if (!doc?.cloud_files?.storage_path) {
+    throw createError(404, 'File not found');
+  }
 
+  const signedUrl = await supabaseService.getSignedUrl(doc.cloud_files.storage_path);
+  const response = await fetch(signedUrl);
+
+  if (!response.ok) {
+    throw createError(502, 'Could not fetch file from storage');
+  }
+
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    mimeType: doc.cloud_files.mime_type || 'application/octet-stream',
+  };
+}
+
+async function getPreviewBuffer({ id, userId }) {
+  const doc = await documentModel.findAccessibleById(id, userId);
+  if (!doc) {
+    throw createError(404, 'File not found');
+  }
+
+  return fetchDocumentBuffer(doc);
+}
+
+/** Đọc lại file từ storage và trích xuất text (dùng cho AI chat). */
+async function reextractDocumentText({ id, userId }) {
+  const doc = await documentModel.findAccessibleById(id, userId);
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+
+  const { buffer, mimeType } = await fetchDocumentBuffer(doc);
+
+  let extraction;
+  try {
+    extraction = await documentTextService.extractTextFromBuffer(buffer, mimeType);
+  } catch (err) {
+    extraction = {
+      text: '',
+      status: 'failed',
+      error: err.publicMessage || err.message || 'Text extraction failed',
+    };
+  }
+
+  const updatedDocument = await documentModel.updateExtraction(id, extraction);
+
+  activityService.log({
+    userId,
+    action: 'document.reextract',
+    targetType: 'document',
+    targetId: id,
+    metadata: {
+      extractionStatus: updatedDocument.extraction_status,
+    },
+  });
+
+  return {
+    message: 'Document text extraction completed',
+    document: mapDocument(updatedDocument),
+  };
+}
 
 async function updateDocument({ document, title, subjectId, tags }) {
 
@@ -530,6 +594,8 @@ module.exports = {
   listDocuments,
   getDocumentById,
   getSignedUrl,
+  getPreviewBuffer,
+  reextractDocumentText,
   addThumbnailUrls,
   buildPublicDocumentPreview,
   canReadDocument,

@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const chatController = require('../controllers/chat.controller');
 const verifyToken = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 
 /**
  * @swagger
@@ -26,6 +27,7 @@ const verifyToken = require('../middleware/auth');
  *       200: { description: Session details }
  */
 router.use(verifyToken);
+router.use(requireRole('student', 'admin'));
 
 router.get('/session/:docId', chatController.getOrCreateSession);
 

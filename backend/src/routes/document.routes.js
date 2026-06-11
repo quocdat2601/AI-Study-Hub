@@ -85,6 +85,31 @@ router.get('/:id', verifyToken, documentController.getDocumentById);
  *       404: { description: File not found }
  */
 router.get('/:id/signed-url', verifyToken, documentController.getSignedUrl);
+router.get('/:id/preview', verifyToken, documentController.streamPreview);
+
+/**
+ * @swagger
+ * /api/documents/{id}/reextract:
+ *   post:
+ *     summary: Re-run text extraction for AI chat
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Extraction result }
+ *       404: { description: Document not found }
+ */
+router.post(
+  '/:id/reextract',
+  verifyToken,
+  requireRole('student', 'admin'),
+  documentController.reextractDocumentText
+);
 
 /**
  * @swagger
