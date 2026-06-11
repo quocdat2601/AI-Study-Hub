@@ -6,7 +6,7 @@ export const dashboardSidebarItems = [
   { id: "dashboard", icon: "dashboard", labelKey: "nav.dashboard", path: "/dashboard" },
   { id: "study-sets", icon: "book", labelKey: "nav.studySets", path: "/dashboard" },
   { id: "documents", icon: "document", labelKey: "nav.documents", path: "/documents" },
-  { id: "ai-workspace", icon: "chat", labelKey: "nav.aiWorkspace", path: "/dashboard" },
+  { id: "ai-workspace", icon: "chat", labelKey: "nav.aiWorkspace", path: "/workspace" },
   { id: "analytics", icon: "analytics", labelKey: "nav.analytics", path: "/dashboard" },
 ];
 
@@ -78,6 +78,7 @@ function navItemClass(isActive) {
 function isNavItemActive(pathname, item) {
   if (item.id === "dashboard") return pathname === "/dashboard";
   if (item.id === "documents") return pathname.startsWith("/documents");
+  if (item.id === "ai-workspace") return pathname.startsWith("/workspace");
   return false;
 }
 

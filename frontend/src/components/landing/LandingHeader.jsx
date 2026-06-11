@@ -1,37 +1,92 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import NotificationBell from "../NotificationBell.jsx";
 
-export default function LandingHeader({ isAuthenticated, isLoading = false, onLogout, workspacePath }) {
-  const libraryPath = workspacePath || "/dashboard";
-  const libraryLabel = isAuthenticated && libraryPath === "/admin" ? "Dashboard" : "My Library";
+function NavLink({ to, href, children, isActive = false }) {
+  const className = `whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-semibold no-underline transition ${
+    isActive
+      ? "bg-indigo-50 text-indigo-700"
+      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+  }`;
+
+  if (to) {
+    return (
+      <Link className={className} to={to}>
+        {children}
+      </Link>
+    );
+  }
 
   return (
-    <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-[#c7c4d7] bg-white px-4 py-2.5 shadow-[0_1px_1px_rgba(0,0,0,0.05)] dark:border-slate-800 dark:bg-slate-950 md:flex-nowrap md:px-8">
-      <Link className="whitespace-nowrap text-xl font-extrabold text-[#4648d4] no-underline dark:text-indigo-400" to="/">
-        AI Study Hub
-      </Link>
+    <a className={className} href={href}>
+      {children}
+    </a>
+  );
+}
 
-      <nav className="order-3 flex min-w-0 flex-1 items-center justify-start gap-5 overflow-x-auto md:order-none md:justify-center md:gap-8 md:overflow-visible" aria-label="Primary navigation">
-        <Link className="whitespace-nowrap text-sm font-bold text-[#57657a] no-underline dark:text-slate-400" to={libraryPath}>{libraryLabel}</Link>
-        <Link className="whitespace-nowrap text-sm font-bold text-[#57657a] no-underline dark:text-slate-400" to={isAuthenticated ? "/documents" : workspacePath || "/dashboard"}>My Documents</Link>
-        <a className="whitespace-nowrap text-sm font-bold text-[#57657a] no-underline dark:text-slate-400" href="#universities">Universities</a>
-        <a className="whitespace-nowrap text-sm font-bold text-[#57657a] no-underline dark:text-slate-400" href="#courses">Courses</a>
-      </nav>
+export default function LandingHeader({ isAuthenticated, isLoading = false, onLogout, workspacePath }) {
+  const location = useLocation();
+  const libraryPath = workspacePath || "/dashboard";
+  const libraryLabel = isAuthenticated && libraryPath === "/admin" ? "Dashboard" : "My library";
 
-      <div className="flex items-center gap-3">
-        {isAuthenticated ? <NotificationBell /> : null}
-        {isLoading ? (
-          <span className="inline-flex min-h-[38px] w-[104px] animate-pulse rounded-full border border-[#c7c4d7] bg-[#eef2f8] dark:border-slate-700 dark:bg-slate-800" aria-label="Checking session" />
-        ) : isAuthenticated && onLogout ? (
-          <button className="auth-btn-slide inline-flex min-h-[38px] items-center justify-center rounded-full border border-[#4648d4] bg-white px-6 text-sm font-extrabold text-[#4648d4] dark:border-indigo-500 dark:bg-slate-900 dark:text-indigo-300" onClick={onLogout} type="button">
-            Log out
-          </button>
-        ) : (
-          <Link className="auth-btn-slide inline-flex min-h-[38px] items-center justify-center whitespace-nowrap rounded-full border border-[#4648d4] bg-white px-6 text-sm font-extrabold text-[#4648d4] no-underline dark:border-indigo-500 dark:bg-slate-900 dark:text-indigo-300" to="/login">
-            Log in
-          </Link>
-        )}
+  return (
+    <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5 md:px-8">
+        <Link className="flex items-center gap-2.5 whitespace-nowrap no-underline" to="/">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-extrabold text-white shadow-[0_4px_14px_rgba(79,70,229,0.35)]">
+            AI
+          </span>
+          <span className="text-lg font-extrabold tracking-tight text-slate-900">Study Hub</span>
+        </Link>
+
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
+          <NavLink isActive={location.pathname === libraryPath} to={libraryPath}>
+            {libraryLabel}
+          </NavLink>
+          <NavLink
+            isActive={location.pathname === "/documents"}
+            to={isAuthenticated ? "/documents" : workspacePath || "/dashboard"}
+          >
+            My documents
+          </NavLink>
+          <NavLink href="#universities">Universities</NavLink>
+          <NavLink href="#courses" isActive={location.pathname === "/" && location.hash === "#courses"}>
+            Courses
+          </NavLink>
+        </nav>
+
+        <div className="flex items-center gap-2.5">
+          {isAuthenticated ? <NotificationBell /> : null}
+          {isLoading ? (
+            <span
+              className="inline-flex h-10 w-24 animate-pulse rounded-xl bg-slate-100"
+              aria-label="Checking session"
+            />
+          ) : isAuthenticated && onLogout ? (
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              onClick={onLogout}
+              type="button"
+            >
+              Log out
+            </button>
+          ) : (
+            <>
+              <Link
+                className="hidden h-10 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 no-underline transition hover:bg-slate-50 sm:inline-flex"
+                to="/login"
+              >
+                Log in
+              </Link>
+              <Link
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white no-underline shadow-[0_4px_14px_rgba(79,70,229,0.28)] transition hover:bg-indigo-700"
+                to="/login?mode=register"
+              >
+                Sign up
+              </Link>
+            </>
+          )}
+        </div>
       </div>
     </header>
   );
