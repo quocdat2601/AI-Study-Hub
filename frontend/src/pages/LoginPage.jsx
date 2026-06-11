@@ -32,7 +32,13 @@ export default function LoginPage() {
   }, [location.state]);
 
   const destination = useMemo(() => {
-    if (location.state?.from?.pathname) return location.state.from.pathname;
+    if (location.state?.from?.pathname) {
+      return {
+        pathname: location.state.from.pathname,
+        search: location.state.from.search || "",
+        hash: location.state.from.hash || "",
+      };
+    }
     return user?.role === "admin" ? "/admin" : "/dashboard";
   }, [location.state, user]);
 
@@ -97,11 +103,11 @@ export default function LoginPage() {
           switchMode("login");
           setSuccess("Account created. Check your email to confirm your account, then log in.");
         } else {
-          navigate(result.user.role === "admin" ? "/admin" : "/dashboard", { replace: true });
+          navigate(destination, { replace: true });
         }
       } else {
-        const loggedInUser = await login({ email: form.email, password: form.password });
-        navigate(loggedInUser.role === "admin" ? "/admin" : "/dashboard", { replace: true });
+        await login({ email: form.email, password: form.password });
+        navigate(destination, { replace: true });
       }
     } catch (err) {
       const nextError = messageFromError(err);

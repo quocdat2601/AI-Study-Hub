@@ -1,19 +1,4 @@
-function getSafeText(value, fallback = "") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function getSafeNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : 0;
-}
-
-function pickObject(...values) {
-  return values.find((value) => value && typeof value === "object" && !Array.isArray(value)) || {};
-}
-
-function pickArray(...values) {
-  return values.find(Array.isArray) || [];
-}
+import { getSafeNumber, getSafeText, pickArray, pickObject } from "./communityUtils.js";
 
 function normalizeRoleBadges(authorSource = {}) {
   const explicitBadges = authorSource.roleBadges || authorSource.role_badges || authorSource.badges;
@@ -111,9 +96,28 @@ function normalizeSubject(rawRecord = {}) {
   };
 }
 
+function normalizeSubjects(rawRecord = {}) {
+  if (Array.isArray(rawRecord.subjects)) {
+    return rawRecord.subjects
+      .map((subject) => ({
+        id: subject?.id || null,
+        code: getSafeText(subject?.code),
+        name: getSafeText(subject?.name),
+      }))
+      .filter((subject) => subject.id || subject.code || subject.name);
+  }
+
+  const primarySubject = normalizeSubject(rawRecord);
+  return primarySubject.id || primarySubject.code || primarySubject.name ? [primarySubject] : [];
+}
+
 function normalizeCategory(rawRecord = {}, replyCount = 0) {
   const postType = getSafeText(rawRecord.postType || rawRecord.post_type || rawRecord.type, "question");
   const solved = Boolean(rawRecord.solved || rawRecord.isSolved || rawRecord.is_solved);
+
+  if (postType === "discussion") {
+    return { label: "Discussion", tone: "slate" };
+  }
 
   if (postType === "document_share") {
     return { label: "Document", tone: "amber" };
@@ -242,6 +246,7 @@ export function normalizeThreadPost(rawRecord = {}, index = 1) {
   const metrics = normalizeMetrics(rawRecord, Array.isArray(rawRecord.replies) ? rawRecord.replies.length : null);
   const postType = getSafeText(rawRecord.postType || rawRecord.post_type || rawRecord.type, "question");
   const attachmentSummary = buildAttachmentSummary(postType, rawRecord);
+  const subjects = normalizeSubjects(rawRecord);
 
   return {
     id: rawRecord.id || rawRecord.reply_id || rawRecord.post_id || `community-item-${index}`,
@@ -253,12 +258,15 @@ export function normalizeThreadPost(rawRecord = {}, index = 1) {
     createdAt: rawRecord.createdAt || rawRecord.created_at || rawRecord.inserted_at || rawRecord.published_at || null,
     updatedAt: rawRecord.updatedAt || rawRecord.updated_at || rawRecord.modified_at || null,
     author,
-    subject: normalizeSubject(rawRecord),
+    subject: subjects[0] || { id: null, code: "", name: "" },
+    subjects,
     metrics,
     category: normalizeCategory(rawRecord, metrics.replyCount),
     lastActivity: normalizeLastActivity(rawRecord, author),
     postType,
     solved: Boolean(rawRecord.solved || rawRecord.isSolved || rawRecord.is_solved),
+    isAccepted: Boolean(rawRecord.isAccepted || rawRecord.is_accepted),
+    acceptedReplyId: rawRecord.acceptedReplyId || rawRecord.accepted_reply_id || null,
     attachmentPayload: normalizeAttachmentPayload(rawRecord),
     attachmentSummary,
     documentAttachment: rawRecord.documentAttachment || null,

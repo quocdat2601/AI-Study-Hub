@@ -1,341 +1,94 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import CommunityAttachmentPreview from "../components/community/CommunityAttachmentPreview.jsx";
+import CommunityBanner from "../components/community/CommunityBanner.jsx";
+import { buildCommunityPanelSearch } from "../components/community/communityPanelUtils.js";
 import CommunityThreadItem from "../components/community/CommunityThreadItem.jsx";
+import DashboardSidebar from "../components/dashboard/DashboardSidebar.jsx";
+import {
+  getDetailPost,
+  getDetailReplies,
+  isThreadDetailResponse,
+  normalizeThreadPost,
+} from "../components/community/communityThreadViewModel.js";
+import { formatForumDate, getSafeText, getUserDisplayName } from "../components/community/communityUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { getDocumentSignedUrl } from "../services/documentApi.js";
-import { createCommunityReply, getCommunityPostDetail } from "../services/communityApi.js";
+import { acceptCommunityReply, createCommunityReply, getCommunityPostDetail } from "../services/communityApi.js";
 
-function getSafeText(value, fallback = "") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function getSafeNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : 0;
-}
-
-function formatBytes(value) {
-  const size = getSafeNumber(value);
-  if (size >= 1024 ** 3) return `${(size / 1024 ** 3).toFixed(1)} GB`;
-  if (size >= 1024 ** 2) return `${(size / 1024 ** 2).toFixed(1)} MB`;
-  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
-  return `${size} B`;
-}
-
-function pickObject(...values) {
-  return values.find((value) => value && typeof value === "object" && !Array.isArray(value)) || {};
-}
-
-function pickArray(...values) {
-  return values.find(Array.isArray) || [];
-}
-
-function normalizeRoleBadges(authorSource) {
-  const explicitBadges = authorSource.roleBadges || authorSource.role_badges || authorSource.badges;
-
-  if (Array.isArray(explicitBadges)) {
-    return explicitBadges
-      .map((badge) => {
-        if (!badge) return null;
-        if (typeof badge === "string") return { label: badge, tone: "slate" };
-
-        const label = getSafeText(badge.label || badge.name || badge.title || badge.role);
-        if (!label) return null;
-
-        return {
-          label,
-          tone: getSafeText(badge.tone || badge.color || badge.variant, "slate"),
-        };
-      })
-      .filter(Boolean);
-  }
-
-  const role = getSafeText(authorSource.role);
-  if (!role) return [];
-
-  return [
-    {
-      label: role === "admin" ? "Admin" : role === "moderator" ? "Moderator" : role === "user" ? "Student" : role,
-      tone: role === "admin" ? "violet" : role === "moderator" ? "blue" : "slate",
-    },
-  ];
-}
-
-function normalizeAuthor(rawRecord = {}) {
-  const authorSource = pickObject(
-    rawRecord.author,
-    rawRecord.users,
-    rawRecord.user,
-    rawRecord.created_by_user,
-    rawRecord.owner,
-    rawRecord.account,
-    rawRecord.profile
-  );
-
-  const email = getSafeText(authorSource.email || rawRecord.author_email);
-  const displayName = getSafeText(
-    authorSource.displayName ||
-      authorSource.display_name ||
-      authorSource.full_name ||
-      authorSource.name ||
-      rawRecord.author_name
-  ) || (email ? email.split("@")[0] : "Anonymous user");
-
-  return {
-    id: authorSource.id || rawRecord.user_id || rawRecord.author_id || rawRecord.created_by || null,
-    displayName,
-    avatarUrl: getSafeText(
-      authorSource.avatarUrl ||
-        authorSource.avatar_url ||
-        authorSource.profile_photo_url ||
-        authorSource.photo_url ||
-        authorSource.image_url ||
-        rawRecord.author_avatar_url
-    ),
-    email,
-    roleBadges: normalizeRoleBadges(authorSource),
-    joinedAt: authorSource.createdAt || authorSource.created_at || authorSource.joined_at || rawRecord.author_joined_at || null,
-    postCount: authorSource.postCount || authorSource.post_count || authorSource.posts_count || authorSource.total_posts || rawRecord.author_post_count || 0,
-    utilityPoints: authorSource.utilityPoints || authorSource.utility_points || authorSource.points || authorSource.reputation || rawRecord.author_utility_points || 0,
-    href: getSafeText(authorSource.href || authorSource.profileHref || authorSource.profile_url),
-  };
-}
-
-function normalizeMetrics(rawRecord = {}) {
-  const metricsSource = pickObject(rawRecord.metrics, rawRecord.stat, rawRecord.stats);
-
-  return {
-    upvoteCount: getSafeNumber(
-      rawRecord.voteCount ||
-        rawRecord.upvoteCount ||
-        rawRecord.upvote_count ||
-        rawRecord.upvotes_count ||
-        rawRecord.vote_count ||
-        metricsSource.voteCount ||
-        metricsSource.upvoteCount ||
-        metricsSource.upvote_count ||
-        metricsSource.votes ||
-        0
-    ),
-  };
-}
-
-function normalizeLastActivity(rawRecord = {}) {
-  const lastActivitySource = pickObject(rawRecord.lastActivity, rawRecord.last_activity, rawRecord.activity);
-  const userSource = pickObject(lastActivitySource.user, lastActivitySource.users, lastActivitySource.author);
-
-  return {
-    at: lastActivitySource.at || lastActivitySource.createdAt || lastActivitySource.created_at || lastActivitySource.updated_at || rawRecord.updatedAt || rawRecord.updated_at || rawRecord.createdAt || rawRecord.created_at || null,
-    userName: getSafeText(
-      userSource.displayName ||
-        userSource.display_name ||
-        userSource.full_name ||
-        userSource.name ||
-        lastActivitySource.user_name
-    ),
-    avatarUrl: getSafeText(
-      userSource.avatarUrl ||
-        userSource.avatar_url ||
-        userSource.profile_photo_url ||
-        lastActivitySource.avatar_url
-    ),
-    href: getSafeText(lastActivitySource.href || lastActivitySource.url || userSource.profile_url),
-  };
-}
-
-function normalizeAttachmentPayload(rawRecord = {}) {
-  return pickObject(
-    rawRecord.documentAttachment,
-    rawRecord.chatAttachment,
-    rawRecord.attachmentPayload,
-    rawRecord.attachment_payload,
-    rawRecord.attachment,
-    rawRecord.document_share,
-    rawRecord.document,
-    rawRecord.shared_document,
-    rawRecord.study_log,
-    rawRecord.ai_study_log,
-    rawRecord.metadata
-  );
-}
-
-function normalizeThreadPost(rawRecord = {}, index) {
-  return {
-    id: rawRecord.id || rawRecord.reply_id || rawRecord.post_id || `community-item-${index}`,
-    index,
-    title: getSafeText(rawRecord.title || rawRecord.post_title || rawRecord.subject),
-    content: getSafeText(rawRecord.content || rawRecord.body || rawRecord.reply_text || rawRecord.message, "No content yet."),
-    createdAt: rawRecord.createdAt || rawRecord.created_at || rawRecord.inserted_at || rawRecord.published_at || null,
-    author: normalizeAuthor(rawRecord),
-    metrics: normalizeMetrics(rawRecord),
-    lastActivity: normalizeLastActivity(rawRecord),
-    postType: getSafeText(rawRecord.postType || rawRecord.post_type || rawRecord.type),
-    attachmentPayload: normalizeAttachmentPayload(rawRecord),
-  };
-}
-
-function getDetailPost(rawDetail) {
-  const candidate = pickObject(rawDetail.post, rawDetail.community_post, rawDetail.thread, rawDetail.item);
-  if (Object.keys(candidate).length) return candidate;
-  return rawDetail && !Array.isArray(rawDetail) ? rawDetail : {};
-}
-
-function getDetailReplies(rawDetail) {
-  return pickArray(rawDetail.replies, rawDetail.comments, rawDetail.community_replies, rawDetail.items);
-}
-
-function isThreadDetailResponse(response) {
-  return Boolean(
-    response
-      && typeof response === "object"
-      && !Array.isArray(response)
-      && (
-        Array.isArray(response.replies)
-        || Array.isArray(response.comments)
-        || Array.isArray(response.community_replies)
-        || getSafeText(response.title)
-        || pickObject(response.post, response.community_post, response.thread, response.item).id
-      )
-  );
-}
-
-function renderDocumentShareTeaser(payload, isAuthenticated, onOpenDocument) {
-  const title = getSafeText(payload.title || payload.fileName || payload.document_title || payload.name, "Shared document");
-  const sizeBytes = payload.fileSizeBytes || payload.size_bytes || payload.sizeBytes || payload.file_size_bytes || payload.byte_size;
-  const resourceUrl = getSafeText(payload.viewUrl || payload.view_url || payload.downloadUrl || payload.download_url || payload.url);
-  const canOpenProtectedDocument = isAuthenticated && (resourceUrl || payload.id);
+function DetailPageShell({
+  isAuthenticated,
+  isSidebarCollapsed,
+  onSidebarSectionChange,
+  onToggleSidebar,
+  userName,
+  children,
+}) {
+  const shellClass = isAuthenticated
+    ? (isSidebarCollapsed
+      ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:64px_minmax(0,1fr)] [scrollbar-gutter:stable]"
+      : "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:224px_minmax(0,1fr)] [scrollbar-gutter:stable]")
+    : "min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [scrollbar-gutter:stable]";
+  const contentClass = isAuthenticated
+    ? (isSidebarCollapsed ? "px-4 py-4 lg:px-6" : "p-5 lg:p-6")
+    : "px-4 py-5 md:px-8";
 
   return (
-    <div className="rounded-2xl border border-[#2c435d] bg-[#0f1b28] p-4 text-[#dbe7f5]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#7ea2c7]">Document share</p>
-          <h2 className="mt-2 text-lg font-black text-[#f5f9fd]">{title}</h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[#99afc6]">
-            <span className="rounded-full border border-[#29415c] bg-[#122436] px-3 py-1 font-bold">Size: {formatBytes(sizeBytes)}</span>
-            <span className="rounded-full border border-[#29415c] bg-[#122436] px-3 py-1 font-bold">Protected preview</span>
-          </div>
+    <main className={shellClass}>
+      {isAuthenticated ? (
+        <DashboardSidebar
+          activeSection="community"
+          isCollapsed={isSidebarCollapsed}
+          onSectionChange={onSidebarSectionChange}
+          onToggleCollapse={onToggleSidebar}
+          userName={userName}
+          newDocumentTo="/library"
+          newDocumentLabel="Upload Document"
+        />
+      ) : null}
+
+      <section className={contentClass}>
+        <div className="mx-auto grid w-full max-w-[1120px] gap-5">
+          {children}
         </div>
-
-        {canOpenProtectedDocument ? (
-          resourceUrl ? (
-            <a
-              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#3970a8] bg-[#17345a] px-4 text-sm font-black text-[#dcecff] no-underline transition hover:bg-[#20436f]"
-              href={resourceUrl}
-            >
-              Xem tài liệu
-            </a>
-          ) : (
-            <button
-              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#3970a8] bg-[#17345a] px-4 text-sm font-black text-[#dcecff] transition hover:bg-[#20436f]"
-              type="button"
-              onClick={onOpenDocument}
-            >
-              Xem tài liệu
-            </button>
-          )
-        ) : (
-          <div className="inline-flex min-h-11 items-center justify-center rounded-xl border border-dashed border-[#35506f] px-4 text-sm font-bold text-[#7f98b3]">
-            {isAuthenticated ? "Tài liệu chưa sẵn sàng" : "Đăng nhập để xem hoặc tải tài liệu"}
-          </div>
-        )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 
-function renderStudyLog(payload) {
-  const session = pickObject(payload.session);
-  const messages = pickArray(payload.messages, payload.chat_messages, payload.entries, payload.log);
-
-  if (!messages.length) {
-    return null;
-  }
-
+function DetailSkeleton(props) {
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#7ea2c7]">AI study log</p>
-          <h2 className="mt-2 text-lg font-black text-[#f5f9fd]">{getSafeText(session.title, "Đoạn hội thoại học tập đính kèm")}</h2>
-        </div>
-      </div>
-
-      <div className="grid gap-3">
-        {messages.map((message, index) => {
-          const role = getSafeText(message.role, "assistant").toLowerCase();
-          const content = getSafeText(message.content || message.text || message.message, "No message content.");
-          const createdAt = message.createdAt || message.created_at || message.timestamp || null;
-          const toneClass = role === "user"
-            ? "border-[#27517d] bg-[#132941] text-[#dbeaff]"
-            : "border-[#31445a] bg-[#101c29] text-[#dbe5f1]";
-
-          return (
-            <article className={`rounded-xl border p-3 ${toneClass}`} key={`${role}-${index}`}>
-              <header className="flex items-center justify-between gap-3">
-                <strong className="text-sm font-black uppercase tracking-[0.6px]">
-                  {role === "user" ? "Bạn" : role === "assistant" ? "AI" : role}
-                </strong>
-                {createdAt ? <time className="text-xs font-bold text-[#8fa8c0]">{new Date(createdAt).toLocaleString("vi-VN")}</time> : null}
-              </header>
-              <p className="m-0 mt-2 whitespace-pre-wrap break-words text-sm leading-6">{content}</p>
-            </article>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function buildAttachmentSlot(rootPost, isAuthenticated, onOpenDocument) {
-  if (!rootPost) return null;
-
-  if (rootPost.postType === "document_share") {
-    return renderDocumentShareTeaser(rootPost.attachmentPayload || {}, isAuthenticated, onOpenDocument);
-  }
-
-  if (rootPost.postType === "ai_study_log") {
-    return renderStudyLog(rootPost.attachmentPayload || {});
-  }
-
-  return null;
-}
-
-function DetailSkeleton() {
-  return (
-    <main className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,#1b2a3e,#0e141d_55%)] px-4 py-8 text-[#dbe5f1] sm:px-6">
-      <div className="mx-auto grid max-w-[1120px] gap-5">
-        <div className="h-6 w-52 rounded bg-[#1e2a38] animate-pulse" />
-        <div className="overflow-hidden rounded-2xl border border-[#243142] bg-[#121a24]">
+    <DetailPageShell {...props}>
+        <div className="h-6 w-52 rounded bg-[#e8edf5] animate-pulse" />
+        <div className="overflow-hidden rounded-[24px] border border-[#dbe3ed] bg-white">
           <div className="grid md:grid-cols-[160px_minmax(0,1fr)]">
-            <div className="border-b border-[#243142] bg-[#0f1721] p-4 md:border-b-0 md:border-r">
-              <div className="h-20 w-20 rounded-full bg-[#1d2a39] animate-pulse" />
-              <div className="mt-4 h-4 w-24 rounded bg-[#223244] animate-pulse" />
-              <div className="mt-4 h-20 rounded bg-[#17212d] animate-pulse" />
+            <div className="border-b border-[#dbe3ed] bg-[#f7f9fb] p-4 md:border-b-0 md:border-r">
+              <div className="h-20 w-20 rounded-full bg-[#e8edf5] animate-pulse" />
+              <div className="mt-4 h-4 w-24 rounded bg-[#eef2f7] animate-pulse" />
+              <div className="mt-4 h-20 rounded bg-[#eef2f7] animate-pulse" />
             </div>
             <div className="p-5">
-              <div className="h-4 w-36 rounded bg-[#1d2a39] animate-pulse" />
-              <div className="mt-5 h-8 w-1/2 rounded bg-[#223244] animate-pulse" />
-              <div className="mt-4 h-24 rounded bg-[#17212d] animate-pulse" />
+              <div className="h-4 w-36 rounded bg-[#e8edf5] animate-pulse" />
+              <div className="mt-5 h-8 w-1/2 rounded bg-[#eef2f7] animate-pulse" />
+              <div className="mt-4 h-24 rounded bg-[#eef2f7] animate-pulse" />
             </div>
           </div>
         </div>
-        <div className="h-12 rounded-2xl bg-[#121a24] animate-pulse" />
-        <div className="h-48 rounded-2xl bg-[#121a24] animate-pulse" />
-      </div>
-    </main>
+        <div className="h-12 rounded-[24px] border border-[#dbe3ed] bg-white animate-pulse" />
+        <div className="h-48 rounded-[24px] border border-[#dbe3ed] bg-white animate-pulse" />
+    </DetailPageShell>
   );
 }
 
-function EmptyState({ title, description, action }) {
+function EmptyState({ title, description, action, ...shellProps }) {
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,#1b2a3e,#0e141d_55%)] px-4 py-8 text-[#dbe5f1] sm:px-6">
-      <div className="mx-auto max-w-[1120px] rounded-2xl border border-[#263444] bg-[#121a24] p-8 text-center shadow-[0_18px_48px_rgba(4,10,18,0.22)]">
-        <h1 className="m-0 text-[28px] font-black text-[#f5f9fd]">{title}</h1>
-        <p className="mx-auto mt-3 max-w-[520px] text-[15px] leading-7 text-[#9eb0c4]">{description}</p>
+    <DetailPageShell {...shellProps}>
+      <div className="mx-auto max-w-[1120px] rounded-[24px] border border-[#dbe3ed] bg-white p-8 text-center shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
+        <h1 className="m-0 text-[28px] font-black text-[#172033]">{title}</h1>
+        <p className="mx-auto mt-3 max-w-[520px] text-[15px] leading-7 text-[#66758a]">{description}</p>
         <div className="mt-6">{action}</div>
       </div>
-    </main>
+    </DetailPageShell>
   );
 }
 
@@ -343,7 +96,8 @@ export default function CommunityPostDetailPage() {
   const { id, postId } = useParams();
   const activePostId = id || postId;
   const location = useLocation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const composerRef = useRef(null);
   const [threadDetail, setThreadDetail] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -352,6 +106,16 @@ export default function CommunityPostDetailPage() {
   const [replyError, setReplyError] = useState("");
   const [actionError, setActionError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [acceptingReplyId, setAcceptingReplyId] = useState(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const displayName = getUserDisplayName(user);
+
+  function handleSidebarSectionChange(sectionId) {
+    if (!sectionId || sectionId === "community") return;
+    navigate("/dashboard", {
+      state: { activeSection: sectionId },
+    });
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -367,7 +131,7 @@ export default function CommunityPostDetailPage() {
         }
       } catch (err) {
         if (isMounted) {
-          setError(err.response?.data?.error || err.response?.data?.message || "Không thể tải chủ đề cộng đồng.");
+          setError(err.response?.data?.error || err.response?.data?.message || "Could not load this community thread.");
         }
       } finally {
         if (isMounted) {
@@ -406,11 +170,45 @@ export default function CommunityPostDetailPage() {
         window.open(result.signedUrl, "_blank", "noopener,noreferrer");
       }
     } catch (err) {
-      setActionError(err.response?.data?.error || "Không thể mở tài liệu đính kèm.");
+      setActionError(err.response?.data?.error || "Could not open the attached document.");
     }
   }
 
-  const attachmentSlot = buildAttachmentSlot(normalizedDetail.rootPost, isAuthenticated, handleOpenDocument);
+  const attachmentSlot = normalizedDetail.rootPost && ["document_share", "ai_study_log"].includes(normalizedDetail.rootPost.postType)
+    ? (
+        <CommunityAttachmentPreview
+          post={normalizedDetail.rootPost}
+          isAuthenticated={isAuthenticated}
+          onOpenDocument={handleOpenDocument}
+          variant="light"
+        />
+      )
+    : null;
+  const detailNavItems = [
+    { id: "find", label: "Find", to: `/community${buildCommunityPanelSearch({ panel: "find" })}` },
+    { id: "new", label: "New Post", to: `/community${buildCommunityPanelSearch({ panel: "new", composeType: "discussion" })}` },
+    { id: "people", label: "Top Contributors", to: `/community${buildCommunityPanelSearch({ panel: "people" })}` },
+  ];
+  const detailBannerBadges = normalizedDetail.rootPost?.category?.label ? [normalizedDetail.rootPost.category.label] : [];
+  const detailBannerChips = (normalizedDetail.rootPost?.subjects || [])
+    .map((subject) => getSafeText(subject.code) || getSafeText(subject.name))
+    .filter(Boolean);
+  const replyCount = normalizedDetail.rootPost?.metrics?.replyCount || 0;
+  const detailBannerMeta = normalizedDetail.rootPost ? [
+    `By ${getSafeText(normalizedDetail.rootPost.author?.displayName) || getSafeText(normalizedDetail.rootPost.author?.email, "Student")}`,
+    formatForumDate(normalizedDetail.rootPost.createdAt, { includeTime: true }),
+    `${replyCount} ${replyCount === 1 ? "reply" : "replies"}`,
+  ] : [];
+  const isPostOwner = Boolean(
+    user?.id
+      && normalizedDetail.rootPost?.author?.id
+      && String(user.id) === String(normalizedDetail.rootPost.author.id)
+  );
+  const canAcceptReplies = Boolean(
+    isAuthenticated
+      && isPostOwner
+      && normalizedDetail.rootPost?.postType === "question"
+  );
 
   function focusComposer() {
     composerRef.current?.focus();
@@ -426,7 +224,7 @@ export default function CommunityPostDetailPage() {
 
     const content = replyBody.trim();
     if (!content) {
-      setReplyError("Vui lòng nhập câu trả lời trước khi gửi.");
+      setReplyError("Enter a reply before submitting.");
       return;
     }
 
@@ -452,7 +250,7 @@ export default function CommunityPostDetailPage() {
       setReplyBody("");
       setActionError("");
     } catch (err) {
-      setReplyError(err.response?.data?.error || err.response?.data?.message || "Không thể gửi câu trả lời.");
+      setReplyError(err.response?.data?.error || err.response?.data?.message || "Could not submit your reply.");
     } finally {
       setIsSubmitting(false);
     }
@@ -465,25 +263,57 @@ export default function CommunityPostDetailPage() {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
       } else {
-        window.prompt("Sao chép liên kết chủ đề", shareUrl);
+        window.prompt("Copy thread link", shareUrl);
       }
     } catch (_) {
-      window.prompt("Sao chép liên kết chủ đề", shareUrl);
+      window.prompt("Copy thread link", shareUrl);
+    }
+  }
+
+  async function handleAcceptReply(reply) {
+    if (!canAcceptReplies || !reply?.id || !normalizedDetail.rootPost?.id) {
+      return;
+    }
+
+    setAcceptingReplyId(reply.id);
+    setActionError("");
+
+    try {
+      const response = await acceptCommunityReply(normalizedDetail.rootPost.id, reply.id);
+      setThreadDetail(response);
+      setReplyError("");
+    } catch (err) {
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not mark this reply as the accepted answer.");
+    } finally {
+      setAcceptingReplyId(null);
     }
   }
 
   if (isLoading) {
-    return <DetailSkeleton />;
+    return (
+      <DetailSkeleton
+        isAuthenticated={isAuthenticated}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onSidebarSectionChange={handleSidebarSectionChange}
+        onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
+        userName={displayName}
+      />
+    );
   }
 
   if (error) {
     return (
       <EmptyState
-        title="Không tải được chủ đề"
+        isAuthenticated={isAuthenticated}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onSidebarSectionChange={handleSidebarSectionChange}
+        onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
+        userName={displayName}
+        title="Could not load thread"
         description={error}
         action={(
           <button
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#3f6ea0] bg-[#17345a] px-5 text-sm font-black text-[#e6f2ff]"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-5 text-sm font-black text-white"
             type="button"
             onClick={() => {
               setThreadDetail(null);
@@ -495,12 +325,12 @@ export default function CommunityPostDetailPage() {
                   setIsLoading(false);
                 })
                 .catch((err) => {
-                  setError(err.response?.data?.error || err.response?.data?.message || "Không thể tải chủ đề cộng đồng.");
+                  setError(err.response?.data?.error || err.response?.data?.message || "Could not load this community thread.");
                   setIsLoading(false);
                 });
             }}
           >
-            Thử lại
+            Try again
           </button>
         )}
       />
@@ -510,14 +340,19 @@ export default function CommunityPostDetailPage() {
   if (!normalizedDetail.rootPost) {
     return (
       <EmptyState
-        title="Không tìm thấy chủ đề"
-        description="Bài viết này không tồn tại, đã bị xóa hoặc chưa sẵn sàng để hiển thị."
+        isAuthenticated={isAuthenticated}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onSidebarSectionChange={handleSidebarSectionChange}
+        onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
+        userName={displayName}
+        title="Thread not found"
+        description="This post does not exist, has been removed, or is not available yet."
         action={(
           <Link
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#3f6ea0] bg-[#17345a] px-5 text-sm font-black text-[#e6f2ff] no-underline"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-5 text-sm font-black text-white no-underline"
             to="/community"
           >
-            Quay lại cộng đồng
+            Back to community
           </Link>
         )}
       />
@@ -525,15 +360,24 @@ export default function CommunityPostDetailPage() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-[radial-gradient(circle_at_top,#1b2a3e,#0e141d_55%)] px-4 py-8 text-[#dbe5f1] sm:px-6">
-      <div className="mx-auto grid max-w-[1120px] gap-5">
-        <Link className="inline-flex w-fit items-center gap-2 text-sm font-black text-[#9cc7ff] no-underline transition hover:text-[#c2ddff]" to="/community">
-          <span aria-hidden="true">←</span>
-          <span>Quay lại trang cộng đồng</span>
-        </Link>
+    <DetailPageShell
+      isAuthenticated={isAuthenticated}
+      isSidebarCollapsed={isSidebarCollapsed}
+      onSidebarSectionChange={handleSidebarSectionChange}
+      onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
+      userName={displayName}
+    >
+        <CommunityBanner
+          title={normalizedDetail.rootPost.title || "Untitled thread"}
+          navItems={detailNavItems}
+          badges={detailBannerBadges}
+          chips={detailBannerChips}
+          metaItems={detailBannerMeta}
+          LinkComponent={Link}
+        />
 
         {actionError ? (
-          <div className="rounded-xl border border-[#6f2830] bg-[#34161b] px-4 py-3 text-sm font-bold text-[#ffbdc3]">
+          <div className="rounded-xl border border-[#fecaca] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#991b1b]">
             {actionError}
           </div>
         ) : null}
@@ -545,14 +389,17 @@ export default function CommunityPostDetailPage() {
           onReply={focusComposer}
           onShare={handleShare}
           LinkComponent={Link}
+          variant="light"
+          showTitle={false}
+          showCreatedMeta
         />
 
-        <section className="flex items-center gap-4 rounded-2xl border border-[#243142] bg-[#121a24] px-5 py-4">
-          <span className="h-px flex-1 bg-[#2a3a4c]" />
-          <h2 className="m-0 text-sm font-black uppercase tracking-[0.9px] text-[#aac2d9]">
-            Ý kiến sinh viên ({normalizedDetail.replies.length} trả lời)
+        <section className="flex items-center gap-4 rounded-[24px] border border-[#dbe3ed] bg-white px-5 py-4 shadow-[0_18px_40px_rgba(20,31,48,0.05)]">
+          <span className="h-px flex-1 bg-[#dbe3ed]" />
+          <h2 className="m-0 text-sm font-black uppercase tracking-[0.9px] text-[#66758a]">
+            Users replies ({normalizedDetail.replies.length})
           </h2>
-          <span className="h-px flex-1 bg-[#2a3a4c]" />
+          <span className="h-px flex-1 bg-[#dbe3ed]" />
         </section>
 
         <section className="grid gap-4">
@@ -561,37 +408,52 @@ export default function CommunityPostDetailPage() {
               key={reply.id}
               post={reply}
               isRootPost={false}
+              footerActionSlot={reply.isAccepted ? (
+                <span className="inline-flex min-h-10 items-center rounded-full border border-[#bfe5d3] bg-[#ecfff5] px-4 text-sm font-black text-[#166534]">
+                  Accepted answer
+                </span>
+              ) : canAcceptReplies ? (
+                <button
+                  className="inline-flex min-h-10 items-center rounded-full border border-[#bfe5d3] bg-white px-4 text-sm font-black text-[#166534] transition hover:border-[#16a34a] hover:bg-[#f0fdf4] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:text-[#7f95ac]"
+                  disabled={Boolean(acceptingReplyId)}
+                  onClick={() => handleAcceptReply(reply)}
+                  type="button"
+                >
+                  {acceptingReplyId === reply.id ? "Saving..." : "Mark as answer"}
+                </button>
+              ) : null}
               onReply={focusComposer}
               onShare={handleShare}
               LinkComponent={Link}
+              variant="light"
             />
           ))}
         </section>
 
-        <section className="rounded-2xl border border-[#243142] bg-[#121a24] p-5 shadow-[0_18px_48px_rgba(4,10,18,0.22)]">
+        <section className="rounded-[24px] border border-[#dbe3ed] bg-white p-5 shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#7f9ab5]">Tham gia thảo luận</p>
-              <h2 className="mt-2 text-2xl font-black text-[#f5f9fd]">Câu trả lời của bạn</h2>
+              <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#66758a]">Join the discussion</p>
+              <h2 className="mt-2 text-2xl font-black text-[#172033]">Your reply</h2>
             </div>
             {!isAuthLoading && !isAuthenticated ? (
               <Link
-                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#35506f] px-4 text-sm font-black text-[#a8c6e7] no-underline transition hover:border-[#4e77a1] hover:text-[#d8ebff]"
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#dbe3ed] px-4 text-sm font-black text-[#4648d4] no-underline transition hover:border-[#4648d4] hover:bg-[#eef2ff]"
                 to="/login"
                 state={{ from: location }}
               >
-                Đăng nhập để trả lời
+                Log in to reply
               </Link>
             ) : null}
           </div>
 
           <form className="grid gap-3" onSubmit={handleSubmitReply}>
             <label className="grid gap-2">
-              <span className="text-sm font-bold text-[#9eb0c4]">Câu trả lời của bạn</span>
+              <span className="text-sm font-bold text-[#66758a]">Your reply</span>
               <textarea
                 ref={composerRef}
-                className="min-h-[180px] w-full resize-y rounded-2xl border border-[#29405a] bg-[#0f1823] px-4 py-3 text-[15px] leading-7 text-[#e2e9f2] outline-none transition placeholder:text-[#5f7286] focus:border-[#4d7bb0] focus:shadow-[0_0_0_4px_rgba(77,123,176,0.15)] disabled:cursor-not-allowed disabled:border-[#223142] disabled:bg-[#111924] disabled:text-[#7b8fa4]"
-                placeholder={isAuthenticated ? "Chia sẻ góc nhìn, tài liệu hoặc kinh nghiệm học tập của bạn..." : "Đăng nhập để gửi câu trả lời cho chủ đề này."}
+                className="min-h-[180px] w-full resize-y rounded-[22px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3 text-[15px] leading-7 text-[#172033] outline-none transition placeholder:text-[#7a8798] focus:border-[#4648d4] focus:bg-white focus:shadow-[0_0_0_4px_rgba(70,72,212,0.12)] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:bg-[#f2f5f8] disabled:text-[#7b8fa4]"
+                placeholder={isAuthenticated ? "Share your explanation, resource, or study experience..." : "Log in to reply to this thread."}
                 value={replyBody}
                 onChange={(event) => setReplyBody(event.target.value)}
                 disabled={!isAuthenticated || isSubmitting}
@@ -599,29 +461,28 @@ export default function CommunityPostDetailPage() {
             </label>
 
             {replyError ? (
-              <div className="rounded-xl border border-[#6f2830] bg-[#34161b] px-4 py-3 text-sm font-bold text-[#ffbdc3]">
+              <div className="rounded-xl border border-[#fecaca] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#991b1b]">
                 {replyError}
               </div>
             ) : null}
 
             {!isAuthLoading && !isAuthenticated ? (
-              <div className="rounded-xl border border-dashed border-[#36516f] bg-[#0f1823] px-4 py-3 text-sm text-[#8ba4bc]">
-                Khách chỉ có thể đọc chủ đề và xem teaser đính kèm. Hãy đăng nhập để gửi phản hồi mới.
+              <div className="rounded-xl border border-dashed border-[#c7d2e2] bg-[#f8fafc] px-4 py-3 text-sm text-[#66758a]">
+                Guests can read the thread and view previews. Log in to join the conversation.
               </div>
             ) : null}
 
             <div className="flex items-center justify-end">
               <button
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#3970a8] bg-[#1a4678] px-5 text-sm font-black text-[#eff6ff] transition hover:bg-[#20558f] disabled:cursor-not-allowed disabled:border-[#29405a] disabled:bg-[#162434] disabled:text-[#7f95ac]"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-5 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:border-[#c7d2e2] disabled:bg-[#e5e7eb] disabled:text-[#7f95ac]"
                 type="submit"
                 disabled={!isAuthenticated || isSubmitting || !replyBody.trim()}
               >
-                {isSubmitting ? "Đang gửi..." : "Gửi câu trả lời"}
+                {isSubmitting ? "Posting..." : "Post Reply"}
               </button>
             </div>
           </form>
         </section>
-      </div>
-    </main>
+    </DetailPageShell>
   );
 }

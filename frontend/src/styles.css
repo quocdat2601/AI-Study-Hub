@@ -16,6 +16,11 @@ body,
   min-height: 100%;
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 body {
   background: #f4f6f8;
   color: #172033;

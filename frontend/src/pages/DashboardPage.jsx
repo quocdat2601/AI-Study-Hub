@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import DashboardSidebar, { dashboardSidebarItems } from "../components/dashboard/DashboardSidebar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { getDashboardData } from "../services/dashboardApi.js";
@@ -10,6 +10,11 @@ function getDisplayName(user) {
   if (user?.full_name) return user.full_name;
   if (user?.email) return user.email.split("@")[0].replace(/[._-]+/g, " ");
   return "Student";
+}
+
+function normalizeDashboardSection(value) {
+  const allowedSections = new Set([...dashboardSidebarItems.map((item) => item.id), "settings"]);
+  return allowedSections.has(value) ? value : "dashboard";
 }
 
 function getSectionCopy(activeSection) {
@@ -103,7 +108,8 @@ function DashboardDataSkeleton() {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [activeSection, setActiveSection] = useState("dashboard");
+  const location = useLocation();
+  const [activeSection, setActiveSection] = useState(() => normalizeDashboardSection(location.state?.activeSection));
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
@@ -113,6 +119,11 @@ export default function DashboardPage() {
   const contentClass = isSidebarCollapsed
     ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
     : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
+
+  useEffect(() => {
+    const requestedSection = normalizeDashboardSection(location.state?.activeSection);
+    setActiveSection(requestedSection);
+  }, [location.state]);
 
   useEffect(() => {
     let isMounted = true;
