@@ -66,7 +66,7 @@ async function getDocumentPdf({ userId, docId }) {
     throw createError(404, 'File not found');
   }
 
-  const blob = await supabaseService.downloadFile(storagePath);
+  const blob = await supabaseService.downloadFileBlob(storagePath);
   const buffer = Buffer.from(await blob.arrayBuffer());
 
   return {

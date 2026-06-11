@@ -157,10 +157,10 @@ class ChatModel {
     return data || [];
   }
 
-  static async addMessage(sessionId, role, content) {
+  static async addMessage(sessionId, role, content, metadata = {}) {
     const { data, error } = await supabase
       .from('chat_messages')
-      .insert([{ session_id: sessionId, role, content }])
+      .insert([{ session_id: sessionId, role, content, metadata: metadata || {} }])
       .select()
       .single();
 

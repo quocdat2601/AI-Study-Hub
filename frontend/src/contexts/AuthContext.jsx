@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import api from "../services/api.js";
 import {
   clearRecoveryMode,
-  clearStaleAuthSession,
   getAuthSession,
   hasRecoveryContext,
   loginWithGoogle,
@@ -75,10 +74,17 @@ export function AuthProvider({ children }) {
           setUser(currentUser);
         }
       } catch (err) {
-        await logoutAuth().catch(() => {});
+        const isUnauthorized = err.response?.status === 401;
+        if (isUnauthorized) {
+          await logoutAuth().catch(() => {});
+        }
         if (isMounted) {
-          setUser(null);
-          setHasSession(false);
+          if (isUnauthorized) {
+            setUser(null);
+            setHasSession(false);
+          } else {
+            setHasSession(Boolean(session?.access_token));
+          }
           setIsRecoveryMode(false);
         }
       } finally {
@@ -93,9 +99,7 @@ export function AuthProvider({ children }) {
         const session = await getAuthSession();
         await hydrateFromSession(session, hasRecoveryContext());
       } catch {
-        await clearStaleAuthSession();
         if (isMounted) {
-          setUser(null);
           setHasSession(false);
           setIsRecoveryMode(false);
           setIsLoading(false);
@@ -136,7 +140,9 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      if (isMounted) {
+      const shouldRefreshInBackground = Boolean(userRef.current && session?.access_token && !hasRecoveryContext());
+
+      if (isMounted && !shouldRefreshInBackground) {
         setIsLoading(true);
       }
 
