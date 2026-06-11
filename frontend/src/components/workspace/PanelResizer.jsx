@@ -1,28 +1,31 @@
-import React, { useCallback, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { GripVertical } from "lucide-react";
 
 export default function PanelResizer({ onResize }) {
   const draggingRef = useRef(false);
+  const onResizeRef = useRef(onResize);
 
-  const onMouseMove = useCallback(
-    (event) => {
-      if (!draggingRef.current) return;
-      onResize(event.movementX);
-    },
-    [onResize]
-  );
-
-  const stopDrag = useCallback(() => {
-    draggingRef.current = false;
-    window.removeEventListener("mousemove", onMouseMove);
-    window.removeEventListener("mouseup", stopDrag);
-  }, [onMouseMove]);
+  useEffect(() => {
+    onResizeRef.current = onResize;
+  }, [onResize]);
 
   function startDrag(event) {
     event.preventDefault();
     draggingRef.current = true;
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", stopDrag);
+
+    function handleMouseMove(moveEvent) {
+      if (!draggingRef.current) return;
+      onResizeRef.current(moveEvent.movementX);
+    }
+
+    function handleMouseUp() {
+      draggingRef.current = false;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
   }
 
   return (

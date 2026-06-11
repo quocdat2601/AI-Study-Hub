@@ -4,6 +4,11 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    hmr: {
+      clientPort: 5173,
+    },
+  },
   optimizeDeps: {
     include: ["pdfjs-dist"],
   },

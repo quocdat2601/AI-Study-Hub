@@ -231,8 +231,8 @@ async function sendMessage({ sessionId, userId, content }) {
   activityService.log({
     userId,
     action: 'chat.message.send',
-    targetType: 'chat_session',
-    targetId: session.id,
+    targetType: 'document',
+    targetId: documents[0]?.id || null,
   });
 
   return { userMessage, assistantMessage };

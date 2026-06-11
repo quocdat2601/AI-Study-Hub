@@ -19,7 +19,7 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen text-[#191c1e]" style={{ background: "#f7f9fb url('/landing/soft-wave-bg.svg') center top / cover fixed" }}>
+    <div className="landing-page min-h-screen bg-[#f4f6fa] text-[#0f172a]">
       <LandingHeader
         isAuthenticated={isAuthenticated}
         isLoading={isLoading}

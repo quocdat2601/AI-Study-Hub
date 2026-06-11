@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { askDocument, getAiModelStatus, getAiUsage, processDocumentForAi } from "../services/aiApi.js";
 import { getChatSessionMessages, getOrCreateDocumentChatSession } from "../services/chatApi.js";
 import { listDocuments } from "../services/documentApi.js";
@@ -183,13 +183,7 @@ export default function WorkspacePage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (selectedId) {
-      loadChatHistory(selectedId);
-    }
-  }, [selectedId]);
-
-  async function loadChatHistory(docId) {
+  const loadChatHistory = useCallback(async (docId) => {
     try {
       setIsLoadingMessages(true);
       setError("");
@@ -204,7 +198,13 @@ export default function WorkspacePage() {
     } finally {
       setIsLoadingMessages(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) {
+      loadChatHistory(selectedId);
+    }
+  }, [selectedId, loadChatHistory]);
 
   async function refreshUsage(model = selectedModel) {
     try {

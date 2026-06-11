@@ -26,7 +26,7 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
     } finally {
       setIsLoading(false);
     }
-  }, [document?.id]);
+  }, [document]);
 
   useEffect(() => {
     if (!isOpen || !document) return;

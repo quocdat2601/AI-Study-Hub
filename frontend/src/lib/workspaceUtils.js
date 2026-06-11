@@ -33,7 +33,9 @@ export function getExtractionStatus(doc) {
 }
 
 export function needsTextExtraction(doc) {
-  return getExtractionStatus(doc) !== "ready";
+  const status = getExtractionStatus(doc);
+  // Chỉ thử lại khi đang pending — empty/failed đã biết kết quả, không cần gọi lại.
+  return status === "pending";
 }
 
 export function mapWorkspaceDocument(doc, bookmarkIds, userId) {

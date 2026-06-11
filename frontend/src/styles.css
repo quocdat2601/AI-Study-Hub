@@ -345,3 +345,26 @@ html.dark .workspace-scroll::-webkit-scrollbar-thumb {
   object-fit: cover;
   object-position: center;
 }
+
+/* Landing CTA — override global `a { color: inherit }` */
+.landing-btn-primary {
+  background: #ffffff;
+  color: #4648d4 !important;
+  text-decoration: none;
+}
+
+.landing-btn-primary:hover {
+  background: #f8fafc;
+  color: #3b3dc4 !important;
+}
+
+.landing-btn-outline {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #ffffff !important;
+  text-decoration: none;
+}
+
+.landing-btn-outline:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff !important;
+}

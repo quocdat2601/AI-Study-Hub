@@ -186,11 +186,21 @@ export default function useAiWorkspace() {
       return;
     }
 
+    const cached = pdfCacheRef.current.get(docId);
+    if (cached) {
+      setPdfBytes(cached);
+      setPdfError("");
+      setIsLoadingPdf(false);
+      return;
+    }
+
     setIsLoadingPdf(true);
 
     try {
       const buffer = await getDocumentPreview(docId);
-      setPdfBytes(new Uint8Array(buffer.slice(0)));
+      const bytes = new Uint8Array(buffer.slice(0));
+      pdfCacheRef.current.set(docId, bytes);
+      setPdfBytes(bytes);
     } catch (err) {
       setPdfError(err.response?.data?.error || "Could not load document preview");
     } finally {
@@ -211,16 +221,16 @@ export default function useAiWorkspace() {
       setTotalPages(1);
       setExtractionStatus(getExtractionStatus(doc.raw));
 
-      await Promise.all([
-        loadChatForDocument(docId),
-        prepareDocumentText(doc),
-        loadPdfPreview(docId, doc),
-      ]);
+      // Tải song song — không chờ hết mới hiện UI (tránh lúc nhanh lúc chậm).
+      void loadChatForDocument(docId);
+      void prepareDocumentText(doc);
+      void loadPdfPreview(docId, doc);
     },
     [workspaceDocuments, loadChatForDocument, prepareDocumentText, loadPdfPreview]
   );
 
   const initialSelectionDoneRef = useRef(false);
+  const pdfCacheRef = useRef(new Map());
 
   useEffect(() => {
     if (initialSelectionDoneRef.current || isLoadingDocs || filteredDocuments.length === 0) return;
