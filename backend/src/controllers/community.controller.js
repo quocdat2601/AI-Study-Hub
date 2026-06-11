@@ -49,6 +49,7 @@ async function createPost(req, res, next) {
       postType: req.body.postType,
       title: req.body.title,
       body: req.body.body,
+      subjectIds: req.body.subjectIds,
       subjectId: req.body.subjectId,
       documentId: req.body.documentId,
       chatSessionId: req.body.chatSessionId,

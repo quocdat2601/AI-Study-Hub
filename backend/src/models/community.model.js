@@ -2,7 +2,7 @@ const supabase = require('../config/supabase');
 
 const POST_SELECT = `
   *,
-  subjects (id, name, code),
+  subjects:subjects!community_posts_subject_id_fkey (id, name, code),
   users!community_posts_user_id_fkey (id, email, role, status),
   documents (
     id,
@@ -36,6 +36,12 @@ const POST_SELECT = `
 const REPLY_SELECT = `
   *,
   users!community_replies_user_id_fkey (id, email, role, status)
+`;
+
+const POST_SUBJECT_SELECT = `
+  post_id,
+  subject_id,
+  subjects (id, name, code)
 `;
 
 class CommunityModel {
@@ -145,6 +151,42 @@ class CommunityModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async listPostSubjectLinksByPostIds(postIds) {
+    if (!postIds.length) return [];
+
+    const { data, error } = await supabase
+      .from('community_post_subjects')
+      .select(POST_SUBJECT_SELECT)
+      .in('post_id', postIds);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async replacePostSubjects(postId, subjectIds) {
+    const { error: deleteError } = await supabase
+      .from('community_post_subjects')
+      .delete()
+      .eq('post_id', postId);
+
+    if (deleteError) throw deleteError;
+
+    if (!subjectIds.length) return [];
+
+    const rows = subjectIds.map((subjectId) => ({
+      post_id: postId,
+      subject_id: subjectId,
+    }));
+
+    const { data, error } = await supabase
+      .from('community_post_subjects')
+      .insert(rows)
+      .select(POST_SUBJECT_SELECT);
+
+    if (error) throw error;
+    return data || [];
   }
 
   static async createReply(replyData) {

@@ -8,11 +8,12 @@ const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 
 const FEED_LIMIT_MAX = 60;
-const POST_TYPES = new Set(['question', 'document_share', 'ai_study_log']);
+const POST_TYPES = new Set(['discussion', 'question', 'document_share', 'ai_study_log']);
 const FEED_TABS = new Set(['latest', 'trending', 'unanswered', 'solved']);
 const POST_STATUSES = new Set(['active', 'hidden', 'removed']);
 const REPORT_STATUSES = new Set(['open', 'resolved', 'dismissed']);
 const REPLY_STATUSES = new Set(['active', 'hidden', 'removed']);
+const POST_SUBJECT_LIMIT = 3;
 
 function normalizeTab(value) {
   const tab = String(value || 'latest').trim().toLowerCase();
@@ -62,6 +63,38 @@ function requireText(value, fieldName, maxLength) {
     throw createError(400, `${fieldName} must be ${maxLength} characters or fewer`);
   }
   return cleaned;
+}
+
+function requireTextWithBounds(value, fieldName, { minLength, maxLength } = {}) {
+  const cleaned = requireText(value, fieldName, maxLength);
+
+  if (minLength && cleaned.length < minLength) {
+    throw createError(400, `${fieldName} must be at least ${minLength} characters`);
+  }
+
+  return cleaned;
+}
+
+function normalizeSubjectIds(subjectIds, subjectId) {
+  const rawValues = Array.isArray(subjectIds)
+    ? subjectIds
+    : subjectIds != null
+      ? [subjectIds]
+      : subjectId != null
+        ? [subjectId]
+        : [];
+
+  const normalizedIds = [...new Set(
+    rawValues
+      .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+      .map((value) => normalizeNumericId(value, 'subjectId'))
+  )];
+
+  if (normalizedIds.length > POST_SUBJECT_LIMIT) {
+    throw createError(400, `subjectIds must contain ${POST_SUBJECT_LIMIT} subjects or fewer`);
+  }
+
+  return normalizedIds;
 }
 
 function displayNameFromEmail(email) {
@@ -183,6 +216,24 @@ async function buildChatAttachment(sessionId, includeMessages = false) {
   };
 }
 
+async function ensureSubjects(subjectIds, subjectId) {
+  const normalizedSubjectIds = normalizeSubjectIds(subjectIds, subjectId);
+  if (!normalizedSubjectIds.length) {
+    return [];
+  }
+
+  const subjects = await SubjectModel.listSubjects();
+  const subjectById = new Map((subjects || []).map((subject) => [Number(subject.id), subject]));
+
+  return normalizedSubjectIds.map((id) => {
+    const subject = subjectById.get(Number(id));
+    if (!subject) {
+      throw createError(404, 'Subject not found');
+    }
+    return subject;
+  });
+}
+
 function groupBy(items, key) {
   return (items || []).reduce((map, item) => {
     const value = item[key];
@@ -192,13 +243,39 @@ function groupBy(items, key) {
   }, new Map());
 }
 
+function mapLinkedSubjects(post, subjectLinksByPostId) {
+  const linkedSubjects = (subjectLinksByPostId.get(post.id) || [])
+    .map((link) => link.subjects ? ({
+      id: link.subjects.id,
+      name: link.subjects.name,
+      code: link.subjects.code,
+    }) : null)
+    .filter(Boolean);
+
+  if (linkedSubjects.length) {
+    return linkedSubjects;
+  }
+
+  if (post.subjects?.id) {
+    return [{
+      id: post.subjects.id,
+      name: post.subjects.name,
+      code: post.subjects.code,
+    }];
+  }
+
+  return [];
+}
+
 async function hydratePosts(posts, options = {}) {
   const includeReplies = Boolean(options.includeReplies);
   const includeFullAttachments = Boolean(options.includeFullAttachments);
   const postIds = (posts || []).map((post) => post.id);
   const replies = await CommunityModel.listRepliesByPostIds(postIds);
+  const subjectLinks = await CommunityModel.listPostSubjectLinksByPostIds(postIds);
   const visibleReplies = replies.filter((reply) => options.includeHiddenReplies || reply.status === 'active');
   const repliesByPostId = groupBy(visibleReplies, 'post_id');
+  const subjectLinksByPostId = groupBy(subjectLinks, 'post_id');
   const replyIds = visibleReplies.map((reply) => reply.id);
   const [postVotes, replyVotes] = await Promise.all([
     CommunityModel.listVotesForPosts(postIds),
@@ -210,6 +287,11 @@ async function hydratePosts(posts, options = {}) {
   return Promise.all((posts || []).map(async (post) => {
     const postReplyRows = repliesByPostId.get(post.id) || [];
     const acceptedReply = postReplyRows.find((reply) => reply.id === post.solved_reply_id && reply.status === 'active') || null;
+    const latestReply = [...postReplyRows].sort((a, b) => {
+      const left = new Date(a.updated_at || a.created_at || 0).getTime();
+      const right = new Date(b.updated_at || b.created_at || 0).getTime();
+      return right - left;
+    })[0] || null;
     const mappedReplies = postReplyRows.map((reply) => ({
       id: reply.id,
       postId: reply.post_id,
@@ -228,6 +310,8 @@ async function hydratePosts(posts, options = {}) {
     const chatAttachment = post.post_type === 'ai_study_log'
       ? await buildChatAttachment(post.chat_session_id, includeFullAttachments)
       : null;
+    const linkedSubjects = mapLinkedSubjects(post, subjectLinksByPostId);
+    const primarySubject = linkedSubjects[0] || null;
 
     return {
       id: post.id,
@@ -238,12 +322,16 @@ async function hydratePosts(posts, options = {}) {
       status: post.status,
       createdAt: post.created_at,
       updatedAt: post.updated_at,
-      subject: post.subjects ? {
-        id: post.subjects.id,
-        name: post.subjects.name,
-        code: post.subjects.code,
-      } : null,
+      subject: primarySubject,
+      subjects: linkedSubjects,
       author: buildAuthor(post.users),
+      lastActivity: latestReply ? {
+        at: latestReply.updated_at || latestReply.created_at,
+        user: buildAuthor(latestReply.users),
+      } : {
+        at: post.updated_at || post.created_at,
+        user: buildAuthor(post.users),
+      },
       voteCount: buildVoteCount(postVotesByPostId.get(post.id) || []),
       replyCount: mappedReplies.length,
       solved: Boolean(acceptedReply),
@@ -284,13 +372,7 @@ async function listPublicFeed({ tab, postType, subjectCode, limit }) {
   const normalizedPostType = normalizePostType(postType);
   const normalizedSubjectCode = String(subjectCode || '').trim().toUpperCase();
   const normalizedLimit = normalizeLimit(limit);
-
-  const [posts, subjects] = await Promise.all([
-    CommunityModel.listPosts(),
-    SubjectModel.listSubjects(),
-  ]);
-
-  const subjectByCode = new Map((subjects || []).map((subject) => [subject.code, subject]));
+  const posts = await CommunityModel.listPosts();
   const activePosts = posts.filter((post) => post.status === 'active');
   let filtered = activePosts;
 
@@ -298,14 +380,11 @@ async function listPublicFeed({ tab, postType, subjectCode, limit }) {
     filtered = filtered.filter((post) => post.post_type === normalizedPostType);
   }
 
+  let hydrated = await hydratePosts(filtered, { includeReplies: false, includeFullAttachments: false });
   if (normalizedSubjectCode) {
-    const subject = subjectByCode.get(normalizedSubjectCode);
-    filtered = subject
-      ? filtered.filter((post) => Number(post.subject_id) === Number(subject.id))
-      : [];
+    hydrated = hydrated.filter((post) => (post.subjects || []).some((subject) => subject.code === normalizedSubjectCode));
   }
 
-  const hydrated = await hydratePosts(filtered, { includeReplies: false, includeFullAttachments: false });
   return sortFeed(hydrated, normalizedTab).slice(0, normalizedLimit);
 }
 
@@ -331,11 +410,18 @@ async function listPublicSubjects() {
     CommunityModel.listPosts(),
   ]);
   const activePosts = posts.filter((post) => post.status === 'active');
-  const counts = activePosts.reduce((map, post) => {
-    if (!post.subject_id) return map;
-    map.set(post.subject_id, (map.get(post.subject_id) || 0) + 1);
+  const activePostIds = activePosts.map((post) => post.id);
+  const subjectLinks = await CommunityModel.listPostSubjectLinksByPostIds(activePostIds);
+  const counts = subjectLinks.reduce((map, link) => {
+    map.set(link.subject_id, (map.get(link.subject_id) || 0) + 1);
     return map;
   }, new Map());
+  const postsWithLinks = new Set(subjectLinks.map((link) => link.post_id));
+
+  activePosts.forEach((post) => {
+    if (postsWithLinks.has(post.id) || !post.subject_id) return;
+    counts.set(post.subject_id, (counts.get(post.subject_id) || 0) + 1);
+  });
 
   return (subjects || []).map((subject) => ({
     id: subject.id,
@@ -345,26 +431,21 @@ async function listPublicSubjects() {
   }));
 }
 
-async function ensureSubject(subjectId) {
-  if (subjectId == null || subjectId === '') return null;
-  const normalizedSubjectId = normalizeNumericId(subjectId, 'subjectId');
-  const subjects = await SubjectModel.listSubjects();
-  const subject = subjects.find((item) => Number(item.id) === normalizedSubjectId);
-  if (!subject) {
-    throw createError(404, 'Subject not found');
-  }
-  return subject;
-}
-
-async function createPost({ userId, postType, title, body, subjectId, documentId, chatSessionId }) {
+async function createPost({ userId, postType, title, body, subjectIds, subjectId, documentId, chatSessionId }) {
   const normalizedPostType = normalizePostType(postType);
   if (!normalizedPostType) {
     throw createError(400, 'postType is invalid');
   }
 
-  const subject = await ensureSubject(subjectId);
-  const cleanedTitle = requireText(title, 'title', 255);
-  const cleanedBody = requireText(body, 'body', 5000);
+  const resolvedSubjects = await ensureSubjects(subjectIds, subjectId);
+  const cleanedTitle = requireTextWithBounds(title, 'title', {
+    minLength: 10,
+    maxLength: 255,
+  });
+  const cleanedBody = requireTextWithBounds(body, 'body', {
+    minLength: 20,
+    maxLength: 5000,
+  });
   let normalizedDocumentId = null;
   let normalizedChatSessionId = null;
 
@@ -398,7 +479,7 @@ async function createPost({ userId, postType, title, body, subjectId, documentId
   try {
     post = await CommunityModel.createPost({
       user_id: userId,
-      subject_id: subject?.id || null,
+      subject_id: resolvedSubjects[0]?.id || null,
       post_type: normalizedPostType,
       title: cleanedTitle,
       body: cleanedBody,
@@ -413,6 +494,8 @@ async function createPost({ userId, postType, title, body, subjectId, documentId
     throw err;
   }
 
+  await CommunityModel.replacePostSubjects(post.id, resolvedSubjects.map((subject) => subject.id));
+
   activityService.log({
     userId,
     action: 'community.post.create',
@@ -420,7 +503,7 @@ async function createPost({ userId, postType, title, body, subjectId, documentId
     targetId: post.id,
     metadata: {
       postType: normalizedPostType,
-      subjectId: subject?.id || null,
+      subjectIds: resolvedSubjects.map((subject) => subject.id),
       documentId: normalizedDocumentId,
       chatSessionId: normalizedChatSessionId,
     },
@@ -440,21 +523,26 @@ async function updatePost({ postId, userId, updates }) {
   const nextUpdates = {};
   if (updates.title !== undefined) nextUpdates.title = requireText(updates.title, 'title', 255);
   if (updates.body !== undefined) nextUpdates.body = requireText(updates.body, 'body', 5000);
-  if (updates.subjectId !== undefined) {
-    const subject = await ensureSubject(updates.subjectId);
-    nextUpdates.subject_id = subject?.id || null;
-  }
+  const hasSubjectUpdates = updates.subjectIds !== undefined || updates.subjectId !== undefined;
+  const resolvedSubjects = hasSubjectUpdates
+    ? await ensureSubjects(updates.subjectIds, updates.subjectId)
+    : null;
+  if (resolvedSubjects) nextUpdates.subject_id = resolvedSubjects[0]?.id || null;
 
   if (!Object.keys(nextUpdates).length) {
     throw createError(400, 'No supported updates provided');
   }
 
   await CommunityModel.updatePost(normalizedPostId, nextUpdates);
+  if (resolvedSubjects) {
+    await CommunityModel.replacePostSubjects(normalizedPostId, resolvedSubjects.map((subject) => subject.id));
+  }
   activityService.log({
     userId,
     action: 'community.post.update',
     targetType: 'community_post',
     targetId: normalizedPostId,
+    metadata: resolvedSubjects ? { subjectIds: resolvedSubjects.map((subject) => subject.id) } : undefined,
   });
 
   return getPublicPostById(normalizedPostId);
