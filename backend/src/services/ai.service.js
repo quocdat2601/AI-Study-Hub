@@ -201,7 +201,7 @@ async function askDocument({ id, userId, question, mode, model }) {
     ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId }));
   } catch (err) {
     if (err.statusCode !== 400) throw err;
-    const answer = 'I could not process this document for AI automatically. Please make sure it is a readable text-based PDF, or try the "Process for AI" button before asking again.';
+    const answer = 'I could not prepare this document for AI automatically. Please make sure it is a readable text-based PDF, then try asking again.';
     const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer);
     await safeTouchSession(session.id);
 

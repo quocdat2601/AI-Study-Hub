@@ -37,7 +37,7 @@ function getStatusLabel(doc) {
   if (doc.extraction_status === "ready") return "Text ready";
   if (doc.extraction_status === "empty") return "No readable text";
   if (doc.extraction_status === "failed") return "Extraction failed";
-  return "Needs processing";
+  return "Ready to ask";
 }
 
 function buildUserMessage(content) {
@@ -424,7 +424,7 @@ export default function WorkspacePage() {
       setProcessResult((current) => {
         const nextProcessResult = current || {
           document: result.document,
-          chunkCount: result.sources?.length || 0,
+          sourceCount: result.sources?.length || 0,
           status: "ready",
         };
         cacheDocumentChat(selectedDocument.id, { processResult: nextProcessResult });
@@ -504,19 +504,23 @@ export default function WorkspacePage() {
                   <h2 className="mt-2 mb-1 text-2xl font-extrabold">{selectedDocument.title}</h2>
                   <p className="m-0 text-sm text-[#66758a]">{getStatusLabel(selectedDocument)}</p>
                 </div>
-                <button
-                  className="rounded-full border border-[#4648d4] bg-white px-4 py-2 text-sm font-extrabold text-[#4648d4] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isProcessing}
-                  onClick={handleProcess}
-                  type="button"
-                >
-                  {isProcessing ? "Processing..." : "Process for AI"}
-                </button>
+                {processResult ? (
+                  <button
+                    className="rounded-full border border-[#c7c4d7] bg-white px-3 py-1.5 text-xs font-bold text-[#66758a] transition hover:border-[#4648d4] hover:text-[#4648d4] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isProcessing}
+                    onClick={handleProcess}
+                    type="button"
+                  >
+                    {isProcessing ? "Re-processing..." : "Re-process"}
+                  </button>
+                ) : null}
               </div>
 
               {processResult ? (
                 <p className="mt-4 rounded-lg bg-[#eef0ff] px-3 py-2 text-sm text-[#344154]">
-                  Ready for RAG with {processResult.chunkCount} chunk{processResult.chunkCount === 1 ? "" : "s"}.
+                  {Number.isFinite(processResult.chunkCount)
+                    ? `Ready for document Q&A with ${processResult.chunkCount} chunk${processResult.chunkCount === 1 ? "" : "s"}.`
+                    : "Document context is ready for this answer."}
                 </p>
               ) : null}
             </article>
@@ -622,7 +626,7 @@ export default function WorkspacePage() {
             </div>
           )) : (
             <p className="rounded-lg border border-dashed border-[#c7c4d7] p-4 text-sm text-[#66758a]">
-              Select a document and ask a question. The backend will process chunks automatically if needed.
+              Select a document and ask a question. AI Study Hub will prepare the document automatically if needed.
             </p>
           )}
           {isAsking ? (
