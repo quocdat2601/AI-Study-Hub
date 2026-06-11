@@ -9,7 +9,14 @@
 }
 
 :root {
-  --landing-primary: #4648d4;
+  --landing-primary: #4f46e5;
+  --landing-surface: #f8fafc;
+  --landing-ink: #0f172a;
+  --landing-muted: #64748b;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
@@ -18,34 +25,36 @@ body,
   min-height: 100%;
 }
 
-body {
-  background: #f4f6f8;
-  color: #172033;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  margin: 0;
-  user-select: none;
-}
+@layer base {
+  body {
+    background: #f4f6f8;
+    color: #172033;
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0;
+    user-select: none;
+  }
 
-html.dark body {
-  background: #0f172a;
-  color: #e2e8f0;
-}
+  html.dark body {
+    background: #0f172a;
+    color: #e2e8f0;
+  }
 
-a {
-  color: inherit;
-}
+  a {
+    color: inherit;
+  }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
 
-input,
-select,
-textarea {
-  user-select: text;
+  input,
+  select,
+  textarea {
+    user-select: text;
+  }
 }
 
 .auth-btn-slide {
@@ -110,6 +119,34 @@ textarea {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+.workspace-scrollbar {
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+.workspace-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workspace-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.workspace-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.workspace-theme {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.workspace-panel {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 @layer base {

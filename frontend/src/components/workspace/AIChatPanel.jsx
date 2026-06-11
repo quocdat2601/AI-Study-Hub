@@ -1,5 +1,6 @@
 import React from "react";
 import { MODEL_LABELS } from "./workspaceDisplay.js";
+import { ArrowUpIcon, ClockIcon, CopyIcon, SparklesIcon } from "./WorkspaceIcons.jsx";
 
 function usagePercent(used, limit) {
   if (!limit) return 0;
@@ -7,9 +8,9 @@ function usagePercent(used, limit) {
 }
 
 function usageBarClass(percent) {
-  if (percent >= 100) return "bg-[#dc2626]";
-  if (percent >= 80) return "bg-[#f59e0b]";
-  return "bg-[#4648d4]";
+  if (percent >= 100) return "bg-red-600";
+  if (percent >= 80) return "bg-amber-500";
+  return "bg-indigo-600";
 }
 
 function UsageRow({ label, limit, used }) {
@@ -17,10 +18,10 @@ function UsageRow({ label, limit, used }) {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
-        <span className="font-bold text-[#344154]">{label}</span>
-        <span className={percent >= 100 ? "font-extrabold text-[#dc2626]" : "font-bold text-[#66758a]"}>{used} / {limit}</span>
+        <span className="font-semibold text-slate-600">{label}</span>
+        <span className={percent >= 100 ? "font-bold text-red-600" : "font-bold text-slate-500"}>{used} / {limit}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-[#e6ebf2]">
+      <div className="h-1.5 rounded-full bg-slate-100">
         <span className={`block h-full rounded-full ${usageBarClass(percent)}`} style={{ width: `${percent}%` }} />
       </div>
     </div>
@@ -31,14 +32,81 @@ function SourceList({ sources }) {
   if (!sources?.length) return null;
 
   return (
-    <div className="mt-3 grid gap-2">
-      <p className="m-0 text-xs font-extrabold text-[#4648d4]">Sources</p>
-      {sources.map((source) => (
-        <details className="rounded-lg bg-white p-2 text-xs text-[#344154]" key={source.id || source.chunkIndex}>
-          <summary className="cursor-pointer font-bold">Chunk {source.chunkIndex + 1}</summary>
-          <p className="mt-2 line-clamp-6 whitespace-pre-wrap">{source.content}</p>
-        </details>
-      ))}
+    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-2">
+      <p className="m-0 mb-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Sources</p>
+      <div className="grid gap-1.5">
+        {sources.map((source) => (
+          <details className="group rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs text-slate-600" key={source.id || source.chunkIndex}>
+            <summary className="cursor-pointer list-none font-semibold text-slate-700 marker:hidden">
+              <span className="mr-1 text-slate-400 group-open:hidden">+</span>
+              <span className="mr-1 hidden text-slate-400 group-open:inline">-</span>
+              Chunk {Number(source.chunkIndex || 0) + 1}
+              {source.score ? <span className="ml-2 font-medium text-slate-400">{Number(source.score).toFixed(2)}</span> : null}
+            </summary>
+            <p className="mt-2 line-clamp-6 whitespace-pre-wrap leading-relaxed text-slate-500">{source.content}</p>
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModelBadge({ message }) {
+  if (message.role !== "assistant") return null;
+  if (message.model) {
+    return (
+      <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+        <SparklesIcon className="text-indigo-500" size={12} />
+        {message.provider === "ollama" ? "Local Ollama" : "Gemini"} � {MODEL_LABELS[message.model] || message.model}
+      </span>
+    );
+  }
+  if (message.provider === "system") {
+    return <span className="mb-1 text-[11px] font-semibold text-slate-400">AI Study Hub assistant</span>;
+  }
+  return null;
+}
+
+function MessageBubble({ message }) {
+  async function copyAnswer() {
+    try {
+      await navigator.clipboard.writeText(message.content || "");
+    } catch {
+      // Clipboard can fail when the browser blocks permission.
+    }
+  }
+
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[84%] rounded-2xl rounded-tr-md bg-indigo-600 px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
+          <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const content = message.isStreaming && !message.content ? message.streamStatus : message.content;
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[94%]">
+        <ModelBadge message={message} />
+        <div className="rounded-2xl rounded-tl-md bg-slate-100 px-4 py-3 text-sm leading-relaxed text-slate-800">
+          <p className="m-0 whitespace-pre-wrap">{content}</p>
+          <SourceList sources={message.sources} />
+        </div>
+        {message.content ? (
+          <button
+            className="mt-1 flex cursor-pointer items-center gap-1 border-0 bg-transparent px-1 py-0.5 text-[11px] font-medium text-slate-400 transition hover:text-slate-600"
+            onClick={copyAnswer}
+            type="button"
+          >
+            <CopyIcon size={12} />
+            Copy
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -46,6 +114,7 @@ function SourceList({ sources }) {
 export default function AIChatPanel({
   answerMode,
   chatScrollRef,
+  className = "",
   error,
   geminiModels,
   isAsking,
@@ -64,151 +133,137 @@ export default function AIChatPanel({
   selectedModel,
   sessionId,
   usage,
+  width,
 }) {
+  const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
+
   return (
-    <aside className="flex min-h-[520px] flex-col border-t border-[#d8deea] bg-white lg:h-full lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
-      <div className="flex items-start justify-between gap-3 border-b border-[#d8deea] p-4">
-        <div>
-          <h2 className="m-0 text-lg font-extrabold">AI Chat</h2>
-          <p className="mt-1 text-xs text-[#66758a]">
-            {sessionId ? `Session #${sessionId}` : "Ask questions about the selected PDF."}
+    <aside
+      className={`flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm lg:h-full lg:min-h-0 ${className}`}
+      style={width ? { width } : undefined}
+    >
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[15px] font-bold text-slate-900">
+            <SparklesIcon className="text-indigo-600" size={15} />
+            AI Chat
+          </div>
+          <p className="m-0 mt-0.5 truncate text-xs text-slate-500">
+            {sessionId ? `Session #${sessionId}` : selectedDocument ? "Ask about this document" : "Select a document first"}
           </p>
         </div>
+
         <div className="group relative flex-none">
           <button
-            className="rounded-full border border-[#d8deea] bg-[#fbfcfe] px-3 py-1.5 text-xs font-extrabold text-[#4648d4] transition hover:border-[#4648d4] focus:border-[#4648d4] focus:outline-none focus:ring-2 focus:ring-[#dfe3ff]"
+            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-indigo-600 transition hover:border-indigo-300 hover:bg-indigo-50 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
             type="button"
           >
             Usage
           </button>
-          <section className="invisible absolute right-0 top-10 z-30 w-[300px] translate-y-1 rounded-xl border border-[#d8deea] bg-white p-4 opacity-0 shadow-[0_18px_45px_rgba(20,31,48,0.16)] transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+          <section className="invisible absolute right-0 top-10 z-30 w-[300px] translate-y-1 rounded-xl border border-slate-200 bg-white p-4 opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.16)] transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h3 className="m-0 text-sm font-extrabold">{isOllamaModel ? "Local AI Status" : "AI Usage"}</h3>
-                <p className="mt-0.5 text-xs text-[#66758a]">{MODEL_LABELS[usage?.model || selectedModel] || usage?.model || selectedModel || "Default model"}</p>
+                <h3 className="m-0 text-sm font-bold text-slate-900">{isOllamaModel ? "Local AI Status" : "AI Usage"}</h3>
+                <p className="mt-0.5 text-xs text-slate-500">{MODEL_LABELS[usage?.model || selectedModel] || usage?.model || selectedModel || "Default model"}</p>
               </div>
-              {isLoadingUsage ? <span className="text-[11px] font-bold text-[#66758a]">Updating...</span> : null}
+              {isLoadingUsage ? <span className="text-[11px] font-semibold text-slate-500">Updating...</span> : null}
             </div>
             {usage && usage.provider === "ollama" ? (
-              <div className="grid gap-2.5 text-xs text-[#344154]">
+              <div className="grid gap-2.5 text-xs text-slate-600">
                 <p className="m-0"><b>Provider:</b> Local Ollama</p>
                 <p className="m-0"><b>Quota:</b> No API quota</p>
-                <p className={usage.local?.available && usage.local?.installed ? "m-0 font-bold text-[#087443]" : "m-0 font-bold text-[#b42318]"}>
+                <p className={usage.local?.available && usage.local?.installed ? "m-0 font-bold text-emerald-700" : "m-0 font-bold text-red-600"}>
                   {usage.local?.available
                     ? usage.local?.installed
                       ? "Status: Available"
                       : "Selected local model is not installed."
                     : "Ollama is not running. Start Ollama to use local Qwen."}
                 </p>
-                <p className="m-0 rounded-lg bg-[#eef2f8] px-3 py-2 text-[11px] text-[#66758a]">{usage.local?.note || "Runs on local machine performance."}</p>
+                <p className="m-0 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">{usage.local?.note || "Runs on local machine performance."}</p>
               </div>
             ) : usage ? (
               <div className="grid gap-2.5">
-                {usage.warning ? (
-                  <p className="m-0 rounded-lg bg-[#fff7ed] px-3 py-2 text-[11px] font-bold text-[#9a3412]">{usage.warning}</p>
-                ) : null}
+                {usage.warning ? <p className="m-0 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-700">{usage.warning}</p> : null}
                 <UsageRow label="Requests today" used={usage.used.requestsToday} limit={usage.limits.rpd} />
                 <UsageRow label="Requests this minute" used={usage.used.requestsThisMinute} limit={usage.limits.rpm} />
                 <UsageRow label="Tokens this minute" used={usage.used.tokensThisMinute} limit={usage.limits.tpm} />
                 <UsageRow label="Your questions today" used={usage.used.userRequestsToday} limit={usage.limits.dailyUserRequests} />
               </div>
             ) : (
-              <p className="m-0 rounded-lg border border-dashed border-[#c7c4d7] p-3 text-xs text-[#66758a]">Usage will appear after the backend responds.</p>
+              <p className="m-0 rounded-lg border border-dashed border-slate-200 p-3 text-xs text-slate-500">Usage will appear after the backend responds.</p>
             )}
           </section>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" onScroll={onChatScroll} ref={chatScrollRef}>
+      <div className="workspace-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-white p-4" onScroll={onChatScroll} ref={chatScrollRef}>
         {isLoadingMessages ? (
-          <p className="rounded-lg border border-dashed border-[#c7c4d7] p-4 text-sm text-[#66758a]">Loading saved chat...</p>
-        ) : messages.length ? messages.map((message) => (
-          <div
-            className={message.role === "user" ? "ml-auto max-w-[88%] rounded-2xl bg-[#4648d4] px-4 py-3 text-sm text-white" : "max-w-[92%] rounded-2xl bg-[#f1f4f8] px-4 py-3 text-sm text-[#172033]"}
-            key={message.id}
-          >
-            {message.role === "assistant" && message.model ? (
-              <p className="mb-2 mt-0 text-[11px] font-bold text-[#66758a]">
-                {message.provider === "ollama" ? "Local Ollama" : "Gemini"} Â· {MODEL_LABELS[message.model] || message.model}
-              </p>
-            ) : message.role === "assistant" && message.provider === "system" ? (
-              <p className="mb-2 mt-0 text-[11px] font-bold text-[#66758a]">AI Study Hub assistant</p>
-            ) : null}
-            <p className="m-0 whitespace-pre-wrap">
-              {message.isStreaming && !message.content ? message.streamStatus : message.content}
-            </p>
-            <SourceList sources={message.sources} />
+          <div className="grid gap-3">
+            <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+            <div className="ml-auto h-12 w-2/3 animate-pulse rounded-2xl bg-indigo-100" />
           </div>
-        )) : (
-          <p className="rounded-lg border border-dashed border-[#c7c4d7] p-4 text-sm text-[#66758a]">
-            Select a document and ask a question. AI Study Hub will prepare the document automatically if needed.
-          </p>
+        ) : messages.length ? (
+          messages.map((message) => <MessageBubble key={message.id} message={message} />)
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-500">
+            {selectedDocument
+              ? "Ask a question, request a summary, or create practice questions from this document."
+              : "Select a document from the sidebar to start chatting."}
+          </div>
         )}
-        {error ? <p className="rounded-lg border border-[#ffb4b4] bg-[#fff5f5] p-3 text-sm font-bold text-[#a31313]">{error}</p> : null}
+        {error ? <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p> : null}
       </div>
 
-      <form className="flex-none border-t border-[#d8deea] bg-white p-4" onSubmit={onAsk}>
-        <label className="mb-3 block text-xs font-extrabold text-[#344154]">
+      <form className="flex-none border-t border-slate-200 bg-white p-3" onSubmit={onAsk}>
+        <label className="mb-2 block text-xs font-bold text-slate-600">
           Model
           <select
-            className="mt-1 w-full rounded-lg border border-[#d8deea] bg-white px-3 py-2 text-sm font-bold text-[#172033] outline-none transition focus:border-[#4648d4] focus:ring-2 focus:ring-[#dfe3ff]"
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             disabled={isAsking}
             onChange={(event) => onSelectedModelChange(event.target.value)}
-            value={selectedModel || usage?.model || "gemini-2.5-flash"}
+            value={activeModel}
           >
             <optgroup label="Gemini">
-              {geminiModels.map((model) => (
-                <option key={model} value={model}>{MODEL_LABELS[model] || model}</option>
-              ))}
+              {geminiModels.map((model) => <option key={model} value={model}>{MODEL_LABELS[model] || model}</option>)}
             </optgroup>
             <optgroup label="Local Ollama">
-              {ollamaModels.map((model) => (
-                <option key={model} value={model}>{MODEL_LABELS[model] || model}</option>
-              ))}
+              {ollamaModels.map((model) => <option key={model} value={model}>{MODEL_LABELS[model] || model}</option>)}
             </optgroup>
           </select>
         </label>
-        <fieldset className="mb-3 grid grid-cols-2 rounded-lg border border-[#d8deea] bg-[#f7f9fb] p-1">
+
+        <fieldset className="mb-2 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
           <legend className="sr-only">Answer mode</legend>
-          <label className={answerMode === "hybrid" ? "cursor-pointer rounded-md bg-white px-3 py-2 text-center text-xs font-extrabold text-[#4648d4] shadow-sm" : "cursor-pointer rounded-md px-3 py-2 text-center text-xs font-bold text-[#66758a]"}>
-            <input
-              checked={answerMode === "hybrid"}
-              className="sr-only"
-              disabled={isAsking}
-              name="answerMode"
-              onChange={() => onAnswerModeChange("hybrid")}
-              type="radio"
-              value="hybrid"
-            />
+          <label className={answerMode === "hybrid" ? "cursor-pointer rounded-lg bg-white px-3 py-2 text-center text-xs font-bold text-indigo-600 shadow-sm" : "cursor-pointer rounded-lg px-3 py-2 text-center text-xs font-semibold text-slate-500"}>
+            <input checked={answerMode === "hybrid"} className="sr-only" disabled={isAsking} name="answerMode" onChange={() => onAnswerModeChange("hybrid")} type="radio" value="hybrid" />
             Hybrid
           </label>
-          <label className={answerMode === "document_only" ? "cursor-pointer rounded-md bg-white px-3 py-2 text-center text-xs font-extrabold text-[#4648d4] shadow-sm" : "cursor-pointer rounded-md px-3 py-2 text-center text-xs font-bold text-[#66758a]"}>
-            <input
-              checked={answerMode === "document_only"}
-              className="sr-only"
-              disabled={isAsking}
-              name="answerMode"
-              onChange={() => onAnswerModeChange("document_only")}
-              type="radio"
-              value="document_only"
-            />
+          <label className={answerMode === "document_only" ? "cursor-pointer rounded-lg bg-white px-3 py-2 text-center text-xs font-bold text-indigo-600 shadow-sm" : "cursor-pointer rounded-lg px-3 py-2 text-center text-xs font-semibold text-slate-500"}>
+            <input checked={answerMode === "document_only"} className="sr-only" disabled={isAsking} name="answerMode" onChange={() => onAnswerModeChange("document_only")} type="radio" value="document_only" />
             Document only
           </label>
         </fieldset>
-        <textarea
-          className="min-h-24 w-full resize-none rounded-lg border border-[#c7c4d7] p-3 text-sm outline-none transition focus:border-[#4648d4] focus:ring-2 focus:ring-[#dfe3ff]"
-          disabled={!selectedDocument || isAsking || isLoadingMessages}
-          onChange={(event) => onQuestionChange(event.target.value)}
-          placeholder={selectedDocument ? "Ask about this document..." : "Select a document first"}
-          value={question}
-        />
-        <button
-          className="mt-3 w-full rounded-lg bg-[#4648d4] px-4 py-3 text-sm font-extrabold text-white transition hover:bg-[#393bc2] disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={!selectedDocument || !question.trim() || isAsking || isLoadingMessages}
-          type="submit"
-        >
-          {isAsking ? "Sending..." : "Send question"}
-        </button>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-2 transition focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
+          <textarea
+            className="min-h-20 w-full resize-none border-0 bg-transparent px-2 py-1 text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400"
+            disabled={!selectedDocument || isAsking || isLoadingMessages}
+            onChange={(event) => onQuestionChange(event.target.value)}
+            placeholder={selectedDocument ? "Ask about this document..." : "Select a document first"}
+            value={question}
+          />
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <span className="pl-2 text-[11px] text-slate-400">Answers use retrieved document chunks.</span>
+            <button
+              aria-label="Send question"
+              className="flex h-9 min-w-9 cursor-pointer items-center justify-center rounded-xl border-0 bg-indigo-600 px-3 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!selectedDocument || !question.trim() || isAsking || isLoadingMessages}
+              type="submit"
+            >
+              {isAsking ? <ClockIcon size={15} /> : <ArrowUpIcon size={15} />}
+            </button>
+          </div>
+        </div>
       </form>
     </aside>
   );

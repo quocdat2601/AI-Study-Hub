@@ -3,8 +3,11 @@ import { askDocument, askDocumentStream, getAiModelStatus, getAiUsage, processDo
 import AIChatPanel from "../components/workspace/AIChatPanel.jsx";
 import DocumentSidebar from "../components/workspace/DocumentSidebar.jsx";
 import DocumentViewer from "../components/workspace/DocumentViewer.jsx";
+import WorkspaceResizeHandle from "../components/workspace/WorkspaceResizeHandle.jsx";
+import useWorkspaceLayout from "../hooks/useWorkspaceLayout.js";
 import { getChatSessionMessages, getOrCreateDocumentChatSession } from "../services/chatApi.js";
 import { listDocuments } from "../services/documentApi.js";
+import { fetchWorkspacePdf } from "../services/workspaceApi.js";
 import { cacheDocumentChat, cacheWorkspaceState, getCachedDocumentChat, getWorkspaceCache } from "../utils/workspaceCache.js";
 
 const DEFAULT_GEMINI_MODELS = [
@@ -58,6 +61,14 @@ function mapStoredMessage(message) {
   };
 }
 
+function getDocumentType(document) {
+  const mime = document?.cloud_files?.mime_type || document?.mime_type || "";
+  const title = document?.title || document?.name || "";
+  if (mime.includes("pdf") || title.toLowerCase().endsWith(".pdf")) return "PDF";
+  if (mime.includes("word") || title.toLowerCase().endsWith(".docx")) return "DOCX";
+  return document?.file_type || document?.type || "DOC";
+}
+
 export default function WorkspacePage() {
   const cachedWorkspace = getWorkspaceCache();
   const initialSelectedId = cachedWorkspace.selectedId || cachedWorkspace.documents?.[0]?.id || null;
@@ -65,6 +76,16 @@ export default function WorkspacePage() {
   const chatScrollRef = useRef(null);
   const lastSelectedIdRef = useRef(initialSelectedId);
   const previousMessageCountRef = useRef(initialChat.messages.length);
+  const pdfBlobUrlRef = useRef(null);
+  const {
+    sidebarWidth,
+    chatWidth,
+    sidebarCollapsed,
+    toggleSidebarCollapsed,
+    onResizeSidebar,
+    onResizeChat,
+  } = useWorkspaceLayout();
+
   const [documents, setDocuments] = useState(() => cachedWorkspace.documents || []);
   const [selectedId, setSelectedId] = useState(() => initialSelectedId);
   const [messages, setMessages] = useState(() => initialChat.messages);
@@ -82,6 +103,13 @@ export default function WorkspacePage() {
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState("");
   const [processResult, setProcessResult] = useState(() => initialChat.processResult);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [zoom, setZoom] = useState(100);
+  const [viewMode, setViewMode] = useState("pdf");
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [pdfLoadError, setPdfLoadError] = useState("");
 
   const selectedDocument = useMemo(
     () => documents.find((doc) => Number(doc.id) === Number(selectedId)) || null,
@@ -90,6 +118,60 @@ export default function WorkspacePage() {
   const geminiModels = modelStatus?.gemini?.models || availableModels.filter((model) => model.startsWith("gemini-"));
   const ollamaModels = modelStatus?.ollama?.allowedModels || availableModels.filter((model) => model.startsWith("qwen"));
   const isOllamaModel = (selectedModel || usage?.model || "").startsWith("qwen") || usage?.provider === "ollama";
+
+  function clearPdfBlob() {
+    if (pdfBlobUrlRef.current) {
+      URL.revokeObjectURL(pdfBlobUrlRef.current);
+      pdfBlobUrlRef.current = null;
+    }
+    setPdfBlobUrl(null);
+  }
+
+  async function loadPdfPreview(docId) {
+    if (!docId) return;
+    try {
+      setIsPdfLoading(true);
+      setPdfLoadError("");
+      const data = await fetchWorkspacePdf(docId);
+      clearPdfBlob();
+      const blob = new Blob([data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      pdfBlobUrlRef.current = url;
+      setPdfBlobUrl(url);
+    } catch (err) {
+      clearPdfBlob();
+      setPdfLoadError(err.response?.data?.error || "Could not load PDF preview");
+    } finally {
+      setIsPdfLoading(false);
+    }
+  }
+
+  useEffect(() => () => clearPdfBlob(), []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setTotalPages(1);
+    setPdfLoadError("");
+
+    if (!selectedDocument) {
+      clearPdfBlob();
+      return;
+    }
+
+    const type = getDocumentType(selectedDocument);
+    if (type !== "PDF") {
+      clearPdfBlob();
+      setViewMode("text");
+      return;
+    }
+
+    setViewMode((current) => current || "pdf");
+    loadPdfPreview(selectedDocument.id);
+  }, [selectedDocument?.id]);
+
+  function changeZoom(delta) {
+    setZoom((current) => Math.min(160, Math.max(70, current + delta)));
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -472,24 +554,45 @@ export default function WorkspacePage() {
   }
 
   return (
-    <main className="grid min-h-[calc(100vh-64px)] bg-[#f4f7fb] text-[#172033] lg:h-[calc(100vh-64px)] lg:grid-cols-[280px_minmax(0,1fr)_360px] lg:overflow-hidden">
+    <main className="workspace-theme flex h-[calc(100vh-64px)] gap-2 overflow-hidden bg-[#eceef1] p-2 text-sm leading-relaxed text-slate-800">
       <DocumentSidebar
+        collapsed={sidebarCollapsed}
         documents={documents}
         isLoadingDocs={isLoadingDocs}
         onSelectDocument={selectDocument}
+        onToggleCollapse={toggleSidebarCollapsed}
         selectedId={selectedId}
+        width={sidebarWidth}
       />
 
+      {!sidebarCollapsed ? <WorkspaceResizeHandle label="Resize document sidebar" onMouseDown={onResizeSidebar} /> : null}
+
       <DocumentViewer
+        changeZoom={changeZoom}
+        className="min-w-0 flex-1"
+        currentPage={currentPage}
+        isPdfLoading={isPdfLoading}
         isProcessing={isProcessing}
+        onReloadPdf={() => selectedDocument && loadPdfPreview(selectedDocument.id)}
         onReprocess={handleProcess}
+        pdfBlobUrl={pdfBlobUrl}
+        pdfLoadError={pdfLoadError}
         processResult={processResult}
         selectedDocument={selectedDocument}
+        setCurrentPage={setCurrentPage}
+        setTotalPages={setTotalPages}
+        setViewMode={setViewMode}
+        totalPages={totalPages}
+        viewMode={viewMode}
+        zoom={zoom}
       />
+
+      <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} />
 
       <AIChatPanel
         answerMode={answerMode}
         chatScrollRef={chatScrollRef}
+        className="shrink-0"
         error={error}
         geminiModels={geminiModels}
         isAsking={isAsking}
@@ -508,6 +611,7 @@ export default function WorkspacePage() {
         selectedModel={selectedModel}
         sessionId={sessionId}
         usage={usage}
+        width={chatWidth}
       />
     </main>
   );

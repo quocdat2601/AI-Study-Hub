@@ -18,18 +18,27 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen text-[#191c1e]" style={{ background: "#f7f9fb url('/landing/soft-wave-bg.svg') center top / cover fixed" }}>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <a
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:shadow-lg"
+        href="#main-content"
+      >
+        Skip to content
+      </a>
+
       <LandingHeader
         isAuthenticated={isAuthenticated}
         isLoading={isLoading}
         onLogout={handleLogout}
         workspacePath={workspacePath}
       />
-      <main>
+
+      <main id="main-content">
         <LandingHero />
         <TrendingDocuments />
         <LandingCTA />
       </main>
+
       <LandingFooter />
     </div>
   );

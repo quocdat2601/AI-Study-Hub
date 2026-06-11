@@ -17,6 +17,7 @@ const adminRoutes = require('./routes/admin.routes');
 const publicRoutes = require('./routes/public.routes');
 const accountRoutes = require('./routes/account.routes');
 const aiRoutes = require('./routes/ai.routes');
+const workspaceRoutes = require('./routes/workspace.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -24,7 +25,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Swagger UI — available at /api-docs
+// Swagger UI - available at /api-docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customSiteTitle: 'AI Study Hub API Docs',
   swaggerOptions: { persistAuthorization: true },
@@ -44,6 +45,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/workspace', workspaceRoutes);
 
 app.use(errorHandler);
 
