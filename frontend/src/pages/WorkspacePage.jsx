@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { askDocument, getAiModelStatus, getAiUsage, processDocumentForAi } from "../services/aiApi.js";
+import { askDocument, askDocumentStream, getAiModelStatus, getAiUsage, processDocumentForAi } from "../services/aiApi.js";
 import { getChatSessionMessages, getOrCreateDocumentChatSession } from "../services/chatApi.js";
 import { listDocuments } from "../services/documentApi.js";
 import { cacheDocumentChat, cacheWorkspaceState, getCachedDocumentChat, getWorkspaceCache } from "../utils/workspaceCache.js";
@@ -77,12 +77,6 @@ function mapStoredMessage(message) {
   };
 }
 
-const ASKING_STATUSES = [
-  "Reading document...",
-  "Retrieving relevant sections...",
-  "Generating answer...",
-];
-
 function usagePercent(used, limit) {
   if (!limit) return 0;
   return Math.min(100, Math.round((Number(used || 0) / Number(limit || 1)) * 100));
@@ -127,7 +121,6 @@ export default function WorkspacePage() {
   const [modelStatus, setModelStatus] = useState(() => cachedWorkspace.modelStatus || null);
   const [usage, setUsage] = useState(() => cachedWorkspace.usage || null);
   const [isLoadingUsage, setIsLoadingUsage] = useState(false);
-  const [askingStatusIndex, setAskingStatusIndex] = useState(0);
   const [isLoadingDocs, setIsLoadingDocs] = useState(() => !cachedWorkspace.documents?.length);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -337,20 +330,6 @@ export default function WorkspacePage() {
     cacheWorkspaceState({ answerMode });
   }, [answerMode]);
 
-  useEffect(() => {
-    if (!isAsking) {
-      setAskingStatusIndex(0);
-      return undefined;
-    }
-
-    setAskingStatusIndex(0);
-    const intervalId = window.setInterval(() => {
-      setAskingStatusIndex((current) => Math.min(current + 1, ASKING_STATUSES.length - 1));
-    }, 900);
-
-    return () => window.clearInterval(intervalId);
-  }, [isAsking]);
-
   function selectDocument(docId) {
     const cachedChat = getCachedDocumentChat(docId);
     cacheWorkspaceState({ selectedId: docId });
@@ -399,21 +378,61 @@ export default function WorkspacePage() {
     if (!selectedDocument || !cleanedQuestion || isAsking) return;
 
     const userMessage = buildUserMessage(cleanedQuestion);
+    const streamAssistantId = `assistant-stream-${Date.now()}`;
+    const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
     setMessages((current) => {
-      const nextMessages = [...current, userMessage];
+      const nextMessages = [...current, userMessage, {
+        id: streamAssistantId,
+        role: "assistant",
+        content: "",
+        sources: [],
+        mode: answerMode,
+        provider: selectedModel?.startsWith("qwen") ? "ollama" : "gemini",
+        model: activeModel,
+        usedRag: false,
+        isStreaming: true,
+        streamStatus: "Checking document...",
+      }];
       cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
       return nextMessages;
     });
     setQuestion("");
     setError("");
-    const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
 
     try {
       setIsAsking(true);
-      const result = await askDocument(selectedDocument.id, cleanedQuestion, answerMode, activeModel);
+      const result = await askDocumentStream(selectedDocument.id, {
+        question: cleanedQuestion,
+        mode: answerMode,
+        model: activeModel,
+        onStatus: (status) => {
+          setMessages((current) => {
+            const nextMessages = current.map((message) => (
+              message.id === streamAssistantId
+                ? { ...message, streamStatus: status }
+                : message
+            ));
+            cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+            return nextMessages;
+          });
+        },
+        onToken: (text) => {
+          setMessages((current) => {
+            const nextMessages = current.map((message) => (
+              message.id === streamAssistantId
+                ? { ...message, content: `${message.content || ""}${text}`, streamStatus: "" }
+                : message
+            ));
+            cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+            return nextMessages;
+          });
+        },
+      });
       const assistantMessage = buildAssistantMessage(result);
       setMessages((current) => {
-        const nextMessages = [...current, assistantMessage];
+        const nextMessages = current.map((message) => (
+          message.id === streamAssistantId ? { ...assistantMessage, id: streamAssistantId } : message
+        ));
         cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
         return nextMessages;
       });
@@ -436,11 +455,38 @@ export default function WorkspacePage() {
         return nextProcessResult;
       });
     } catch (err) {
+      const hasStreamedText = getCachedDocumentChat(selectedDocument.id).messages
+        .some((message) => message.id === streamAssistantId && message.content);
+      if (!hasStreamedText) {
+        try {
+          const result = await askDocument(selectedDocument.id, cleanedQuestion, answerMode, activeModel);
+          const assistantMessage = buildAssistantMessage(result);
+          setMessages((current) => {
+            const nextMessages = current
+              .filter((message) => message.id !== streamAssistantId)
+              .concat(assistantMessage);
+            cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+            return nextMessages;
+          });
+          const nextSessionId = result.sessionId || sessionId;
+          cacheDocumentChat(selectedDocument.id, { sessionId: nextSessionId });
+          setSessionId(nextSessionId);
+          if (result.usage) {
+            cacheWorkspaceState({ usage: result.usage });
+            setUsage(result.usage);
+          }
+          return;
+        } catch (fallbackErr) {
+          err = fallbackErr;
+        }
+      }
       const responseData = err.response?.data;
       if (responseData?.answer) {
         const assistantMessage = buildAssistantMessage(responseData);
         setMessages((current) => {
-          const nextMessages = [...current, assistantMessage];
+          const nextMessages = current.map((message) => (
+            message.id === streamAssistantId ? { ...assistantMessage, id: streamAssistantId } : message
+          ));
           cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
           return nextMessages;
         });
@@ -456,6 +502,13 @@ export default function WorkspacePage() {
           cacheWorkspaceState({ usage: responseData.usage });
           setUsage(responseData.usage);
         }
+        setMessages((current) => {
+          const nextMessages = current.filter((message) => (
+            message.id !== streamAssistantId || message.content
+          ));
+          cacheDocumentChat(selectedDocument.id, { messages: nextMessages });
+          return nextMessages;
+        });
         setError(responseData?.message || responseData?.error || "Could not ask AI about this document");
       }
     } finally {
@@ -616,7 +669,9 @@ export default function WorkspacePage() {
               ) : message.role === "assistant" && message.provider === "system" ? (
                 <p className="mb-2 mt-0 text-[11px] font-bold text-[#66758a]">AI Study Hub assistant</p>
               ) : null}
-              <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+              <p className="m-0 whitespace-pre-wrap">
+                {message.isStreaming && !message.content ? message.streamStatus : message.content}
+              </p>
               {message.sources?.length ? (
                 <div className="mt-3 grid gap-2">
                   <p className="m-0 text-xs font-extrabold text-[#4648d4]">Sources</p>
@@ -634,11 +689,6 @@ export default function WorkspacePage() {
               Select a document and ask a question. AI Study Hub will prepare the document automatically if needed.
             </p>
           )}
-          {isAsking ? (
-            <div className="max-w-[92%] rounded-2xl bg-[#f1f4f8] px-4 py-3 text-sm text-[#66758a]">
-              <p className="m-0 font-bold">{ASKING_STATUSES[askingStatusIndex]}</p>
-            </div>
-          ) : null}
           {error ? <p className="rounded-lg border border-[#ffb4b4] bg-[#fff5f5] p-3 text-sm font-bold text-[#a31313]">{error}</p> : null}
         </div>
 

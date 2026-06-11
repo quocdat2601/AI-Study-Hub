@@ -73,6 +73,29 @@ async function generateAnswer({ provider, model, question, documentTitle, chunks
   };
 }
 
+async function* streamAnswer({ provider, model, question, documentTitle, chunks, mode }) {
+  const prompts = buildRagPrompts({ question, documentTitle, chunks, mode });
+
+  if (provider === 'ollama') {
+    yield* ollamaService.streamChat({
+      model,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+    });
+    return;
+  }
+
+  yield* geminiService.streamDocumentChunks({
+    question,
+    documentTitle,
+    chunks,
+    mode,
+    model,
+    systemPrompt: prompts.systemPrompt,
+    userPrompt: prompts.userPrompt,
+  });
+}
+
 async function getModelStatus() {
   const ollama = await ollamaService.getStatus();
   return {
@@ -90,5 +113,6 @@ async function getModelStatus() {
 
 module.exports = {
   generateAnswer,
+  streamAnswer,
   getModelStatus,
 };

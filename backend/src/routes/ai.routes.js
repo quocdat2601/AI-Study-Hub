@@ -102,4 +102,17 @@ router.post('/documents/:id/process', aiController.processDocument);
  */
 router.post('/documents/:id/ask', aiController.askDocument);
 
+/**
+ * @swagger
+ * /api/ai/documents/{id}/ask/stream:
+ *   post:
+ *     summary: Stream an AI answer using retrieved document chunks
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: Server-sent events stream }
+ */
+router.post('/documents/:id/ask/stream', aiController.askDocumentStream);
+
 module.exports = router;

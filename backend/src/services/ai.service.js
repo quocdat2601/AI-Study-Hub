@@ -80,7 +80,7 @@ async function getProcessableDocument({ id, userId }) {
   return doc;
 }
 
-async function processDocument({ id, userId }) {
+async function processDocument({ id, userId, sendEvent }) {
   const doc = await getProcessableDocument({ id, userId });
   const existingText = String(doc.extracted_text || '').trim();
   let text = existingText;
@@ -111,6 +111,7 @@ async function processDocument({ id, userId }) {
 
   let chunksToSave = chunks;
   try {
+    sendEvent?.('status', { message: 'Creating embeddings...' });
     chunksToSave = await embeddingService.embedChunks(chunks);
   } catch (err) {
     console.error('Document chunk embedding failed:', err.message);
@@ -138,14 +139,15 @@ async function safeTouchSession(sessionId) {
   }
 }
 
-async function getOrCreateChunksForAsk({ doc, userId }) {
+async function getOrCreateChunksForAsk({ doc, userId, sendEvent }) {
   let chunks = await documentChunkModel.findByDocumentId(doc.id);
 
   if (chunks.length) {
     return { chunks, autoProcessed: false };
   }
 
-  await processDocument({ id: doc.id, userId });
+  sendEvent?.('status', { message: 'Preparing document for AI...' });
+  await processDocument({ id: doc.id, userId, sendEvent });
   chunks = await documentChunkModel.findByDocumentId(doc.id);
 
   if (!chunks.length) {
@@ -287,12 +289,33 @@ async function retrieveChunksForQuestion({ docId, question, chunks }) {
   }));
 }
 
-async function askDocument({ id, userId, question, mode, model }) {
+async function getUsageBestEffort({ model, userId }) {
+  return aiUsageService.getUsage({ model, userId }).catch((err) => {
+    console.error('AI usage refresh failed after answer:', err.message);
+    return null;
+  });
+}
+
+async function saveAssistantAnswer({ sessionId, answer, provider, model, mode, usedRag, sources }) {
+  const assistantMetadata = buildAssistantMetadata({
+    provider,
+    model,
+    mode,
+    usedRag,
+    sources,
+  });
+  const assistantMessage = await chatModel.addMessage(sessionId, 'assistant', answer, assistantMetadata);
+  await safeTouchSession(sessionId);
+  return assistantMessage;
+}
+
+async function prepareAskDocument({ id, userId, question, mode, model, sendEvent }) {
   const cleanedQuestion = cleanQuestion(question);
   const answerMode = normalizeAnswerMode(mode);
   const selectedProviderModel = aiUsageService.resolveModel(model);
   const selectedModel = selectedProviderModel.model;
   const selectedProvider = selectedProviderModel.provider;
+  sendEvent?.('status', { message: 'Checking document...' });
   const doc = await getProcessableDocument({ id, userId });
   const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
   const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
@@ -300,7 +323,7 @@ async function askDocument({ id, userId, question, mode, model }) {
   let chunks;
   let autoProcessed = false;
   try {
-    ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId }));
+    ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId, sendEvent }));
   } catch (err) {
     if (err.statusCode !== 400) throw err;
     const answer = 'I could not prepare this document for AI automatically. Please make sure it is a readable text-based PDF, then try asking again.';
@@ -316,26 +339,29 @@ async function askDocument({ id, userId, question, mode, model }) {
     await safeTouchSession(session.id);
 
     return {
-      answer,
-      sources: [],
-      document: {
-        id: doc.id,
-        title: doc.title,
-      },
-      sessionId: session.id,
-      mode: answerMode,
-      needsProcessing: true,
-      processingError: err.message,
-      usedRag: false,
-      provider: 'system',
-      model: null,
-      messages: {
-        user: userMessage,
-        assistant: assistantMessage,
+      systemResponse: {
+        answer,
+        sources: [],
+        document: {
+          id: doc.id,
+          title: doc.title,
+        },
+        sessionId: session.id,
+        mode: answerMode,
+        needsProcessing: true,
+        processingError: err.message,
+        usedRag: false,
+        provider: 'system',
+        model: null,
+        messages: {
+          user: userMessage,
+          assistant: assistantMessage,
+        },
       },
     };
   }
 
+  sendEvent?.('status', { message: 'Searching relevant chunks...' });
   const relevantChunks = await retrieveChunksForQuestion({
     docId: doc.id,
     question: cleanedQuestion,
@@ -351,6 +377,40 @@ async function askDocument({ id, userId, question, mode, model }) {
     await aiUsageService.assertQuota({ model: selectedModel, userId, estimatedTokens });
   }
 
+  const sources = ragService.buildSourcePayload(relevantChunks);
+
+  return {
+    cleanedQuestion,
+    answerMode,
+    selectedProvider,
+    selectedModel,
+    doc,
+    session,
+    userMessage,
+    relevantChunks,
+    sources,
+    autoProcessed,
+  };
+}
+
+async function askDocument({ id, userId, question, mode, model }) {
+  const prepared = await prepareAskDocument({ id, userId, question, mode, model });
+  if (prepared.systemResponse) {
+    return prepared.systemResponse;
+  }
+
+  const {
+    cleanedQuestion,
+    answerMode,
+    selectedProvider,
+    selectedModel,
+    doc,
+    session,
+    userMessage,
+    relevantChunks,
+    sources,
+    autoProcessed,
+  } = prepared;
   let generationResult;
 
   try {
@@ -391,20 +451,16 @@ async function askDocument({ id, userId, question, mode, model }) {
   }
 
   const answer = generationResult.answer;
-  const sources = ragService.buildSourcePayload(relevantChunks);
-  const assistantMetadata = buildAssistantMetadata({
+  const assistantMessage = await saveAssistantAnswer({
+    sessionId: session.id,
+    answer,
     provider: selectedProvider,
     model: selectedModel,
     mode: answerMode,
     usedRag: true,
     sources,
   });
-  const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer, assistantMetadata);
-  await safeTouchSession(session.id);
-  const usage = await aiUsageService.getUsage({ model: selectedModel, userId }).catch((err) => {
-    console.error('AI usage refresh failed after answer:', err.message);
-    return null;
-  });
+  const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
   return {
     answer,
@@ -427,7 +483,106 @@ async function askDocument({ id, userId, question, mode, model }) {
   };
 }
 
+async function askDocumentStream({ id, userId, question, mode, model, sendEvent }) {
+  const prepared = await prepareAskDocument({ id, userId, question, mode, model, sendEvent });
+  if (prepared.systemResponse) {
+    sendEvent('token', { text: prepared.systemResponse.answer });
+    sendEvent('done', prepared.systemResponse);
+    return;
+  }
+
+  const {
+    cleanedQuestion,
+    answerMode,
+    selectedProvider,
+    selectedModel,
+    doc,
+    session,
+    userMessage,
+    relevantChunks,
+    sources,
+    autoProcessed,
+  } = prepared;
+
+  let answer = '';
+  let usageMetadata = null;
+  sendEvent('status', { message: 'Generating answer...' });
+
+  try {
+    for await (const event of aiProviderService.streamAnswer({
+      provider: selectedProvider,
+      question: cleanedQuestion,
+      documentTitle: doc.title,
+      chunks: relevantChunks,
+      mode: answerMode,
+      model: selectedModel,
+    })) {
+      if (event.type === 'token' && event.text) {
+        answer += event.text;
+        sendEvent('token', { text: event.text });
+      } else if (event.type === 'usage') {
+        usageMetadata = event.usageMetadata;
+      }
+    }
+
+    await aiUsageService.logGeminiRequest({
+      userId,
+      docId: doc.id,
+      provider: selectedProvider,
+      model: selectedModel,
+      requestType: 'document_qa',
+      promptTokens: usageMetadata?.promptTokens,
+      completionTokens: usageMetadata?.completionTokens,
+      totalTokens: usageMetadata?.totalTokens,
+      success: true,
+    });
+  } catch (err) {
+    await aiUsageService.logGeminiRequest({
+      userId,
+      docId: doc.id,
+      provider: selectedProvider,
+      model: selectedModel,
+      requestType: 'document_qa',
+      success: false,
+      errorCode: err.code || err.statusCode || err.name || 'stream_error',
+    });
+    throw err.publicMessage ? err : createError(503, 'AI service is temporarily unavailable. Please try again');
+  }
+
+  const assistantMessage = await saveAssistantAnswer({
+    sessionId: session.id,
+    answer,
+    provider: selectedProvider,
+    model: selectedModel,
+    mode: answerMode,
+    usedRag: true,
+    sources,
+  });
+  const usage = await getUsageBestEffort({ model: selectedModel, userId });
+
+  sendEvent('done', {
+    answer,
+    sources,
+    document: {
+      id: doc.id,
+      title: doc.title,
+    },
+    sessionId: session.id,
+    mode: answerMode,
+    usedRag: true,
+    autoProcessed,
+    provider: selectedProvider,
+    model: selectedModel,
+    usage,
+    messages: {
+      user: userMessage,
+      assistant: assistantMessage,
+    },
+  });
+}
+
 module.exports = {
   processDocument,
   askDocument,
+  askDocumentStream,
 };

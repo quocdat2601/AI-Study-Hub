@@ -101,4 +101,39 @@ async function queryDocumentChunks({ question, documentTitle, chunks, mode = 'hy
   };
 }
 
-module.exports = { queryDocument, queryDocumentChunks };
+async function* streamDocumentChunks({ question, documentTitle, chunks, mode = 'hybrid', model = modelName, systemPrompt, userPrompt }) {
+  if (!genAI) {
+    const err = new Error('Gemini API key is not configured');
+    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const context = (chunks || [])
+    .map((chunk, index) => {
+      const label = chunk.chunk_index ?? index;
+      return `[Source ${index + 1} | chunk ${label}]\n${chunk.content}`;
+    })
+    .join('\n\n');
+
+  const prompt = systemPrompt && userPrompt
+    ? `${systemPrompt}\n\n${userPrompt}`
+    : `You are AI Study Hub's study assistant.\n\nSelected document title:\n${documentTitle || 'Untitled document'}\n\nRetrieved source chunks:\n${context || 'No source chunks were available.'}\n\nUser question:\n${question}\n\n${buildModeInstruction(mode)}`;
+
+  const stream = await genAI.models.generateContentStream({
+    model,
+    contents: prompt,
+  });
+
+  for await (const chunk of stream) {
+    const text = chunk.text || '';
+    if (text) {
+      yield { type: 'token', text };
+    }
+    if (chunk.usageMetadata || chunk.usage_metadata) {
+      yield { type: 'usage', usageMetadata: extractUsageMetadata(chunk), model };
+    }
+  }
+}
+
+module.exports = { queryDocument, queryDocumentChunks, streamDocumentChunks };

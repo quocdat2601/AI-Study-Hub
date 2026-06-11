@@ -1,4 +1,7 @@
 import api from "./api.js";
+import { supabase } from "../lib/supabase.js";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export async function processDocumentForAi(id) {
   const response = await api.post(`/ai/documents/${id}/process`);
@@ -8,6 +11,83 @@ export async function processDocumentForAi(id) {
 export async function askDocument(id, question, mode = "hybrid", model) {
   const response = await api.post(`/ai/documents/${id}/ask`, { question, mode, model }, { timeout: 90000 });
   return response.data;
+}
+
+function parseSseEvent(block) {
+  const lines = block.split(/\r?\n/);
+  let event = "message";
+  const dataLines = [];
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trim());
+    }
+  }
+
+  return {
+    event,
+    data: dataLines.length ? JSON.parse(dataLines.join("\n")) : null,
+  };
+}
+
+export async function askDocumentStream(id, { question, mode = "hybrid", model, onStatus, onToken }) {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+
+  const token = data.session?.access_token;
+  if (!token) {
+    throw new Error("Missing authenticated session");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/ai/documents/${id}/ask/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ question, mode, model }),
+  });
+
+  if (!response.ok || !response.body) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || "Could not stream AI answer");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n/);
+    buffer = blocks.pop() || "";
+
+    for (const block of blocks) {
+      if (!block.trim()) continue;
+      const parsed = parseSseEvent(block);
+      if (parsed.event === "status") {
+        onStatus?.(parsed.data?.message || "");
+      } else if (parsed.event === "token") {
+        onToken?.(parsed.data?.text || "");
+      } else if (parsed.event === "done") {
+        donePayload = parsed.data;
+      } else if (parsed.event === "error") {
+        throw new Error(parsed.data?.error || "AI stream failed");
+      }
+    }
+  }
+
+  if (!donePayload) {
+    throw new Error("AI stream ended before completion");
+  }
+
+  return donePayload;
 }
 
 export async function getAiUsage(model) {

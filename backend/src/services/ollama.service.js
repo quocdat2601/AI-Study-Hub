@@ -105,7 +105,81 @@ async function generateChat({ model, systemPrompt, userPrompt, messages }) {
   };
 }
 
+async function* streamChat({ model, systemPrompt, userPrompt, messages }) {
+  await assertModelInstalled(model);
+
+  const payloadMessages = messages || [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+
+  const url = `${aiProviders.ollama.baseUrl}/api/chat`;
+  const request = (signal) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: payloadMessages,
+      stream: true,
+    }),
+    signal,
+  });
+  const { promise } = withTimeout(request, OLLAMA_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await promise;
+  } catch (err) {
+    if (err.name === 'AbortError' || err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
+      throw createUnavailableError();
+    }
+    throw err;
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    const err = new Error(text || `Ollama request failed with ${response.status}`);
+    err.statusCode = response.status;
+    throw err;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const reader = response.body.getReader();
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const data = JSON.parse(trimmed);
+      const text = data.message?.content || '';
+      if (text) {
+        yield { type: 'token', text };
+      }
+      if (data.done) {
+        yield {
+          type: 'usage',
+          usageMetadata: {
+            promptTokens: Number(data.prompt_eval_count || 0),
+            completionTokens: Number(data.eval_count || 0),
+            totalTokens: Number(data.prompt_eval_count || 0) + Number(data.eval_count || 0),
+          },
+          model,
+        };
+      }
+    }
+  }
+}
+
 module.exports = {
   generateChat,
+  streamChat,
   getStatus,
 };
