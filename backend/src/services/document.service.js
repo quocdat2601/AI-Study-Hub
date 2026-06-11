@@ -467,6 +467,64 @@ async function revokeDocumentShare({ document, shareId }) {
 
 
 
+// ─── Soft delete / trash / restore ──────────────────────────────────────────
+
+// Owner xóa mềm: đánh dấu deleted_at, file vẫn ở trên cloud
+async function softDeleteDocument({ document, userId }) {
+  await documentModel.softDelete(document.id);
+
+  activityService.log({
+    userId,
+    action: 'document.soft_delete',
+    targetType: 'document',
+    targetId: document.id,
+    metadata: { title: document.title },
+  });
+
+  return { message: 'Document moved to trash' };
+}
+
+// Danh sách thùng rác của user
+async function listTrash({ userId }) {
+  const documents = await documentModel.findDeletedByUserId(userId);
+  return documents.map(mapDocument);
+}
+
+// Khôi phục doc trong thùng rác (chủ hoặc admin)
+async function restoreDocument({ id, userId, role }) {
+  const doc = await documentModel.findAnyById(id);
+  if (!doc || !doc.deleted_at) {
+    throw createError(404, 'Document not found in trash');
+  }
+  if (doc.user_id !== userId && role !== 'admin') {
+    throw createError(403, 'Only the document owner can restore this document');
+  }
+
+  const restored = await documentModel.restore(id);
+
+  activityService.log({
+    userId,
+    action: 'document.restore',
+    targetType: 'document',
+    targetId: doc.id,
+  });
+
+  return { message: 'Document restored', document: mapDocument(restored) };
+}
+
+// Admin xóa cứng vĩnh viễn (kể cả doc đang trong thùng rác)
+async function purgeDocument({ id, userId }) {
+  const doc = await documentModel.findAnyById(id);
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+
+  // Tái dùng hard-delete sẵn có (xóa file storage + row DB + cloud_file)
+  await deleteDocument({ document: doc, userId });
+
+  return { message: 'Document permanently deleted' };
+}
+
 module.exports = {
   mapDocument,
   listDocuments,
@@ -480,6 +538,10 @@ module.exports = {
   updateVisibility,
   updateDocument,
   deleteDocument,
+  softDeleteDocument,
+  listTrash,
+  restoreDocument,
+  purgeDocument,
   listDocumentShares,
   shareDocument,
   revokeDocumentShare,
