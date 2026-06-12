@@ -79,3 +79,32 @@ export function getUserDisplayName(user, fallback = "Student") {
 
   return fallback;
 }
+
+export function getCommunityBadgeToneClasses(tone, variant = "light") {
+  const normalizedTone = getSafeText(tone, "indigo").toLowerCase();
+
+  const lightToneMap = {
+    amber: "border-[#f3d27b] bg-[#fff4d6] text-[#b45309]",
+    blue: "border-[#bcd0fb] bg-[#edf4ff] text-[#4648d4]",
+    emerald: "border-[#b8ebc6] bg-[#effdf4] text-[#0f8a4a]",
+    indigo: "border-[#c7cffd] bg-[#eef2ff] text-[#4648d4]",
+    pink: "border-[#ffc4d7] bg-[#fff0f5] text-[#db2777]",
+    rose: "border-[#ffc4d7] bg-[#fff0f5] text-[#db2777]",
+    slate: "border-[#c7cffd] bg-[#eef2ff] text-[#4648d4]",
+    violet: "border-[#c7cffd] bg-[#eef2ff] text-[#4648d4]",
+  };
+
+  const darkToneMap = {
+    amber: "border-[#5f4313] bg-[#3b2a10] text-[#ffd67a]",
+    blue: "border-[#21456f] bg-[#10253f] text-[#87c4ff]",
+    emerald: "border-[#1f513e] bg-[#0f3024] text-[#7ee2b8]",
+    pink: "border-[#69304d] bg-[#39172a] text-[#ff9ecf]",
+    rose: "border-[#69304d] bg-[#39172a] text-[#ff9ecf]",
+    slate: "border-[#334155] bg-[#16202c] text-[#cdd8e5]",
+    violet: "border-[#523884] bg-[#281a45] text-[#c7a6ff]",
+    indigo: "border-[#523884] bg-[#281a45] text-[#c7a6ff]",
+  };
+
+  const toneMap = variant === "dark" ? darkToneMap : lightToneMap;
+  return toneMap[normalizedTone] || toneMap.indigo;
+}

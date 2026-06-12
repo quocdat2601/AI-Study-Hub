@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import CommunityAttachmentPreview from "../components/community/CommunityAttachmentPreview.jsx";
 import CommunityBanner from "../components/community/CommunityBanner.jsx";
-import { buildCommunityPanelSearch } from "../components/community/communityPanelUtils.js";
+import CommunityPageShell from "../components/community/CommunityPageShell.jsx";
+import CommunityReportModal from "../components/community/CommunityReportModal.jsx";
 import CommunityThreadItem from "../components/community/CommunityThreadItem.jsx";
-import DashboardSidebar from "../components/dashboard/DashboardSidebar.jsx";
 import {
   getDetailPost,
   getDetailReplies,
@@ -13,82 +13,62 @@ import {
 } from "../components/community/communityThreadViewModel.js";
 import { formatForumDate, getSafeText, getUserDisplayName } from "../components/community/communityUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import useCommunityRealtime from "../hooks/useCommunityRealtime.js";
 import { getDocumentSignedUrl } from "../services/documentApi.js";
-import { acceptCommunityReply, createCommunityReply, getCommunityPostDetail } from "../services/communityApi.js";
+import {
+  acceptCommunityReply,
+  createCommunityReply,
+  deleteCommunityPost,
+  deleteCommunityReply,
+  getCommunityPostDetail,
+  reportCommunityPost,
+  toggleCommunityPostVote,
+  toggleCommunityReplyVote,
+} from "../services/communityApi.js";
 
-function DetailPageShell({
-  isAuthenticated,
-  isSidebarCollapsed,
-  onSidebarSectionChange,
-  onToggleSidebar,
-  userName,
-  children,
-}) {
-  const shellClass = isAuthenticated
-    ? (isSidebarCollapsed
-      ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:64px_minmax(0,1fr)] [scrollbar-gutter:stable]"
-      : "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:224px_minmax(0,1fr)] [scrollbar-gutter:stable]")
-    : "min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [scrollbar-gutter:stable]";
-  const contentClass = isAuthenticated
-    ? (isSidebarCollapsed ? "px-4 py-4 lg:px-6" : "p-5 lg:p-6")
-    : "px-4 py-5 md:px-8";
-
+function DetailSkeleton({ isAuthenticated, isSidebarCollapsed, onToggleSidebar, userName }) {
   return (
-    <main className={shellClass}>
-      {isAuthenticated ? (
-        <DashboardSidebar
-          activeSection="community"
-          isCollapsed={isSidebarCollapsed}
-          onSectionChange={onSidebarSectionChange}
-          onToggleCollapse={onToggleSidebar}
-          userName={userName}
-          newDocumentTo="/library"
-          newDocumentLabel="Upload Document"
-        />
-      ) : null}
-
-      <section className={contentClass}>
-        <div className="mx-auto grid w-full max-w-[1120px] gap-5">
-          {children}
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function DetailSkeleton(props) {
-  return (
-    <DetailPageShell {...props}>
-        <div className="h-6 w-52 rounded bg-[#e8edf5] animate-pulse" />
-        <div className="overflow-hidden rounded-[24px] border border-[#dbe3ed] bg-white">
-          <div className="grid md:grid-cols-[160px_minmax(0,1fr)]">
-            <div className="border-b border-[#dbe3ed] bg-[#f7f9fb] p-4 md:border-b-0 md:border-r">
-              <div className="h-20 w-20 rounded-full bg-[#e8edf5] animate-pulse" />
-              <div className="mt-4 h-4 w-24 rounded bg-[#eef2f7] animate-pulse" />
-              <div className="mt-4 h-20 rounded bg-[#eef2f7] animate-pulse" />
-            </div>
-            <div className="p-5">
-              <div className="h-4 w-36 rounded bg-[#e8edf5] animate-pulse" />
-              <div className="mt-5 h-8 w-1/2 rounded bg-[#eef2f7] animate-pulse" />
-              <div className="mt-4 h-24 rounded bg-[#eef2f7] animate-pulse" />
-            </div>
+    <CommunityPageShell
+      isAuthenticated={isAuthenticated}
+      isSidebarCollapsed={isSidebarCollapsed}
+      onToggleSidebar={onToggleSidebar}
+      userName={userName}
+    >
+      <div className="h-6 w-52 rounded bg-[#e8edf5] animate-pulse" />
+      <div className="overflow-hidden rounded-[24px] border border-[#dbe3ed] bg-white">
+        <div className="grid md:grid-cols-[160px_minmax(0,1fr)]">
+          <div className="border-b border-[#dbe3ed] bg-[#f7f9fb] p-4 md:border-b-0 md:border-r">
+            <div className="h-20 w-20 rounded-full bg-[#e8edf5] animate-pulse" />
+            <div className="mt-4 h-4 w-24 rounded bg-[#eef2f7] animate-pulse" />
+            <div className="mt-4 h-20 rounded bg-[#eef2f7] animate-pulse" />
+          </div>
+          <div className="p-5">
+            <div className="h-4 w-36 rounded bg-[#e8edf5] animate-pulse" />
+            <div className="mt-5 h-8 w-1/2 rounded bg-[#eef2f7] animate-pulse" />
+            <div className="mt-4 h-24 rounded bg-[#eef2f7] animate-pulse" />
           </div>
         </div>
-        <div className="h-12 rounded-[24px] border border-[#dbe3ed] bg-white animate-pulse" />
-        <div className="h-48 rounded-[24px] border border-[#dbe3ed] bg-white animate-pulse" />
-    </DetailPageShell>
+      </div>
+      <div className="h-12 rounded-[24px] border border-[#dbe3ed] bg-white animate-pulse" />
+      <div className="h-48 rounded-[24px] border border-[#dbe3ed] bg-white animate-pulse" />
+    </CommunityPageShell>
   );
 }
 
-function EmptyState({ title, description, action, ...shellProps }) {
+function EmptyState({ title, description, action, isAuthenticated, isSidebarCollapsed, onToggleSidebar, userName }) {
   return (
-    <DetailPageShell {...shellProps}>
+    <CommunityPageShell
+      isAuthenticated={isAuthenticated}
+      isSidebarCollapsed={isSidebarCollapsed}
+      onToggleSidebar={onToggleSidebar}
+      userName={userName}
+    >
       <div className="mx-auto max-w-[1120px] rounded-[24px] border border-[#dbe3ed] bg-white p-8 text-center shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
         <h1 className="m-0 text-[28px] font-black text-[#172033]">{title}</h1>
         <p className="mx-auto mt-3 max-w-[520px] text-[15px] leading-7 text-[#66758a]">{description}</p>
         <div className="mt-6">{action}</div>
       </div>
-    </DetailPageShell>
+    </CommunityPageShell>
   );
 }
 
@@ -99,6 +79,14 @@ export default function CommunityPostDetailPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const composerRef = useRef(null);
+  const noticeTimeoutRef = useRef(null);
+  const highlightTimeoutRef = useRef(null);
+  const handledReplyHashRef = useRef("");
+  const isMountedRef = useRef(true);
+  const latestLoadIdRef = useRef(0);
+  const postVotePendingRef = useRef(false);
+  const pendingReplyVoteIdsRef = useRef(new Set());
+  const recentVoteMutationRef = useRef(new Map());
   const [threadDetail, setThreadDetail] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -107,53 +95,107 @@ export default function CommunityPostDetailPage() {
   const [actionError, setActionError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptingReplyId, setAcceptingReplyId] = useState(null);
+  const [isPostVotePending, setIsPostVotePending] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [pendingScrollReplyId, setPendingScrollReplyId] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportedKeys, setReportedKeys] = useState({});
+  const [highlightedReplyId, setHighlightedReplyId] = useState(null);
+  const [pendingReplyVotes, setPendingReplyVotes] = useState({});
   const displayName = getUserDisplayName(user);
 
-  function handleSidebarSectionChange(sectionId) {
-    if (!sectionId || sectionId === "community") return;
-    navigate("/dashboard", {
-      state: { activeSection: sectionId },
-    });
-  }
+  const loadThreadDetail = useCallback(async ({ showLoading = true } = {}) => {
+    const loadId = latestLoadIdRef.current + 1;
+    latestLoadIdRef.current = loadId;
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadDetail() {
+    if (showLoading) {
       setIsLoading(true);
-      setError("");
-
-      try {
-        const detail = await getCommunityPostDetail(activePostId);
-        if (isMounted) {
-          setThreadDetail(detail);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err.response?.data?.error || err.response?.data?.message || "Could not load this community thread.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
     }
 
-    loadDetail();
-    return () => {
-      isMounted = false;
-    };
+    setError("");
+
+    try {
+      const detail = await getCommunityPostDetail(activePostId);
+      if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
+      setThreadDetail(detail);
+    } catch (err) {
+      if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
+      setError(err.response?.data?.error || err.response?.data?.message || "Could not load this community thread.");
+    } finally {
+      if (isMountedRef.current && latestLoadIdRef.current === loadId) {
+        setIsLoading(false);
+      }
+    }
   }, [activePostId]);
+
+  useEffect(() => {
+    loadThreadDetail();
+  }, [loadThreadDetail]);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    if (noticeTimeoutRef.current) {
+      clearTimeout(noticeTimeoutRef.current);
+    }
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    handledReplyHashRef.current = "";
+  }, [activePostId]);
+
+  useCommunityRealtime({
+    channelKey: `community-post-${activePostId}-live`,
+    filter: `post_id=eq.${activePostId}`,
+    enabled: Boolean(activePostId),
+    getDebounceMs: (payload) => {
+      const eventType = payload?.new?.event_type;
+      if (eventType === "post_vote_changed" || eventType === "reply_vote_changed") {
+        return 60;
+      }
+      return 220;
+    },
+    onSignal: (payload) => {
+      const eventType = payload?.new?.event_type;
+
+      if (eventType === "post_vote_changed") {
+        const targetKey = `post:${payload?.new?.post_id || activePostId}`;
+        if (hasRecentVoteMutation(targetKey)) {
+          return;
+        }
+      }
+
+      if (eventType === "reply_vote_changed") {
+        const targetKey = `reply:${payload?.new?.reply_id || ""}`;
+        if (hasRecentVoteMutation(targetKey)) {
+          return;
+        }
+      }
+
+      loadThreadDetail({ showLoading: false });
+    },
+  });
 
   const normalizedDetail = useMemo(() => {
     const rootRecord = getDetailPost(threadDetail || {});
     const replies = getDetailReplies(threadDetail || {});
     const rootPost = Object.keys(rootRecord).length ? normalizeThreadPost(rootRecord, 1) : null;
+    const normalizedReplies = replies.map((reply, index) => normalizeThreadPost(reply, index + 2));
+    const replyIndexById = new Map(normalizedReplies.map((reply) => [String(reply.id), reply.index]));
 
     return {
       rootPost,
-      replies: replies.map((reply, index) => normalizeThreadPost(reply, index + 2)),
+      replies: normalizedReplies.map((reply) => ({
+        ...reply,
+        parentReplyIndex: reply.parentReplyId ? (replyIndexById.get(String(reply.parentReplyId)) || null) : null,
+      })),
     };
   }, [threadDetail]);
 
@@ -176,20 +218,20 @@ export default function CommunityPostDetailPage() {
 
   const attachmentSlot = normalizedDetail.rootPost && ["document_share", "ai_study_log"].includes(normalizedDetail.rootPost.postType)
     ? (
-        <CommunityAttachmentPreview
-          post={normalizedDetail.rootPost}
-          isAuthenticated={isAuthenticated}
-          onOpenDocument={handleOpenDocument}
-          variant="light"
-        />
-      )
+      <CommunityAttachmentPreview
+        post={normalizedDetail.rootPost}
+        isAuthenticated={isAuthenticated}
+        onOpenDocument={handleOpenDocument}
+        variant="light"
+      />
+    )
     : null;
   const detailNavItems = [
-    { id: "find", label: "Find", to: `/community${buildCommunityPanelSearch({ panel: "find" })}` },
-    { id: "new", label: "New Post", to: `/community${buildCommunityPanelSearch({ panel: "new", composeType: "discussion" })}` },
-    { id: "people", label: "Top Contributors", to: `/community${buildCommunityPanelSearch({ panel: "people" })}` },
+    { id: "find", label: "Find", to: "/community" },
+    { id: "new", label: "New Post", to: "/community/new?compose=discussion" },
+    { id: "people", label: "Top Contributors", to: "/community?panel=people" },
   ];
-  const detailBannerBadges = normalizedDetail.rootPost?.category?.label ? [normalizedDetail.rootPost.category.label] : [];
+  const detailBannerBadges = normalizedDetail.rootPost?.category?.label ? [normalizedDetail.rootPost.category] : [];
   const detailBannerChips = (normalizedDetail.rootPost?.subjects || [])
     .map((subject) => getSafeText(subject.code) || getSafeText(subject.name))
     .filter(Boolean);
@@ -210,15 +252,215 @@ export default function CommunityPostDetailPage() {
       && normalizedDetail.rootPost?.postType === "question"
   );
 
+  function showNotice(message, tone = "success") {
+    if (noticeTimeoutRef.current) {
+      clearTimeout(noticeTimeoutRef.current);
+    }
+
+    setNotice({ message, tone });
+    noticeTimeoutRef.current = setTimeout(() => {
+      setNotice(null);
+      noticeTimeoutRef.current = null;
+    }, 2600);
+  }
+
+  function getReplyAnchorId(replyId) {
+    return `community-reply-${replyId}`;
+  }
+
+  const scrollToReply = useCallback((replyId) => {
+    if (!replyId) return false;
+
+    const element = document.getElementById(getReplyAnchorId(replyId));
+    if (!element) return false;
+
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${getReplyAnchorId(replyId)}`);
+    return true;
+  }, []);
+
+  const highlightReply = useCallback((replyId) => {
+    if (!replyId) return;
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    setHighlightedReplyId(String(replyId));
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedReplyId(null);
+      highlightTimeoutRef.current = null;
+    }, 2600);
+  }, []);
+
+  const rememberRecentVoteMutation = useCallback((key, ttlMs = 3200) => {
+    if (!key) return;
+    recentVoteMutationRef.current.set(String(key), Date.now() + Math.max(250, Number(ttlMs) || 0));
+  }, []);
+
+  const hasRecentVoteMutation = useCallback((key) => {
+    if (!key) return false;
+
+    const mutationKey = String(key);
+    const expiresAt = recentVoteMutationRef.current.get(mutationKey);
+    if (!expiresAt) {
+      return false;
+    }
+
+    if (expiresAt <= Date.now()) {
+      recentVoteMutationRef.current.delete(mutationKey);
+      return false;
+    }
+
+    return true;
+  }, []);
+
+  const focusReply = useCallback((replyId) => {
+    if (!replyId) return false;
+
+    const didScroll = scrollToReply(replyId);
+    if (!didScroll) return false;
+
+    handledReplyHashRef.current = `#${getReplyAnchorId(replyId)}`;
+    highlightReply(replyId);
+    return true;
+  }, [highlightReply, scrollToReply]);
+
+  useEffect(() => {
+    if (!pendingScrollReplyId) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      if (focusReply(pendingScrollReplyId)) {
+        setPendingScrollReplyId(null);
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [focusReply, pendingScrollReplyId, threadDetail]);
+
+  useEffect(() => {
+    if (!threadDetail || !location.hash.startsWith("#community-reply-")) return;
+    if (handledReplyHashRef.current === location.hash) return;
+
+    const targetId = Number(location.hash.replace("#community-reply-", ""));
+    if (!Number.isInteger(targetId) || targetId <= 0) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      focusReply(targetId);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [focusReply, location.hash, threadDetail]);
+
+  function openLoginForAction() {
+    navigate("/login", { state: { from: location } });
+  }
+
+  function buildReportKey(type, targetId) {
+    return `${type}:${targetId}`;
+  }
+
+  function openReportModal(target) {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+
+    setReportTarget(target);
+    setReportReason("");
+    setReportError("");
+  }
+
   function focusComposer() {
     composerRef.current?.focus();
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function handleReplyToPost() {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+
+    setReplyTarget(null);
+    focusComposer();
+  }
+
+  function handleReplyToReply(reply) {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+
+    setReplyTarget({
+      id: reply.id,
+      index: reply.index || null,
+      author: reply.author,
+      excerpt: reply.excerpt || reply.content || "",
+    });
+    focusComposer();
+  }
+
+  function handleParentReplyClick(reply) {
+    const targetReplyId = reply?.parentReply?.id || reply?.parentReplyId;
+    if (!targetReplyId) return;
+    focusReply(targetReplyId);
+  }
+
+  async function handleDeletePost(post) {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+
+    if (!post?.id) return;
+    if (!window.confirm("Delete this post? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      setActionError("");
+      await deleteCommunityPost(post.id);
+      showNotice("Post deleted");
+      navigate("/community");
+    } catch (err) {
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not delete this post.");
+    }
+  }
+
+  async function handleDeleteReply(reply) {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+
+    if (!reply?.id) return;
+    if (!window.confirm("Delete this comment? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      setActionError("");
+      const response = await deleteCommunityReply(reply.id);
+      setThreadDetail(response);
+      if (replyTarget?.id && String(replyTarget.id) === String(reply.id)) {
+        setReplyTarget(null);
+      }
+      showNotice("Comment deleted");
+    } catch (err) {
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not delete this comment.");
+    }
   }
 
   async function handleSubmitReply(event) {
     event.preventDefault();
 
     if (!isAuthenticated) {
+      openLoginForAction();
       return;
     }
 
@@ -232,7 +474,13 @@ export default function CommunityPostDetailPage() {
     setReplyError("");
 
     try {
-      const response = await createCommunityReply(activePostId, content);
+      const response = await createCommunityReply(activePostId, {
+        body: content,
+        parentReplyId: replyTarget?.id || undefined,
+      });
+      const createdReplyId = isThreadDetailResponse(response)
+        ? getDetailReplies(response).at(-1)?.id || null
+        : response?.id || null;
 
       if (isThreadDetailResponse(response)) {
         setThreadDetail(response);
@@ -248,7 +496,10 @@ export default function CommunityPostDetailPage() {
       }
 
       setReplyBody("");
+      setReplyTarget(null);
       setActionError("");
+      setPendingScrollReplyId(createdReplyId);
+      showNotice("Reply posted");
     } catch (err) {
       setReplyError(err.response?.data?.error || err.response?.data?.message || "Could not submit your reply.");
     } finally {
@@ -262,11 +513,124 @@ export default function CommunityPostDetailPage() {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
+        showNotice("Link copied");
       } else {
         window.prompt("Copy thread link", shareUrl);
       }
     } catch (_) {
       window.prompt("Copy thread link", shareUrl);
+    }
+  }
+
+  async function handlePostVote() {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+    if (isPostVotePending || postVotePendingRef.current) {
+      return;
+    }
+
+    const previousVoted = Boolean(normalizedDetail.rootPost?.isUpvoted);
+    const previousVoteCount = Number(normalizedDetail.rootPost?.metrics?.upvoteCount || 0);
+    const nextVoted = !previousVoted;
+    const nextVoteCount = Math.max(0, previousVoteCount + (nextVoted ? 1 : -1));
+
+    try {
+      setActionError("");
+      postVotePendingRef.current = true;
+      setIsPostVotePending(true);
+      setThreadDetail((current) => current ? {
+        ...current,
+        voteCount: nextVoteCount,
+        viewerUpvoted: nextVoted,
+      } : current);
+      rememberRecentVoteMutation(`post:${activePostId}`);
+      const result = await toggleCommunityPostVote(activePostId);
+      setThreadDetail((current) => current ? {
+        ...current,
+        voteCount: result.voteCount,
+        viewerUpvoted: result.voted,
+      } : current);
+    } catch (err) {
+      setThreadDetail((current) => current ? {
+        ...current,
+        voteCount: previousVoteCount,
+        viewerUpvoted: previousVoted,
+      } : current);
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update the post vote.");
+    } finally {
+      postVotePendingRef.current = false;
+      setIsPostVotePending(false);
+    }
+  }
+
+  async function handleReplyVote(reply) {
+    if (!isAuthenticated) {
+      openLoginForAction();
+      return;
+    }
+    if (!reply?.id || pendingReplyVotes[String(reply.id)] || pendingReplyVoteIdsRef.current.has(String(reply.id))) {
+      return;
+    }
+
+    const replyKey = String(reply.id);
+    const previousVoted = Boolean(reply.isUpvoted);
+    const previousVoteCount = Number(reply.metrics?.upvoteCount || 0);
+    const nextVoted = !previousVoted;
+    const nextVoteCount = Math.max(0, previousVoteCount + (nextVoted ? 1 : -1));
+
+    try {
+      setActionError("");
+      pendingReplyVoteIdsRef.current.add(replyKey);
+      setPendingReplyVotes((current) => ({
+        ...current,
+        [replyKey]: true,
+      }));
+      setThreadDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          replies: (current.replies || []).map((item) => (
+            String(item.id) === replyKey
+              ? { ...item, voteCount: nextVoteCount, viewerUpvoted: nextVoted }
+              : item
+          )),
+        };
+      });
+      rememberRecentVoteMutation(`reply:${reply.id}`);
+      const result = await toggleCommunityReplyVote(reply.id);
+      setThreadDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          replies: (current.replies || []).map((item) => (
+            String(item.id) === String(reply.id)
+              ? { ...item, voteCount: result.voteCount, viewerUpvoted: result.voted }
+              : item
+          )),
+        };
+      });
+    } catch (err) {
+      setThreadDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          replies: (current.replies || []).map((item) => (
+            String(item.id) === replyKey
+              ? { ...item, voteCount: previousVoteCount, viewerUpvoted: previousVoted }
+              : item
+          )),
+        };
+      });
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update the reply vote.");
+    } finally {
+      pendingReplyVoteIdsRef.current.delete(replyKey);
+      setPendingReplyVotes((current) => {
+        const next = { ...current };
+        delete next[replyKey];
+        return next;
+      });
     }
   }
 
@@ -282,10 +646,56 @@ export default function CommunityPostDetailPage() {
       const response = await acceptCommunityReply(normalizedDetail.rootPost.id, reply.id);
       setThreadDetail(response);
       setReplyError("");
+      setPendingScrollReplyId(reply.id);
+      showNotice("Accepted answer updated");
     } catch (err) {
       setActionError(err.response?.data?.error || err.response?.data?.message || "Could not mark this reply as the accepted answer.");
     } finally {
       setAcceptingReplyId(null);
+    }
+  }
+
+  async function handleSubmitReport(event) {
+    event.preventDefault();
+
+    if (!reportTarget) return;
+
+    const reason = reportReason.trim();
+    if (!reason) {
+      setReportError("Enter a reason before submitting.");
+      return;
+    }
+
+    setIsReporting(true);
+    setReportError("");
+
+    try {
+      await reportCommunityPost(normalizedDetail.rootPost.id, {
+        reason,
+        ...(reportTarget.type === "reply" ? { replyId: reportTarget.id } : {}),
+      });
+      setReportedKeys((current) => ({
+        ...current,
+        [buildReportKey(reportTarget.type, reportTarget.id)]: true,
+      }));
+      setReportTarget(null);
+      setReportReason("");
+      showNotice("Report submitted");
+    } catch (err) {
+      const message = err.response?.data?.error || err.response?.data?.message || "Could not submit this report.";
+      if (err.response?.status === 409 || message.toLowerCase().includes("already")) {
+        setReportedKeys((current) => ({
+          ...current,
+          [buildReportKey(reportTarget.type, reportTarget.id)]: true,
+        }));
+        setReportTarget(null);
+        setReportReason("");
+        showNotice("You already reported this item", "info");
+      } else {
+        setReportError(message);
+      }
+    } finally {
+      setIsReporting(false);
     }
   }
 
@@ -294,7 +704,6 @@ export default function CommunityPostDetailPage() {
       <DetailSkeleton
         isAuthenticated={isAuthenticated}
         isSidebarCollapsed={isSidebarCollapsed}
-        onSidebarSectionChange={handleSidebarSectionChange}
         onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
       />
@@ -306,7 +715,6 @@ export default function CommunityPostDetailPage() {
       <EmptyState
         isAuthenticated={isAuthenticated}
         isSidebarCollapsed={isSidebarCollapsed}
-        onSidebarSectionChange={handleSidebarSectionChange}
         onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
         title="Could not load thread"
@@ -319,15 +727,7 @@ export default function CommunityPostDetailPage() {
               setThreadDetail(null);
               setIsLoading(true);
               setError("");
-              getCommunityPostDetail(activePostId)
-                .then((detail) => {
-                  setThreadDetail(detail);
-                  setIsLoading(false);
-                })
-                .catch((err) => {
-                  setError(err.response?.data?.error || err.response?.data?.message || "Could not load this community thread.");
-                  setIsLoading(false);
-                });
+              loadThreadDetail();
             }}
           >
             Try again
@@ -342,7 +742,6 @@ export default function CommunityPostDetailPage() {
       <EmptyState
         isAuthenticated={isAuthenticated}
         isSidebarCollapsed={isSidebarCollapsed}
-        onSidebarSectionChange={handleSidebarSectionChange}
         onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
         title="Thread not found"
@@ -359,51 +758,120 @@ export default function CommunityPostDetailPage() {
     );
   }
 
+  const rootReportKey = buildReportKey("post", normalizedDetail.rootPost.id);
+  const rootMenuItems = [
+    ...(isPostOwner ? [{
+      id: "delete-post",
+      label: "Delete post",
+      onClick: () => handleDeletePost(normalizedDetail.rootPost),
+    }] : []),
+    {
+      id: "report-post",
+      label: reportedKeys[rootReportKey] ? "Report submitted" : "Report post",
+      disabled: Boolean(reportedKeys[rootReportKey]),
+      onClick: () => openReportModal({
+        type: "post",
+        id: normalizedDetail.rootPost.id,
+        summary: normalizedDetail.rootPost.title || normalizedDetail.rootPost.excerpt || "Untitled thread",
+      }),
+    },
+  ];
+
   return (
-    <DetailPageShell
+    <CommunityPageShell
       isAuthenticated={isAuthenticated}
       isSidebarCollapsed={isSidebarCollapsed}
-      onSidebarSectionChange={handleSidebarSectionChange}
       onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
       userName={displayName}
     >
-        <CommunityBanner
-          title={normalizedDetail.rootPost.title || "Untitled thread"}
-          navItems={detailNavItems}
-          badges={detailBannerBadges}
-          chips={detailBannerChips}
-          metaItems={detailBannerMeta}
-          LinkComponent={Link}
-        />
+      <CommunityReportModal
+        isOpen={Boolean(reportTarget)}
+        target={reportTarget}
+        reason={reportReason}
+        error={reportError}
+        isSubmitting={isReporting}
+        onReasonChange={setReportReason}
+        onClose={() => {
+          if (isReporting) return;
+          setReportTarget(null);
+          setReportReason("");
+          setReportError("");
+        }}
+        onSubmit={handleSubmitReport}
+      />
 
-        {actionError ? (
-          <div className="rounded-xl border border-[#fecaca] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#991b1b]">
-            {actionError}
-          </div>
-        ) : null}
+      {notice ? (
+        <div className={notice.tone === "success"
+          ? "fixed bottom-5 right-5 z-40 rounded-2xl border border-[#bfe5d3] bg-[#ecfff5] px-4 py-3 text-sm font-black text-[#166534] shadow-[0_18px_40px_rgba(20,31,48,0.16)]"
+          : "fixed bottom-5 right-5 z-40 rounded-2xl border border-[#dbe3ed] bg-white px-4 py-3 text-sm font-black text-[#172033] shadow-[0_18px_40px_rgba(20,31,48,0.16)]"}>
+          {notice.message}
+        </div>
+      ) : null}
 
-        <CommunityThreadItem
-          post={normalizedDetail.rootPost}
-          isRootPost
-          attachmentSlot={attachmentSlot}
-          onReply={focusComposer}
-          onShare={handleShare}
-          LinkComponent={Link}
-          variant="light"
-          showTitle={false}
-          showCreatedMeta
-        />
+      <CommunityBanner
+        title={normalizedDetail.rootPost.title || "Untitled thread"}
+        navItems={detailNavItems}
+        badges={detailBannerBadges}
+        chips={detailBannerChips}
+        metaItems={detailBannerMeta}
+        LinkComponent={Link}
+      />
 
-        <section className="flex items-center gap-4 rounded-[24px] border border-[#dbe3ed] bg-white px-5 py-4 shadow-[0_18px_40px_rgba(20,31,48,0.05)]">
-          <span className="h-px flex-1 bg-[#dbe3ed]" />
-          <h2 className="m-0 text-sm font-black uppercase tracking-[0.9px] text-[#66758a]">
-            Users replies ({normalizedDetail.replies.length})
-          </h2>
-          <span className="h-px flex-1 bg-[#dbe3ed]" />
-        </section>
+      {actionError ? (
+        <div className="rounded-xl border border-[#fecaca] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#991b1b]">
+          {actionError}
+        </div>
+      ) : null}
 
-        <section className="grid gap-4">
-          {normalizedDetail.replies.map((reply) => (
+      <CommunityThreadItem
+        post={normalizedDetail.rootPost}
+        isRootPost
+        attachmentSlot={attachmentSlot}
+        onReply={handleReplyToPost}
+        onShare={handleShare}
+        onUpvote={handlePostVote}
+        menuItems={rootMenuItems}
+        LinkComponent={Link}
+        variant="light"
+        showTitle={false}
+        showCreatedMeta
+      />
+
+      <section className="flex items-center gap-4 rounded-[24px] border border-[#dbe3ed] bg-white px-5 py-4 shadow-[0_18px_40px_rgba(20,31,48,0.05)]">
+        <span className="h-px flex-1 bg-[#dbe3ed]" />
+        <h2 className="m-0 text-sm font-black uppercase tracking-[0.9px] text-[#66758a]">
+          Users replies ({normalizedDetail.replies.length})
+        </h2>
+        <span className="h-px flex-1 bg-[#dbe3ed]" />
+      </section>
+
+      <section className="grid gap-4">
+        {normalizedDetail.replies.map((reply) => {
+          const reportKey = buildReportKey("reply", reply.id);
+          const isReplyOwner = Boolean(
+            user?.id
+              && reply.author?.id
+              && String(user.id) === String(reply.author.id)
+          );
+          const replyMenuItems = [
+            ...(isReplyOwner ? [{
+              id: `delete-reply-${reply.id}`,
+              label: "Delete comment",
+              onClick: () => handleDeleteReply(reply),
+            }] : []),
+            {
+              id: `report-reply-${reply.id}`,
+              label: reportedKeys[reportKey] ? "Report submitted" : "Report comment",
+              disabled: Boolean(reportedKeys[reportKey]),
+              onClick: () => openReportModal({
+                type: "reply",
+                id: reply.id,
+                summary: reply.excerpt || reply.content || "Reply",
+              }),
+            },
+          ];
+
+          return (
             <CommunityThreadItem
               key={reply.id}
               post={reply}
@@ -422,67 +890,104 @@ export default function CommunityPostDetailPage() {
                   {acceptingReplyId === reply.id ? "Saving..." : "Mark as answer"}
                 </button>
               ) : null}
-              onReply={focusComposer}
+              onReply={handleReplyToReply}
+              onParentReplyClick={handleParentReplyClick}
               onShare={handleShare}
+              onUpvote={handleReplyVote}
+              menuItems={replyMenuItems}
               LinkComponent={Link}
               variant="light"
+              isHighlighted={String(highlightedReplyId) === String(reply.id)}
             />
-          ))}
-        </section>
+          );
+        })}
+      </section>
 
-        <section className="rounded-[24px] border border-[#dbe3ed] bg-white p-5 shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#66758a]">Join the discussion</p>
-              <h2 className="mt-2 text-2xl font-black text-[#172033]">Your reply</h2>
-            </div>
-            {!isAuthLoading && !isAuthenticated ? (
-              <Link
-                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#dbe3ed] px-4 text-sm font-black text-[#4648d4] no-underline transition hover:border-[#4648d4] hover:bg-[#eef2ff]"
-                to="/login"
-                state={{ from: location }}
-              >
-                Log in to reply
-              </Link>
-            ) : null}
+      <section className="rounded-[24px] border border-[#dbe3ed] bg-white p-5 shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#66758a]">Join the discussion</p>
+            <h2 className="mt-2 text-2xl font-black text-[#172033]">Your reply</h2>
           </div>
+          {!isAuthLoading && !isAuthenticated ? (
+            <Link
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#dbe3ed] px-4 text-sm font-black text-[#4648d4] no-underline transition hover:border-[#4648d4] hover:bg-[#eef2ff]"
+              to="/login"
+              state={{ from: location }}
+            >
+              Log in to reply
+            </Link>
+          ) : null}
+        </div>
 
-          <form className="grid gap-3" onSubmit={handleSubmitReply}>
-            <label className="grid gap-2">
-              <span className="text-sm font-bold text-[#66758a]">Your reply</span>
-              <textarea
-                ref={composerRef}
-                className="min-h-[180px] w-full resize-y rounded-[22px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3 text-[15px] leading-7 text-[#172033] outline-none transition placeholder:text-[#7a8798] focus:border-[#4648d4] focus:bg-white focus:shadow-[0_0_0_4px_rgba(70,72,212,0.12)] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:bg-[#f2f5f8] disabled:text-[#7b8fa4]"
-                placeholder={isAuthenticated ? "Share your explanation, resource, or study experience..." : "Log in to reply to this thread."}
-                value={replyBody}
-                onChange={(event) => setReplyBody(event.target.value)}
-                disabled={!isAuthenticated || isSubmitting}
-              />
-            </label>
-
-            {replyError ? (
-              <div className="rounded-xl border border-[#fecaca] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#991b1b]">
-                {replyError}
+        <form className="grid gap-3" onSubmit={handleSubmitReply}>
+          {replyTarget ? (
+            <div className="rounded-[20px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="m-0 text-sm font-black text-[#172033]">
+                    Replying to {getSafeText(replyTarget.author?.displayName) || getSafeText(replyTarget.author?.email, "Student")}
+                    {replyTarget.index ? ` · #${replyTarget.index}` : ""}
+                  </p>
+                  {replyTarget.id ? (
+                    <button
+                      className="mt-1 border-0 bg-transparent p-0 text-left text-xs font-black text-[#4648d4] transition hover:text-[#3537b8]"
+                      onClick={() => focusReply(replyTarget.id)}
+                      type="button"
+                    >
+                      Jump to original comment
+                    </button>
+                  ) : null}
+                  {getSafeText(replyTarget.excerpt) ? (
+                    <p className="mt-2 mb-0 text-sm leading-6 text-[#526173]">{getSafeText(replyTarget.excerpt)}</p>
+                  ) : null}
+                </div>
+                <button
+                  className="rounded-full border border-[#dbe3ed] bg-white px-3 py-1.5 text-xs font-extrabold text-[#172033]"
+                  onClick={() => setReplyTarget(null)}
+                  type="button"
+                >
+                  Cancel
+                </button>
               </div>
-            ) : null}
-
-            {!isAuthLoading && !isAuthenticated ? (
-              <div className="rounded-xl border border-dashed border-[#c7d2e2] bg-[#f8fafc] px-4 py-3 text-sm text-[#66758a]">
-                Guests can read the thread and view previews. Log in to join the conversation.
-              </div>
-            ) : null}
-
-            <div className="flex items-center justify-end">
-              <button
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-5 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:border-[#c7d2e2] disabled:bg-[#e5e7eb] disabled:text-[#7f95ac]"
-                type="submit"
-                disabled={!isAuthenticated || isSubmitting || !replyBody.trim()}
-              >
-                {isSubmitting ? "Posting..." : "Post Reply"}
-              </button>
             </div>
-          </form>
-        </section>
-    </DetailPageShell>
+          ) : null}
+
+          <label className="grid gap-2">
+            <span className="text-sm font-bold text-[#66758a]">Your reply</span>
+            <textarea
+              ref={composerRef}
+              className="min-h-[180px] w-full resize-y rounded-[22px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3 text-[15px] leading-7 text-[#172033] outline-none transition placeholder:text-[#7a8798] focus:border-[#4648d4] focus:bg-white focus:shadow-[0_0_0_4px_rgba(70,72,212,0.12)] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:bg-[#f2f5f8] disabled:text-[#7b8fa4]"
+              placeholder={isAuthenticated ? "Share your explanation, resource, or study experience..." : "Log in to reply to this thread."}
+              value={replyBody}
+              onChange={(event) => setReplyBody(event.target.value)}
+              disabled={!isAuthenticated || isSubmitting}
+            />
+          </label>
+
+          {replyError ? (
+            <div className="rounded-xl border border-[#fecaca] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#991b1b]">
+              {replyError}
+            </div>
+          ) : null}
+
+          {!isAuthLoading && !isAuthenticated ? (
+            <div className="rounded-xl border border-dashed border-[#c7d2e2] bg-[#f8fafc] px-4 py-3 text-sm text-[#66758a]">
+              Guests can read the thread and view previews. Log in to join the conversation.
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-end">
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-5 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:border-[#c7d2e2] disabled:bg-[#e5e7eb] disabled:text-[#7f95ac]"
+              type="submit"
+              disabled={!isAuthenticated || isSubmitting || !replyBody.trim()}
+            >
+              {isSubmitting ? "Posting..." : "Post Reply"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </CommunityPageShell>
   );
 }

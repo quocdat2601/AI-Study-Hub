@@ -16,11 +16,26 @@ export async function createCommunityPost(payload) {
 }
 
 export async function createCommunityReply(postId, payload) {
-  const body = typeof payload === "string"
+  const isStringPayload = typeof payload === "string";
+  const body = isStringPayload
     ? payload
     : payload?.body ?? payload?.content ?? "";
+  const parentReplyId = isStringPayload ? undefined : payload?.parentReplyId;
 
-  const response = await api.post(`/community/posts/${postId}/replies`, { body });
+  const response = await api.post(`/community/posts/${postId}/replies`, {
+    body,
+    ...(parentReplyId ? { parentReplyId } : {}),
+  });
+  return response.data;
+}
+
+export async function deleteCommunityPost(postId) {
+  const response = await api.delete(`/community/posts/${postId}`);
+  return response.data;
+}
+
+export async function deleteCommunityReply(replyId) {
+  const response = await api.delete(`/community/replies/${replyId}`);
   return response.data;
 }
 

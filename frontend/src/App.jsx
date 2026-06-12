@@ -6,6 +6,7 @@ import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
 import CommunityPage from "./pages/CommunityPage.jsx";
+import CommunityCreatePostPage from "./pages/CommunityCreatePostPage.jsx";
 import CommunityPostDetailPage from "./pages/CommunityPostDetailPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
@@ -46,6 +47,10 @@ function AppRoutes() {
         <Route
           path="/community/subjects/:code"
           element={<CommunityPage />}
+        />
+        <Route
+          path="/community/new"
+          element={<CommunityCreatePostPage />}
         />
         <Route
           path="/community/posts/:id"

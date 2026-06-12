@@ -1,6 +1,6 @@
 import React from "react";
 import CommunityMiniFeatureBar from "./CommunityMiniFeatureBar.jsx";
-import { cx } from "./communityUtils.js";
+import { cx, getCommunityBadgeToneClasses } from "./communityUtils.js";
 
 export default function CommunityBanner({
   eyebrow = "",
@@ -25,14 +25,21 @@ export default function CommunityBanner({
 
         {badges.length ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {badges.map((badge, index) => (
-              <span
-                className="inline-flex min-h-7 items-center rounded-full border border-[#c7cffd] bg-[#eef2ff] px-3 text-[11px] font-black uppercase tracking-[0.7px] text-[#4648d4]"
-                key={`${badge}-${index}`}
-              >
-                {badge}
-              </span>
-            ))}
+            {badges.map((badge, index) => {
+              const label = typeof badge === "string" ? badge : badge?.label;
+              const tone = typeof badge === "string" ? "indigo" : badge?.tone;
+              return (
+                <span
+                  className={cx(
+                    "inline-flex min-h-7 items-center rounded-full border px-3 text-[11px] font-black uppercase tracking-[0.7px]",
+                    getCommunityBadgeToneClasses(tone, "light")
+                  )}
+                  key={`${label}-${index}`}
+                >
+                  {label}
+                </span>
+              );
+            })}
           </div>
         ) : null}
 

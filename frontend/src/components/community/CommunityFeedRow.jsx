@@ -1,21 +1,6 @@
 import React from "react";
 import CommunityAvatar from "./CommunityAvatar.jsx";
-import { cx, formatCount, formatForumDate, getSafeText } from "./communityUtils.js";
-
-function getCategoryToneClasses(tone) {
-  const normalizedTone = getSafeText(tone, "indigo").toLowerCase();
-
-  const toneMap = {
-    amber: "border-[#f3d27b] bg-[#fff4d6] text-[#b45309]",
-    blue: "border-[#bcd0fb] bg-[#edf4ff] text-[#4648d4]",
-    emerald: "border-[#b8ebc6] bg-[#effdf4] text-[#0f8a4a]",
-    indigo: "border-[#c7cffd] bg-[#eef2ff] text-[#4648d4]",
-    rose: "border-[#ffc4d7] bg-[#fff0f5] text-[#db2777]",
-    slate: "border-[#c7cffd] bg-[#eef2ff] text-[#4648d4]",
-  };
-
-  return toneMap[normalizedTone] || toneMap.indigo;
-}
+import { cx, formatCount, formatForumDate, getCommunityBadgeToneClasses, getSafeText } from "./communityUtils.js";
 
 function MetricBlock({ label, value, variant }) {
   const isLight = variant === "light";
@@ -90,7 +75,7 @@ export default function CommunityFeedRow({
               <span
                 className={cx(
                   "inline-flex min-h-7 items-center rounded-full border px-3 text-[11px] font-black uppercase tracking-[0.7px]",
-                  getCategoryToneClasses(category.tone)
+                  getCommunityBadgeToneClasses(category.tone, "light")
                 )}
               >
                 {categoryLabel}

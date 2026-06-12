@@ -1,21 +1,6 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import CommunityAvatar from "./CommunityAvatar.jsx";
-import { cx, formatCount, formatForumDate, getSafeText } from "./communityUtils.js";
-
-function getBadgeToneClasses(tone) {
-  const normalizedTone = getSafeText(tone, "slate").toLowerCase();
-
-  const toneMap = {
-    amber: "border-[#5f4313] bg-[#3b2a10] text-[#ffd67a]",
-    blue: "border-[#21456f] bg-[#10253f] text-[#87c4ff]",
-    emerald: "border-[#1f513e] bg-[#0f3024] text-[#7ee2b8]",
-    pink: "border-[#69304d] bg-[#39172a] text-[#ff9ecf]",
-    slate: "border-[#334155] bg-[#16202c] text-[#cdd8e5]",
-    violet: "border-[#523884] bg-[#281a45] text-[#c7a6ff]",
-  };
-
-  return toneMap[normalizedTone] || toneMap.slate;
-}
+import { cx, formatCount, formatForumDate, getCommunityBadgeToneClasses, getSafeText } from "./communityUtils.js";
 
 function ShareIcon() {
   return (
@@ -47,6 +32,84 @@ function ReplyIcon() {
   );
 }
 
+function MoreIcon() {
+  return (
+    <svg className="h-4 w-4 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="5" cy="12" r="1.2" />
+      <circle cx="12" cy="12" r="1.2" />
+      <circle cx="19" cy="12" r="1.2" />
+    </svg>
+  );
+}
+
+function ThreadItemMenu({ items, isLight }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handlePointerDown(event) {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, []);
+
+  if (!items.length) return null;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        className={cx(
+          "inline-flex h-9 w-9 items-center justify-center rounded-full border transition",
+          isLight
+            ? "border-[#dbe3ed] bg-white text-[#66758a] hover:border-[#4648d4] hover:text-[#4648d4]"
+            : "border-[#2a394b] bg-[#16202c] text-[#a6bad0] hover:border-[#3d5570] hover:text-[#f4f8fc]"
+        )}
+        type="button"
+        aria-label="More actions"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <MoreIcon />
+      </button>
+
+      {isOpen ? (
+        <div className={cx(
+          "absolute right-0 top-[calc(100%+8px)] z-20 min-w-[180px] overflow-hidden rounded-2xl border shadow-[0_24px_45px_rgba(8,13,22,0.18)]",
+          isLight ? "border-[#dbe3ed] bg-white" : "border-[#334154] bg-[#101722]"
+        )}>
+          <div className="grid py-2">
+            {items.map((item) => (
+              <button
+                key={item.id || item.label}
+                className={cx(
+                  "px-4 py-3 text-left text-sm font-bold transition",
+                  isLight ? "text-[#172033] hover:bg-[#f8fafc]" : "text-white hover:bg-[rgba(255,255,255,0.08)]",
+                  item.disabled && "cursor-not-allowed opacity-50"
+                )}
+                disabled={item.disabled}
+                onClick={() => {
+                  if (item.disabled) return;
+                  setIsOpen(false);
+                  item.onClick?.();
+                }}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CommunityThreadItem({
   as: Component = "article",
   className = "",
@@ -56,11 +119,14 @@ export default function CommunityThreadItem({
   onUpvote,
   onReply,
   onShare,
+  menuItems = [],
   LinkComponent = "a",
   variant = "dark",
   showTitle = true,
   showCreatedMeta = true,
   footerActionSlot = null,
+  onParentReplyClick,
+  isHighlighted = false,
 }) {
   const safePost = post || {};
   const author = safePost.author || {};
@@ -70,17 +136,31 @@ export default function CommunityThreadItem({
   const profileHref = getSafeText(author.href || author.profileHref);
   const title = isRootPost ? getSafeText(safePost.title) : "";
   const content = getSafeText(safePost.content, "No content yet.");
+  const parentReply = safePost.parentReply || null;
+  const parentReplyId = safePost.parentReplyId || parentReply?.id || null;
+  const parentReplyIndex = Number.isFinite(Number(safePost.parentReplyIndex)) ? `#${Number(safePost.parentReplyIndex)}` : "";
+  const parentReplyAuthor = getSafeText(parentReply?.author?.displayName) || getSafeText(parentReply?.author?.email);
+  const parentReplyExcerpt = getSafeText(parentReply?.excerpt);
   const itemIndex = Number.isFinite(Number(safePost.index)) ? `#${Number(safePost.index)}` : "#?";
+  const anchorId = safePost.id ? `${isRootPost ? "community-post" : "community-reply"}-${safePost.id}` : undefined;
   const ProfileComponent = profileHref ? LinkComponent : "div";
   const profileProps = profileHref ? (typeof ProfileComponent === "string" ? { href: profileHref } : { to: profileHref }) : {};
   const isLight = variant === "light";
+  const isAccepted = Boolean(safePost.isAccepted);
+  const isUpvoted = Boolean(safePost.isUpvoted);
 
   return (
     <Component
+      id={anchorId}
       className={cx(
         isLight
-          ? "overflow-hidden rounded-[24px] border border-[#c7d2e2] bg-white text-[#172033] shadow-[0_18px_40px_rgba(20,31,48,0.06)]"
-          : "overflow-hidden rounded-2xl border border-[#243142] bg-[#121a24] text-[#dbe5f1] shadow-[0_18px_48px_rgba(4,10,18,0.22)]",
+          ? (isAccepted
+            ? "scroll-mt-24 overflow-hidden rounded-[24px] border border-[#9fd6b8] bg-[#fcfffd] text-[#172033] shadow-[0_20px_48px_rgba(22,101,52,0.10)]"
+            : "scroll-mt-24 overflow-hidden rounded-[24px] border border-[#c7d2e2] bg-white text-[#172033] shadow-[0_18px_40px_rgba(20,31,48,0.06)]")
+          : "scroll-mt-24 overflow-hidden rounded-2xl border border-[#243142] bg-[#121a24] text-[#dbe5f1] shadow-[0_18px_48px_rgba(4,10,18,0.22)]",
+        isHighlighted && (isLight
+          ? "border-[#8ea2ff] shadow-[0_0_0_4px_rgba(70,72,212,0.14),0_18px_40px_rgba(20,31,48,0.10)]"
+          : "border-[#6f89ff] shadow-[0_0_0_4px_rgba(111,137,255,0.18),0_18px_48px_rgba(4,10,18,0.28)]"),
         className
       )}
     >
@@ -122,7 +202,7 @@ export default function CommunityThreadItem({
                     <span
                       className={cx(
                         "inline-flex min-h-6 items-center rounded-full border px-[9px] py-[3px] text-[11px] font-extrabold",
-                        getBadgeToneClasses(badge.tone)
+                        getCommunityBadgeToneClasses(badge.tone, "dark")
                       )}
                       key={`${badge.label}-${index}`}
                     >
@@ -169,6 +249,7 @@ export default function CommunityThreadItem({
             ) : null}
 
             <div className="flex items-center gap-2">
+              <ThreadItemMenu items={menuItems} isLight={isLight} />
               <button
                 className={cx(
                   "inline-flex h-9 w-9 items-center justify-center rounded-full border transition",
@@ -194,6 +275,29 @@ export default function CommunityThreadItem({
           <div className="flex min-h-[118px] flex-1 flex-col px-4 py-5 sm:px-5">
             <div className="flex-1">
               {title && showTitle ? <h1 className={cx("m-0 text-[28px] font-black leading-[1.2]", isLight ? "text-[#172033]" : "text-[#f5f8fc]")}>{title}</h1> : null}
+              {parentReplyId ? (
+                <div className={cx(
+                  "mb-4 rounded-2xl border px-4 py-3 text-sm",
+                  isLight ? "border-[#dbe3ed] bg-[#f8fafc] text-[#526173]" : "border-[#26384b] bg-[#101722] text-[#c2d0df]",
+                  title && showTitle ? "mt-4" : ""
+                )}>
+                  <button
+                    className={cx(
+                      "m-0 inline-flex items-center gap-2 border-0 bg-transparent p-0 text-left text-sm font-black transition",
+                      isLight ? "text-[#172033] hover:text-[#4648d4]" : "text-white hover:text-[#8dc6ff]",
+                      !onParentReplyClick && "pointer-events-none"
+                    )}
+                    onClick={() => onParentReplyClick?.(safePost)}
+                    type="button"
+                  >
+                    <span>
+                      Replying to {parentReplyAuthor || "deleted comment"}
+                      {parentReplyIndex ? ` · ${parentReplyIndex}` : ""}
+                    </span>
+                  </button>
+                  {parentReplyExcerpt ? <p className="mt-1 mb-0 line-clamp-2 whitespace-pre-wrap break-words">{parentReplyExcerpt}</p> : null}
+                </div>
+              ) : null}
               <div className={cx("text-[15px] leading-7", isLight ? "text-[#344154]" : "text-[#d1dae5]", title && showTitle && "mt-4")}>
                 <p className="m-0 whitespace-pre-wrap break-words">{content}</p>
               </div>
@@ -212,11 +316,15 @@ export default function CommunityThreadItem({
 
           <footer className={cx(
             "flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5",
-            isLight ? "border-t border-[#eef2f7] bg-[#fbfcfe]" : "border-t border-[#243142] bg-[#111924]"
+            isLight
+              ? (isAccepted ? "border-t border-[#d9efe3] bg-[#f4fff8]" : "border-t border-[#eef2f7] bg-[#fbfcfe]")
+              : "border-t border-[#243142] bg-[#111924]"
           )}>
             <div className={cx(
               "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-bold",
-              isLight ? "border-[#dbe3ed] bg-white text-[#172033]" : "border-[#2c3a4c] bg-[#16212d] text-[#dbe7f5]"
+              isLight
+                ? (isUpvoted ? "border-[#bfd0ff] bg-[#eef2ff] text-[#4648d4]" : "border-[#dbe3ed] bg-white text-[#172033]")
+                : "border-[#2c3a4c] bg-[#16212d] text-[#dbe7f5]"
             )}>
               <UpvoteIcon />
               <span>{formatCount(metrics.upvoteCount)} upvotes</span>
@@ -228,7 +336,9 @@ export default function CommunityThreadItem({
                 className={cx(
                   "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-sm font-black transition",
                   isLight
-                    ? "border-[#dbe3ed] bg-white text-[#4648d4] hover:border-[#4648d4] hover:bg-[#eef2ff]"
+                    ? (isUpvoted
+                      ? "border-[#bfd0ff] bg-[#eef2ff] text-[#4648d4] hover:border-[#aabfff] hover:bg-[#e6ecff]"
+                      : "border-[#dbe3ed] bg-white text-[#4648d4] hover:border-[#4648d4] hover:bg-[#eef2ff]")
                     : "border-[#2f4f78] bg-[#12243a] text-[#8dc6ff] hover:border-[#4c78a8] hover:bg-[#17304b]"
                 )}
                 type="button"

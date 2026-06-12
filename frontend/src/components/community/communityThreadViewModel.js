@@ -1,5 +1,15 @@
 import { getSafeNumber, getSafeText, pickArray, pickObject } from "./communityUtils.js";
 
+function pickDefinedValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 function normalizeRoleBadges(authorSource = {}) {
   const explicitBadges = authorSource.roleBadges || authorSource.role_badges || authorSource.badges;
 
@@ -186,6 +196,7 @@ function normalizeLastActivity(rawRecord = {}, author = null) {
 
   return {
     at: lastActivitySource.at || lastActivitySource.createdAt || lastActivitySource.created_at || lastActivitySource.updated_at || rawRecord.updatedAt || rawRecord.updated_at || rawRecord.createdAt || rawRecord.created_at || null,
+    replyId: lastActivitySource.replyId || lastActivitySource.reply_id || null,
     userName: getSafeText(
       userSource.displayName
         || userSource.display_name
@@ -203,6 +214,32 @@ function normalizeLastActivity(rawRecord = {}, author = null) {
       fallbackAuthor.avatarUrl
     ),
     href: getSafeText(lastActivitySource.href || lastActivitySource.url || userSource.profile_url, fallbackAuthor.href),
+  };
+}
+
+function normalizeReplyContext(rawRecord = {}) {
+  const parentReply = pickObject(rawRecord.parentReply, rawRecord.parent_reply);
+  const parentAuthor = pickObject(parentReply.author, parentReply.user, parentReply.users);
+
+  if (!parentReply.id && !parentReply.author && !parentReply.excerpt && !rawRecord.parentReplyId && !rawRecord.parent_reply_id) {
+    return {
+      parentReplyId: null,
+      parentReply: null,
+    };
+  }
+
+  return {
+    parentReplyId: rawRecord.parentReplyId || rawRecord.parent_reply_id || parentReply.id || null,
+    parentReply: {
+      id: parentReply.id || null,
+      excerpt: getSafeText(parentReply.excerpt || parentReply.body || parentReply.content),
+      author: {
+        id: parentAuthor.id || null,
+        displayName: getSafeText(parentAuthor.displayName || parentAuthor.display_name || parentAuthor.name),
+        email: getSafeText(parentAuthor.email),
+        avatarUrl: getSafeText(parentAuthor.avatarUrl || parentAuthor.avatar_url),
+      },
+    },
   };
 }
 
@@ -247,6 +284,7 @@ export function normalizeThreadPost(rawRecord = {}, index = 1) {
   const postType = getSafeText(rawRecord.postType || rawRecord.post_type || rawRecord.type, "question");
   const attachmentSummary = buildAttachmentSummary(postType, rawRecord);
   const subjects = normalizeSubjects(rawRecord);
+  const replyContext = normalizeReplyContext(rawRecord);
 
   return {
     id: rawRecord.id || rawRecord.reply_id || rawRecord.post_id || `community-item-${index}`,
@@ -264,9 +302,12 @@ export function normalizeThreadPost(rawRecord = {}, index = 1) {
     category: normalizeCategory(rawRecord, metrics.replyCount),
     lastActivity: normalizeLastActivity(rawRecord, author),
     postType,
-    solved: Boolean(rawRecord.solved || rawRecord.isSolved || rawRecord.is_solved),
-    isAccepted: Boolean(rawRecord.isAccepted || rawRecord.is_accepted),
+    solved: Boolean(pickDefinedValue(rawRecord.solved, rawRecord.isSolved, rawRecord.is_solved)),
+    isAccepted: Boolean(pickDefinedValue(rawRecord.isAccepted, rawRecord.is_accepted)),
+    isUpvoted: Boolean(pickDefinedValue(rawRecord.isUpvoted, rawRecord.is_upvoted, rawRecord.viewerUpvoted, rawRecord.viewer_upvoted)),
     acceptedReplyId: rawRecord.acceptedReplyId || rawRecord.accepted_reply_id || null,
+    parentReplyId: replyContext.parentReplyId,
+    parentReply: replyContext.parentReply,
     attachmentPayload: normalizeAttachmentPayload(rawRecord),
     attachmentSummary,
     documentAttachment: rawRecord.documentAttachment || null,
