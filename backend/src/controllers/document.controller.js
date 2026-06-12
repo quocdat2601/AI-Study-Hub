@@ -16,22 +16,6 @@ async function getAllDocuments(req, res, next) {
 }
 
 /**
- * Upload document
- */
-async function uploadDocument(req, res, next) {
-  try {
-    res.status(201).json(await documentService.uploadDocument({
-      userId: req.user.id,
-      file: req.file,
-      title: req.body.title,
-      subjectId: req.body.subjectId,
-    }));
-  } catch (err) {
-    next(err);
-  }
-}
-
-/**
  * Get one document
  */
 async function getDocumentById(req, res, next) {
@@ -59,12 +43,115 @@ async function getSignedUrl(req, res, next) {
   }
 }
 
-async function updateVisibility(req, res, next) {
+/**
+ * Cập nhật tiêu đề / môn học (chỉ chủ tài liệu hoặc admin)
+ */
+async function updateDocument(req, res, next) {
   try {
-    res.json(await documentService.updateVisibility({
+    res.json(await documentService.updateDocument({
+      document: req.document,
+      title: req.body.title,
+      subjectId: req.body.subjectId,
+      tags: req.body.tags,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Xóa mềm tài liệu (chủ/admin) — chuyển vào thùng rác, file vẫn trên cloud
+ */
+async function deleteDocument(req, res, next) {
+  try {
+    res.json(await documentService.softDeleteDocument({
+      document: req.document,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Danh sách thùng rác của user
+ */
+async function listTrash(req, res, next) {
+  try {
+    res.json(await documentService.listTrash({ userId: req.user.id }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Khôi phục tài liệu từ thùng rác (chủ/admin)
+ */
+async function restoreDocument(req, res, next) {
+  try {
+    res.json(await documentService.restoreDocument({
       id: req.params.id,
       userId: req.user.id,
-      isPublic: req.body.isPublic,
+      role: req.user.role,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Xóa cứng vĩnh viễn (chỉ admin)
+ */
+async function purgeDocument(req, res, next) {
+  try {
+    res.json(await documentService.purgeDocument({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listDocumentShares(req, res, next) {
+  try {
+    res.json(await documentService.listDocumentShares({
+      document: req.document,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function shareDocument(req, res, next) {
+  try {
+    res.status(201).json(await documentService.shareDocument({
+      document: req.document,
+      userId: req.user.id,
+      email: req.body.email,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function revokeDocumentShare(req, res, next) {
+  try {
+    res.json(await documentService.revokeDocumentShare({
+      document: req.document,
+      shareId: req.params.shareId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function saveOcrText(req, res, next) {
+  try {
+    res.json(await documentService.saveOcrText({
+      document: req.document,
+      text: req.body.text,
+      append: req.body.append === true,
     }));
   } catch (err) {
     next(err);
@@ -73,8 +160,15 @@ async function updateVisibility(req, res, next) {
 
 module.exports = {
   getAllDocuments,
-  uploadDocument,
   getDocumentById,
   getSignedUrl,
-  updateVisibility
+  updateDocument,
+  deleteDocument,
+  listTrash,
+  restoreDocument,
+  purgeDocument,
+  listDocumentShares,
+  shareDocument,
+  revokeDocumentShare,
+  saveOcrText,
 };

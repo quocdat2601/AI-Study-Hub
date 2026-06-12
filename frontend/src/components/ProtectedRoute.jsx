@@ -7,7 +7,7 @@ export default function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
+  if (isLoading && !isAuthenticated) {
     const variant = location.pathname.startsWith("/dashboard")
       ? "dashboard"
       : location.pathname.startsWith("/admin")

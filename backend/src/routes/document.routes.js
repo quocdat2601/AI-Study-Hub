@@ -2,7 +2,7 @@ const router = require('express').Router();
 const documentController = require('../controllers/document.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const upload = require('../middleware/upload');
+const requireDocumentOwner = require('../middleware/requireDocumentOwner');
 
 /**
  * @swagger
@@ -36,28 +36,17 @@ router.get('/', verifyToken, documentController.getAllDocuments);
 
 /**
  * @swagger
- * /api/documents:
- *   post:
- *     summary: Upload document (multipart/form-data)
+ * /api/documents/trash:
+ *   get:
+ *     summary: List soft-deleted documents (trash) of current user
  *     tags: [Documents]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file: { type: string, format: binary }
- *               title: { type: string }
- *               subjectId: { type: integer }
  *     responses:
- *       201: { description: Uploaded }
- *       400: { description: Bad request }
- *       403: { description: Forbidden (Users or admins only) }
+ *       200: { description: List of trashed documents }
+ *       401: { description: Unauthorized }
  */
-router.post('/', verifyToken, requireRole('user', 'admin'), upload.single('file'), documentController.uploadDocument);
+router.get('/trash', verifyToken, documentController.listTrash);
 
 /**
  * @swagger
@@ -99,9 +88,62 @@ router.get('/:id/signed-url', verifyToken, documentController.getSignedUrl);
 
 /**
  * @swagger
- * /api/documents/{id}/visibility:
+ * /api/documents/{id}/shares:
+ *   get:
+ *     summary: List active shares for a document (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *   post:
+ *     summary: Share document with another user by email
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string }
+ */
+router.get(
+  '/:id/shares',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.listDocumentShares
+);
+
+router.post(
+  '/:id/shares',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.shareDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}/shares/{shareId}:
+ *   delete:
+ *     summary: Revoke a document share
+ *     tags: [Documents]
+ */
+router.delete(
+  '/:id/shares/:shareId',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.revokeDocumentShare
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}:
  *   patch:
- *     summary: Toggle document public visibility
+ *     summary: Update document title or subject (owner or admin)
  *     tags: [Documents]
  *     security:
  *       - bearerAuth: []
@@ -111,18 +153,109 @@ router.get('/:id/signed-url', verifyToken, documentController.getSignedUrl);
  *         required: true
  *         schema: { type: integer }
  *     requestBody:
- *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [isPublic]
  *             properties:
- *               isPublic: { type: boolean }
+ *               title: { type: string }
+ *               subjectId: { type: integer, nullable: true }
+ *               tags: { type: string, description: Comma-separated tag names }
  *     responses:
- *       200: { description: Visibility updated }
+ *       200: { description: Updated }
+ *       403: { description: Forbidden }
+ *       404: { description: Not found }
+ */
+router.patch(
+  '/:id',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.updateDocument
+);
+
+router.post(
+  '/:id/ocr-text',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.saveOcrText
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}:
+ *   delete:
+ *     summary: Delete document from database and storage (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ *       403: { description: Forbidden }
+ *       404: { description: Not found }
+ */
+router.delete(
+  '/:id',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.deleteDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}/restore:
+ *   post:
+ *     summary: Restore a soft-deleted document from trash (owner or admin)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Document restored }
+ *       403: { description: Forbidden }
+ *       404: { description: Document not found in trash }
+ */
+router.post(
+  '/:id/restore',
+  verifyToken,
+  requireRole('student', 'admin'),
+  documentController.restoreDocument
+);
+
+/**
+ * @swagger
+ * /api/documents/{id}/purge:
+ *   delete:
+ *     summary: Permanently delete a document (admin only)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Document permanently deleted }
+ *       403: { description: Forbidden (admin only) }
  *       404: { description: Document not found }
  */
-router.patch('/:id/visibility', verifyToken, documentController.updateVisibility);
+router.delete(
+  '/:id/purge',
+  verifyToken,
+  requireRole('admin'),
+  documentController.purgeDocument
+);
 
 module.exports = router;

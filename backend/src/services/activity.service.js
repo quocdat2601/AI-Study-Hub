@@ -10,7 +10,12 @@ async function listLatest(limit) {
   return activityModel.listLatest(limit);
 }
 
+async function listByUserId(userId, limit) {
+  return activityModel.listByUserId(userId, limit);
+}
+
 module.exports = {
   log,
   listLatest,
+  listByUserId,
 };

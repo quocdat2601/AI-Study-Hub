@@ -41,6 +41,13 @@ async function syncUserProfile(authUser) {
     throw createError(403, 'Account suspended');
   }
 
+  if (user.role === 'student') {
+    user = await userModel.update(authUser.id, {
+      role: 'user',
+      updated_at: new Date().toISOString(),
+    });
+  }
+
   return publicUser(user);
 }
 

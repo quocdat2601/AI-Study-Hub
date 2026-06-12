@@ -1,37 +1,39 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import useTranslation from "../../hooks/useTranslation.js";
 
 export const dashboardSidebarItems = [
-  { id: "dashboard", icon: "dashboard", label: "Dashboard" },
-  { id: "study-sets", icon: "book", label: "Study Sets" },
-  { id: "documents", icon: "document", label: "Documents" },
-  { id: "community", icon: "community", label: "Community", to: "/community" },
-  { id: "ai-workspace", icon: "chat", label: "AI Workspace" },
-  { id: "analytics", icon: "analytics", label: "Analytics" },
+  { id: "dashboard", icon: "dashboard", label: "Dashboard", labelKey: "nav.dashboard", to: "/dashboard" },
+  { id: "study-sets", icon: "book", label: "Study Sets", labelKey: "nav.studySets", to: "/library" },
+  { id: "documents", icon: "document", label: "Documents", labelKey: "nav.documents", to: "/documents" },
+  { id: "community", icon: "community", label: "Community", labelKey: "nav.community", to: "/community" },
+  { id: "ai-workspace", icon: "chat", label: "AI Workspace", labelKey: "nav.aiWorkspace", to: "/workspace" },
+  { id: "analytics", icon: "analytics", label: "Analytics", labelKey: "nav.analytics", to: "/dashboard" },
 ];
 
 function SidebarIcon({ name }) {
-  const paths = {
+  const icons = {
     dashboard: (
       <>
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
+        <path d="M4 11h7V4H4v7Z" />
+        <path d="M13 4h7v5h-7V4Z" />
+        <path d="M13 11h7v9h-7v-9Z" />
+        <path d="M4 14h7v6H4v-6Z" />
       </>
     ),
     book: (
       <>
-        <path d="M4 5.5C5.6 4.6 7.2 4.2 9 4.2c1.1 0 2.1.2 3 .7v14c-.9-.5-1.9-.7-3-.7-1.8 0-3.4.4-5 1.3v-14Z" />
-        <path d="M12 4.9c.9-.5 1.9-.7 3-.7 1.8 0 3.4.4 5 1.3v14c-1.6-.9-3.2-1.3-5-1.3-1.1 0-2.1.2-3 .7" />
+        <path d="M6 4.5h11a2 2 0 0 1 2 2V19a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2V6.5a2 2 0 0 1 2-2Z" />
+        <path d="M8 8h8" />
+        <path d="M8 11h6" />
       </>
     ),
     document: (
       <>
-        <path d="M6 3.5h8l4 4v13H6v-17Z" />
+        <path d="M7 3.5h7l4 4V20H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z" />
         <path d="M14 3.5v4h4" />
-        <path d="M9 12h6" />
-        <path d="M9 16h6" />
+        <path d="M8 11h8" />
+        <path d="M8 15h6" />
       </>
     ),
     community: (
@@ -51,46 +53,57 @@ function SidebarIcon({ name }) {
     ),
     analytics: (
       <>
-        <path d="M4 16l4-4 3 3 6-8" />
-        <path d="M17 7h3v3" />
-        <circle cx="7" cy="18" r="2" />
-        <circle cx="17" cy="18" r="2" />
+        <path d="M5 19V9" />
+        <path d="M12 19V5" />
+        <path d="M19 19v-7" />
       </>
     ),
     settings: (
       <>
-        <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" />
-        <path d="M19.4 15a8.3 8.3 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8.8 8.8 0 0 0-1.7-1L15 6.5h-4L10.6 9a8.8 8.8 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a8.3 8.3 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a8.8 8.8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a8.8 8.8 0 0 0 1.7-1l2.4 1 2-3.5-2.2-1.5Z" />
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19 12h2M3 12h2M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5" />
+      </>
+    ),
+    logout: (
+      <>
+        <path d="M10 17H6.5A1.5 1.5 0 0 1 5 15.5v-7A1.5 1.5 0 0 1 6.5 7H10" />
+        <path d="M14 9l3 3-3 3" />
+        <path d="M17 12H9" />
       </>
     ),
     users: (
       <>
-        <path d="M16 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-        <path d="M8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-        <path d="M3.5 20c.5-3 2.1-4.5 4.5-4.5 2.2 0 3.7 1.2 4.3 3.5" />
-        <path d="M12.5 19.5c.6-3.2 2.3-4.8 5-4.8 2.3 0 3.8 1.3 4.5 3.8" />
+        <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+        <path d="M3 19c.5-3 2.2-4.5 5-4.5s4.5 1.5 5 4.5" />
+        <path d="M16 11.5a2.5 2.5 0 1 0 0-5" />
+        <path d="M15.5 15c2 .2 3.2 1.5 3.5 4" />
       </>
     ),
     reports: (
       <>
-        <path d="M5 20V4h14v16H5Z" />
-        <path d="M9 16V9" />
-        <path d="M12 16V6" />
-        <path d="M15 16v-4" />
+        <path d="M7 3.5h10l3 3V20H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z" />
+        <path d="M10 9h4" />
+        <path d="M10 13h4" />
+        <path d="M10 17h2" />
       </>
     ),
     activity: (
       <>
-        <path d="M12 7v5l3 2" />
-        <path d="M21 12a9 9 0 1 1-2.6-6.4" />
-        <path d="M21 4v5h-5" />
+        <path d="M4 12h3l2-5 4 10 2-5h5" />
+      </>
+    ),
+    doc: (
+      <>
+        <path d="M6 3.5h8l4 4v13H6v-17Z" />
+        <path d="M14 3.5v4h4" />
+        <path d="M9 13h6" />
       </>
     ),
   };
 
   return (
-    <svg className="h-[18px] w-[18px] stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths[name]}
+    <svg className="h-5 w-5 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {icons[name]}
     </svg>
   );
 }
@@ -107,18 +120,118 @@ function navItemClass(isCollapsed, isActive) {
     : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] no-underline transition hover:bg-white";
 }
 
-export default function DashboardSidebar({
+function isPathActive(pathname, targetPath) {
+  if (!targetPath) return false;
+  if (targetPath === "/") return pathname === "/";
+  return pathname === targetPath || pathname.startsWith(`${targetPath}/`);
+}
+
+function getInitials(userName) {
+  return String(userName || "User").slice(0, 2).toUpperCase();
+}
+
+function DefaultSidebar({
+  onLogout,
+  userName,
+  userPlan,
+  avatarUrl,
+}) {
+  const { t } = useTranslation();
+  const pathname = useLocation().pathname;
+
+  return (
+    <aside className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950" aria-label="Dashboard navigation">
+      <Link className="mb-6 flex items-center gap-3 no-underline" to="/dashboard">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.28)]">
+          A
+        </span>
+        <span className="min-w-0">
+          <strong className="block truncate text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-100">AI Study Hub</strong>
+          <small className="block truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">Academic Pro</small>
+        </span>
+      </Link>
+
+      <Link
+        className="mb-6 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-[13px] font-semibold text-white no-underline shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
+        to="/documents?upload=true"
+      >
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+        </svg>
+        <span>{t("nav.newDocument")}</span>
+      </Link>
+
+      <nav className="grid content-start gap-1">
+        {dashboardSidebarItems.map((item) => (
+          <Link
+            className={navItemClass(false, isPathActive(pathname, item.to))}
+            key={item.id}
+            to={item.to || "/dashboard"}
+          >
+            <span className="flex h-5 w-5 flex-none items-center justify-center">
+              <SidebarIcon name={item.icon} />
+            </span>
+            <span className="truncate">{t(item.labelKey || item.id)}</span>
+          </Link>
+        ))}
+      </nav>
+
+      <div className="mt-auto grid gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
+        {userName ? (
+          <div className="mb-2 flex items-center gap-2 px-3 py-1">
+            {avatarUrl ? (
+              <img alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" src={avatarUrl} />
+            ) : (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                {getInitials(userName)}
+              </span>
+            )}
+            <span className="min-w-0">
+              <strong className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{userName}</strong>
+              <small className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{userPlan || "Student Plan"}</small>
+            </span>
+          </div>
+        ) : null}
+
+        <Link className={navItemClass(false, pathname === "/account")} to="/account">
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
+            <SidebarIcon name="settings" />
+          </span>
+          <span className="truncate">{t("nav.settings")}</span>
+        </Link>
+
+        {onLogout ? (
+          <button
+            className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+            onClick={onLogout}
+            type="button"
+          >
+            <span className="flex h-5 w-5 flex-none items-center justify-center">
+              <SidebarIcon name="logout" />
+            </span>
+            <span className="truncate">{t("nav.logout")}</span>
+          </button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function ControlledSidebar({
   activeSection,
   items = dashboardSidebarItems,
-  isCollapsed,
+  isCollapsed = false,
   onSectionChange,
   onToggleCollapse,
   userName,
-  newDocumentTo = "/library",
+  newDocumentTo = "/documents?upload=true",
   newDocumentLabel = "New Document",
   showNewDocument = true,
+  onLogout,
 }) {
-  const initials = (userName || "User").slice(0, 2).toUpperCase();
+  const pathname = useLocation().pathname;
+  const initials = getInitials(userName);
+  const activeId = activeSection || "";
 
   return (
     <aside
@@ -129,56 +242,78 @@ export default function DashboardSidebar({
       }
       aria-label="Dashboard navigation"
     >
-      <button
-        className="absolute right-[-13px] top-1/2 z-10 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
-        aria-label={isCollapsed ? "Show sidebar" : "Hide sidebar"}
-        onClick={onToggleCollapse}
-        type="button"
-      >
-        {isCollapsed ? ">" : "<"}
-      </button>
+      {onToggleCollapse ? (
+        <button
+          className="absolute right-[-13px] top-1/2 z-10 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
+          aria-label={isCollapsed ? "Show sidebar" : "Hide sidebar"}
+          onClick={onToggleCollapse}
+          type="button"
+        >
+          {isCollapsed ? ">" : "<"}
+        </button>
+      ) : null}
+
+      <Link className={isCollapsed ? "mb-5 flex items-center justify-center no-underline" : "mb-5 flex items-center gap-3 no-underline"} to="/dashboard">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4648d4] text-sm font-black text-white shadow-[0_8px_20px_rgba(70,72,212,0.22)]">
+          A
+        </span>
+        {!isCollapsed ? (
+          <span className="min-w-0">
+            <strong className="block truncate text-[15px] font-bold tracking-tight text-[#172033]">AI Study Hub</strong>
+            <small className="block truncate text-[11px] font-medium text-[#66758a]">Study workspace</small>
+          </span>
+        ) : null}
+      </Link>
 
       {showNewDocument ? (
         <Link
           className={
             isCollapsed
-              ? "flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
-              : "flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
+              ? "mb-5 flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
+              : "mb-5 flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
           }
           to={newDocumentTo}
         >
           <span>+</span>
-          <b className={isCollapsed ? "sr-only" : "overflow-hidden text-ellipsis whitespace-nowrap"}>{newDocumentLabel}</b>
+          {!isCollapsed ? <b className="overflow-hidden text-ellipsis whitespace-nowrap">{newDocumentLabel}</b> : null}
         </Link>
       ) : null}
 
-      <nav className={showNewDocument ? "mt-5 grid content-start gap-2" : "grid content-start gap-2"}>
-        {items.map((item) => (
-          item.to ? (
-            <Link
-              className={navItemClass(isCollapsed, activeSection === item.id)}
-              key={item.id}
-              to={item.to}
-            >
-              <span className="flex h-5 w-5 flex-none items-center justify-center">
-                <SidebarIcon name={item.icon} />
-              </span>
-              {!isCollapsed && <b className="truncate">{item.label}</b>}
-            </Link>
-          ) : (
+      <nav className="grid content-start gap-2">
+        {items.map((item) => {
+          const isActive = item.to
+            ? isPathActive(pathname, item.to)
+            : activeId === item.id;
+
+          if (item.to) {
+            return (
+              <Link
+                className={navItemClass(isCollapsed, isActive)}
+                key={item.id}
+                to={item.to}
+              >
+                <span className="flex h-5 w-5 flex-none items-center justify-center">
+                  <SidebarIcon name={item.icon} />
+                </span>
+                {!isCollapsed ? <b className="truncate">{item.label}</b> : null}
+              </Link>
+            );
+          }
+
+          return (
             <button
-              className={navItemClass(isCollapsed, activeSection === item.id)}
+              className={navItemClass(isCollapsed, isActive)}
               key={item.id}
-              onClick={() => onSectionChange(item.id)}
+              onClick={() => onSectionChange?.(item.id)}
               type="button"
             >
               <span className="flex h-5 w-5 flex-none items-center justify-center">
                 <SidebarIcon name={item.icon} />
               </span>
-              {!isCollapsed && <b className="truncate">{item.label}</b>}
+              {!isCollapsed ? <b className="truncate">{item.label}</b> : null}
             </button>
-          )
-        ))}
+          );
+        })}
       </nav>
 
       <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
@@ -189,17 +324,27 @@ export default function DashboardSidebar({
           {!isCollapsed && <strong className="block min-w-0 truncate text-xs text-[#172033]">{userName || "User"}</strong>}
         </div>
 
-        <button
-          className={navItemClass(isCollapsed, activeSection === "settings")}
-          onClick={() => onSectionChange("settings")}
-          type="button"
-        >
-          <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
-            <SidebarIcon name="settings" />
-          </span>
-          {!isCollapsed && <b className="truncate">Settings</b>}
-        </button>
+        {onLogout ? (
+          <button
+            className={navItemClass(isCollapsed, false)}
+            onClick={onLogout}
+            type="button"
+          >
+            <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
+              <SidebarIcon name="logout" />
+            </span>
+            {!isCollapsed ? <b className="truncate">Log out</b> : null}
+          </button>
+        ) : null}
       </div>
     </aside>
   );
+}
+
+export default function DashboardSidebar(props) {
+  if (typeof props.onSectionChange === "function" || typeof props.onToggleCollapse === "function" || props.items) {
+    return <ControlledSidebar {...props} />;
+  }
+
+  return <DefaultSidebar {...props} />;
 }

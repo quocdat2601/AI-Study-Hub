@@ -171,9 +171,14 @@ async function sendMessage({ sessionId, userId, content }) {
   const cleanedContent = cleanMessage(content);
   const documents = await chatModel.listSessionDocuments(session.id);
   const context = await buildChatContext(documents);
+  const hasDocumentText = context !== 'No attached document text is available yet.';
 
   const userMessage = await chatModel.addMessage(session.id, 'user', cleanedContent);
-  const aiResponse = await geminiService.queryDocument(cleanedContent, context);
+
+  const aiResponse = hasDocumentText
+    ? await geminiService.queryDocument(cleanedContent, context)
+    : 'Tài liệu này chưa có text để AI đọc (thường gặp với PDF scan). Bạn vẫn xem và đọc file ở tab PDF.';
+
   const assistantMessage = await chatModel.addMessage(session.id, 'assistant', aiResponse);
   await chatModel.touchSession(session.id);
 

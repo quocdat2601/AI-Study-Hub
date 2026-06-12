@@ -4,6 +4,10 @@ function errorHandler(err, req, res, _next) {
   const status = err.statusCode || 500;
   const message = err.publicMessage || 'Internal server error';
 
+  if (err.responseBody) {
+    return res.status(status).json(err.responseBody);
+  }
+
   res.status(status).json({ error: message });
 }
 

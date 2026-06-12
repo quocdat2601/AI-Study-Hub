@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import api from "../services/api.js";
 import {
   clearRecoveryMode,
@@ -73,11 +73,18 @@ export function AuthProvider({ children }) {
         if (isMounted) {
           setUser(currentUser);
         }
-      } catch (_err) {
-        await logoutAuth().catch(() => {});
+      } catch (err) {
+        const isUnauthorized = err.response?.status === 401;
+        if (isUnauthorized) {
+          await logoutAuth().catch(() => {});
+        }
         if (isMounted) {
-          setUser(null);
-          setHasSession(false);
+          if (isUnauthorized) {
+            setUser(null);
+            setHasSession(false);
+          } else {
+            setHasSession(Boolean(session?.access_token));
+          }
           setIsRecoveryMode(false);
         }
       } finally {
@@ -88,8 +95,16 @@ export function AuthProvider({ children }) {
     }
 
     async function initializeAuth() {
-      const session = await getAuthSession();
-      await hydrateFromSession(session, hasRecoveryContext());
+      try {
+        const session = await getAuthSession();
+        await hydrateFromSession(session, hasRecoveryContext());
+      } catch {
+        if (isMounted) {
+          setHasSession(false);
+          setIsRecoveryMode(false);
+          setIsLoading(false);
+        }
+      }
     }
 
     initializeAuth();
@@ -112,7 +127,7 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      if (event === "SIGNED_IN" && manualAuthInProgressRef.current) {
+      if (manualAuthInProgressRef.current) {
         return;
       }
 
@@ -125,7 +140,9 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      if (isMounted) {
+      const shouldRefreshInBackground = Boolean(userRef.current && session?.access_token && !hasRecoveryContext());
+
+      if (isMounted && !shouldRefreshInBackground) {
         setIsLoading(true);
       }
 
@@ -209,22 +226,34 @@ export function AuthProvider({ children }) {
     await logoutAuth().catch(() => {});
   }
 
-  const value = useMemo(
-    () => ({
-      user,
-      hasSession,
-      isLoading,
-      isRecoveryMode,
-      isAuthenticated: Boolean(user),
-      login,
-      loginWithGoogle: loginWithGoogleOAuth,
-      register,
-      requestPasswordReset,
-      updatePassword,
-      logout,
-    }),
-    [user, hasSession, isLoading, isRecoveryMode]
-  );
+  async function refreshUser() {
+    const session = await getAuthSession();
+    if (!session?.access_token) {
+      setUser(null);
+      setHasSession(false);
+      return null;
+    }
+
+    const currentUser = await loadCurrentUser(session.access_token);
+    setUser(currentUser);
+    setHasSession(true);
+    return currentUser;
+  }
+
+  const value = {
+    user,
+    hasSession,
+    isLoading,
+    isRecoveryMode,
+    isAuthenticated: Boolean(user),
+    login,
+    loginWithGoogle: loginWithGoogleOAuth,
+    register,
+    requestPasswordReset,
+    updatePassword,
+    logout,
+    refreshUser,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

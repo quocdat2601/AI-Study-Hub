@@ -5,7 +5,10 @@ async function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid token' });
+    return res.status(401).json({
+      error: 'Missing or invalid token',
+      code: 'AUTH_MISSING_TOKEN',
+    });
   }
 
   const token = authHeader.split(' ')[1];
@@ -14,7 +17,10 @@ async function verifyToken(req, res, next) {
     const { data, error } = await supabase.auth.getUser(token);
 
     if (error || !data?.user) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
+      return res.status(401).json({
+        error: 'Invalid or expired token',
+        code: 'AUTH_INVALID_OR_EXPIRED_TOKEN',
+      });
     }
 
     req.user = await authService.syncUserProfile(data.user);

@@ -1,10 +1,13 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
+import { PreferencesProvider } from "./contexts/PreferencesContext.jsx";
+import { ToastProvider } from "./contexts/ToastContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
+import AccountPage from "./pages/AccountPage.jsx";
 import CommunityPage from "./pages/CommunityPage.jsx";
 import CommunityCreatePostPage from "./pages/CommunityCreatePostPage.jsx";
 import CommunityPostDetailPage from "./pages/CommunityPostDetailPage.jsx";
@@ -12,15 +15,20 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import DocumentsPage from "./pages/DocumentsPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
+import WorkspacePage from "./pages/WorkspacePage.jsx";
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname);
+  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library", "/workspace"];
+  const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
+    && !dashboardShellRoutes.includes(location.pathname);
+
   async function handleLogout() {
     await logout();
     navigate("/login", { replace: true });
@@ -65,10 +73,34 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <AccountPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents"
+          element={
+            <ProtectedRoute>
+              <DocumentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/library"
           element={
             <ProtectedRoute>
               <LibraryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workspace"
+          element={
+            <ProtectedRoute>
+              <WorkspacePage />
             </ProtectedRoute>
           }
         />
@@ -90,9 +122,13 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <PreferencesProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ToastProvider>
+      </PreferencesProvider>
     </AuthProvider>
   );
 }

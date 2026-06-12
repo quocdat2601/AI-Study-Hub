@@ -6,6 +6,7 @@
     "dev": "nodemon server.js",
     "start": "node server.js",
     "seed:demo": "node scripts/seed-demo-data.js",
+    "migrate:account": "node scripts/run-account-migration.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
@@ -25,6 +26,7 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "pg": "^8.21.0"
   }
 }
