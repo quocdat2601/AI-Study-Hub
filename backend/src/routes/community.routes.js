@@ -9,6 +9,7 @@ router.post('/posts', communityController.createPost);
 router.patch('/posts/:id', communityController.updatePost);
 router.delete('/posts/:id', communityController.deletePost);
 router.post('/posts/:id/replies', communityController.addReply);
+router.delete('/replies/:id', communityController.deleteReply);
 router.post('/posts/:id/vote', communityController.votePost);
 router.post('/replies/:id/vote', communityController.voteReply);
 router.post('/posts/:id/accept/:replyId', communityController.acceptReply);

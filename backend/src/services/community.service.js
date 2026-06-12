@@ -14,6 +14,7 @@ const POST_STATUSES = new Set(['active', 'hidden', 'removed']);
 const REPORT_STATUSES = new Set(['open', 'resolved', 'dismissed']);
 const REPLY_STATUSES = new Set(['active', 'hidden', 'removed']);
 const POST_SUBJECT_LIMIT = 3;
+const POST_VIEW_WINDOW_MINUTES = 30;
 
 function normalizeTab(value) {
   const tab = String(value || 'latest').trim().toLowerCase();
@@ -103,13 +104,17 @@ function displayNameFromEmail(email) {
   return local.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function buildAuthor(user) {
+function buildAuthor(user, statsByUserId = null) {
   if (!user) return null;
+  const stats = statsByUserId?.get(String(user.id)) || null;
   return {
     id: user.id,
     email: user.email,
     displayName: displayNameFromEmail(user.email),
     role: user.role,
+    createdAt: user.created_at || null,
+    postCount: stats?.postCount || 0,
+    utilityPoints: stats?.utilityPoints || 0,
   };
 }
 
@@ -243,6 +248,68 @@ function groupBy(items, key) {
   }, new Map());
 }
 
+async function buildAuthorStatsByUserId(posts, replies, options = {}) {
+  if (!options.includeAuthorStats) {
+    return new Map();
+  }
+
+  const targetUserIds = [...new Set(
+    [
+      ...(posts || []).map((post) => post?.user_id || post?.users?.id),
+      ...(replies || []).map((reply) => reply?.user_id || reply?.users?.id),
+    ]
+      .filter(Boolean)
+      .map((value) => String(value))
+  )];
+
+  if (!targetUserIds.length) {
+    return new Map();
+  }
+
+  const allPosts = await CommunityModel.listPosts();
+  const activePosts = (allPosts || []).filter((post) => post.status === 'active');
+  const activePostIds = activePosts.map((post) => post.id);
+  const allReplies = activePostIds.length
+    ? await CommunityModel.listRepliesByPostIds(activePostIds)
+    : [];
+  const activeReplies = (allReplies || []).filter((reply) => reply.status === 'active');
+
+  const authoredPosts = activePosts.filter((post) => targetUserIds.includes(String(post.user_id || post.users?.id)));
+  const authoredReplies = activeReplies.filter((reply) => targetUserIds.includes(String(reply.user_id || reply.users?.id)));
+  const [postVotes, replyVotes] = await Promise.all([
+    CommunityModel.listVotesForPosts(authoredPosts.map((post) => post.id)),
+    CommunityModel.listVotesForReplies(authoredReplies.map((reply) => reply.id)),
+  ]);
+  const postVotesByPostId = groupBy(postVotes, 'post_id');
+  const replyVotesByReplyId = groupBy(replyVotes, 'reply_id');
+  const statsByUserId = new Map();
+
+  targetUserIds.forEach((userId) => {
+    statsByUserId.set(userId, {
+      postCount: 0,
+      utilityPoints: 0,
+    });
+  });
+
+  authoredPosts.forEach((post) => {
+    const key = String(post.user_id || post.users?.id);
+    const current = statsByUserId.get(key);
+    if (!current) return;
+    current.postCount += 1;
+    current.utilityPoints += buildVoteCount(postVotesByPostId.get(post.id) || []);
+  });
+
+  authoredReplies.forEach((reply) => {
+    const key = String(reply.user_id || reply.users?.id);
+    const current = statsByUserId.get(key);
+    if (!current) return;
+    current.postCount += 1;
+    current.utilityPoints += buildVoteCount(replyVotesByReplyId.get(reply.id) || []);
+  });
+
+  return statsByUserId;
+}
+
 function mapLinkedSubjects(post, subjectLinksByPostId) {
   const linkedSubjects = (subjectLinksByPostId.get(post.id) || [])
     .map((link) => link.subjects ? ({
@@ -270,6 +337,7 @@ function mapLinkedSubjects(post, subjectLinksByPostId) {
 async function hydratePosts(posts, options = {}) {
   const includeReplies = Boolean(options.includeReplies);
   const includeFullAttachments = Boolean(options.includeFullAttachments);
+  const viewerUserId = options.viewerUserId ? String(options.viewerUserId) : '';
   const postIds = (posts || []).map((post) => post.id);
   const replies = await CommunityModel.listRepliesByPostIds(postIds);
   const subjectLinks = await CommunityModel.listPostSubjectLinksByPostIds(postIds);
@@ -283,9 +351,25 @@ async function hydratePosts(posts, options = {}) {
   ]);
   const postVotesByPostId = groupBy(postVotes, 'post_id');
   const replyVotesByReplyId = groupBy(replyVotes, 'reply_id');
+  const viewerPostVoteIds = viewerUserId
+    ? new Set(
+      (postVotes || [])
+        .filter((vote) => String(vote.user_id) === viewerUserId && Number(vote.value) > 0)
+        .map((vote) => Number(vote.post_id))
+    )
+    : new Set();
+  const viewerReplyVoteIds = viewerUserId
+    ? new Set(
+      (replyVotes || [])
+        .filter((vote) => String(vote.user_id) === viewerUserId && Number(vote.value) > 0)
+        .map((vote) => Number(vote.reply_id))
+    )
+    : new Set();
+  const authorStatsByUserId = await buildAuthorStatsByUserId(posts, visibleReplies, options);
 
   return Promise.all((posts || []).map(async (post) => {
     const postReplyRows = repliesByPostId.get(post.id) || [];
+    const replyById = new Map(postReplyRows.map((reply) => [Number(reply.id), reply]));
     const acceptedReply = postReplyRows.find((reply) => reply.id === post.solved_reply_id && reply.status === 'active') || null;
     const latestReply = [...postReplyRows].sort((a, b) => {
       const left = new Date(a.updated_at || a.created_at || 0).getTime();
@@ -295,13 +379,25 @@ async function hydratePosts(posts, options = {}) {
     const mappedReplies = postReplyRows.map((reply) => ({
       id: reply.id,
       postId: reply.post_id,
+      parentReplyId: reply.parent_reply_id || null,
+      parentReply: reply.parent_reply_id ? (() => {
+        const parentReply = replyById.get(Number(reply.parent_reply_id));
+        if (!parentReply || parentReply.status !== 'active') return null;
+
+        return {
+          id: parentReply.id,
+          author: buildAuthor(parentReply.users, authorStatsByUserId),
+          excerpt: summarizeText(parentReply.body, 140),
+        };
+      })() : null,
       body: reply.body,
       status: reply.status,
       isAccepted: Boolean(reply.is_accepted),
       createdAt: reply.created_at,
       updatedAt: reply.updated_at,
-      author: buildAuthor(reply.users),
+      author: buildAuthor(reply.users, authorStatsByUserId),
       voteCount: buildVoteCount(replyVotesByReplyId.get(reply.id) || []),
+      isUpvoted: viewerReplyVoteIds.has(Number(reply.id)),
     }));
 
     const documentAttachment = post.post_type === 'document_share'
@@ -324,15 +420,19 @@ async function hydratePosts(posts, options = {}) {
       updatedAt: post.updated_at,
       subject: primarySubject,
       subjects: linkedSubjects,
-      author: buildAuthor(post.users),
+      author: buildAuthor(post.users, authorStatsByUserId),
       lastActivity: latestReply ? {
         at: latestReply.updated_at || latestReply.created_at,
-        user: buildAuthor(latestReply.users),
+        replyId: latestReply.id,
+        user: buildAuthor(latestReply.users, authorStatsByUserId),
       } : {
         at: post.updated_at || post.created_at,
-        user: buildAuthor(post.users),
+        replyId: null,
+        user: buildAuthor(post.users, authorStatsByUserId),
       },
       voteCount: buildVoteCount(postVotesByPostId.get(post.id) || []),
+      isUpvoted: viewerPostVoteIds.has(Number(post.id)),
+      viewCount: Number(post.view_count || 0),
       replyCount: mappedReplies.length,
       solved: Boolean(acceptedReply),
       acceptedReplyId: acceptedReply?.id || null,
@@ -367,7 +467,7 @@ function sortFeed(posts, tab) {
   });
 }
 
-async function listPublicFeed({ tab, postType, subjectCode, limit }) {
+async function listPublicFeed({ tab, postType, subjectCode, limit, viewerContext = {} }) {
   const normalizedTab = normalizeTab(tab);
   const normalizedPostType = normalizePostType(postType);
   const normalizedSubjectCode = String(subjectCode || '').trim().toUpperCase();
@@ -380,7 +480,11 @@ async function listPublicFeed({ tab, postType, subjectCode, limit }) {
     filtered = filtered.filter((post) => post.post_type === normalizedPostType);
   }
 
-  let hydrated = await hydratePosts(filtered, { includeReplies: false, includeFullAttachments: false });
+  let hydrated = await hydratePosts(filtered, {
+    includeReplies: false,
+    includeFullAttachments: false,
+    viewerUserId: viewerContext.userId || null,
+  });
   if (normalizedSubjectCode) {
     hydrated = hydrated.filter((post) => (post.subjects || []).some((subject) => subject.code === normalizedSubjectCode));
   }
@@ -388,17 +492,25 @@ async function listPublicFeed({ tab, postType, subjectCode, limit }) {
   return sortFeed(hydrated, normalizedTab).slice(0, normalizedLimit);
 }
 
-async function getPublicPostById(id) {
+async function getPublicPostById(id, viewerContext = {}) {
   const postId = normalizeNumericId(id, 'postId');
-  const post = await CommunityModel.findPostById(postId);
+  let post = await CommunityModel.findPostById(postId);
 
   if (!post || post.status !== 'active') {
     throw createError(404, 'Community post not found');
   }
 
+  const viewerKey = String(viewerContext.viewerKey || '').trim();
+  if (viewerKey) {
+    await CommunityModel.trackPostView(postId, viewerKey, POST_VIEW_WINDOW_MINUTES);
+    post = await CommunityModel.findPostById(postId);
+  }
+
   const [hydratedPost] = await hydratePosts([post], {
     includeReplies: true,
     includeFullAttachments: true,
+    includeAuthorStats: true,
+    viewerUserId: viewerContext.userId || null,
   });
 
   return hydratedPost;
@@ -569,7 +681,35 @@ async function deletePost({ postId, userId }) {
   return { message: 'Community post deleted' };
 }
 
-async function addReply({ postId, userId, body }) {
+async function deleteReply({ replyId, userId }) {
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+
+  if (!reply || reply.status !== 'active' || String(reply.user_id) !== String(userId)) {
+    throw createError(404, 'Community reply not found');
+  }
+
+  await CommunityModel.deleteReply(normalizedReplyId);
+
+  const post = await CommunityModel.findPostById(reply.post_id);
+  if (post && Number(post.solved_reply_id) === normalizedReplyId) {
+    await CommunityModel.updatePost(reply.post_id, { solved_reply_id: null });
+  }
+
+  activityService.log({
+    userId,
+    action: 'community.reply.delete',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+    metadata: {
+      postId: reply.post_id,
+    },
+  });
+
+  return getPublicPostById(reply.post_id);
+}
+
+async function addReply({ postId, userId, body, parentReplyId }) {
   const normalizedPostId = normalizeNumericId(postId, 'postId');
   const post = await CommunityModel.findPostById(normalizedPostId);
 
@@ -577,9 +717,22 @@ async function addReply({ postId, userId, body }) {
     throw createError(404, 'Community post not found');
   }
 
+  const normalizedParentReplyId = parentReplyId != null && parentReplyId !== ''
+    ? normalizeNumericId(parentReplyId, 'parentReplyId')
+    : null;
+  let parentReply = null;
+
+  if (normalizedParentReplyId) {
+    parentReply = await CommunityModel.findReplyById(normalizedParentReplyId);
+    if (!parentReply || Number(parentReply.post_id) !== normalizedPostId || parentReply.status !== 'active') {
+      throw createError(404, 'Parent reply not found');
+    }
+  }
+
   const reply = await CommunityModel.createReply({
     post_id: normalizedPostId,
     user_id: userId,
+    parent_reply_id: normalizedParentReplyId,
     body: requireText(body, 'body', 4000),
     status: 'active',
   });
@@ -593,11 +746,16 @@ async function addReply({ postId, userId, body }) {
     targetId: reply.id,
     metadata: {
       postId: normalizedPostId,
+      parentReplyId: normalizedParentReplyId,
     },
   });
 
   if (String(post.user_id) !== String(userId)) {
     notifyUser(post.user_id, `New reply on your community post "${post.title}"`);
+  }
+
+  if (parentReply && String(parentReply.user_id) !== String(userId)) {
+    notifyUser(parentReply.user_id, `New reply to your comment on "${post.title}"`);
   }
 
   return getPublicPostById(normalizedPostId);
@@ -946,9 +1104,9 @@ async function listTopContributors(limit = 5) {
     .slice(0, Math.max(1, Number(limit) || 5));
 }
 
-async function getCommunityHome({ tab, postType, subjectCode, limit }) {
+async function getCommunityHome({ tab, postType, subjectCode, limit, viewerContext = {} }) {
   const [feed, subjects, topContributors] = await Promise.all([
-    listPublicFeed({ tab, postType, subjectCode, limit }),
+    listPublicFeed({ tab, postType, subjectCode, limit, viewerContext }),
     listPublicSubjects(),
     listTopContributors(5),
   ]);
@@ -968,6 +1126,7 @@ module.exports = {
   createPost,
   updatePost,
   deletePost,
+  deleteReply,
   addReply,
   togglePostVote,
   toggleReplyVote,

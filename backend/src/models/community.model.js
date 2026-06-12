@@ -3,7 +3,7 @@ const supabase = require('../config/supabase');
 const POST_SELECT = `
   *,
   subjects:subjects!community_posts_subject_id_fkey (id, name, code),
-  users!community_posts_user_id_fkey (id, email, role, status),
+  users!community_posts_user_id_fkey (id, email, role, status, created_at),
   documents (
     id,
     title,
@@ -35,7 +35,7 @@ const POST_SELECT = `
 
 const REPLY_SELECT = `
   *,
-  users!community_replies_user_id_fkey (id, email, role, status)
+  users!community_replies_user_id_fkey (id, email, role, status, created_at)
 `;
 
 const POST_SUBJECT_SELECT = `
@@ -215,6 +215,18 @@ class CommunityModel {
     return data;
   }
 
+  static async deleteReply(id) {
+    const { data, error } = await supabase
+      .from('community_replies')
+      .delete()
+      .eq('id', id)
+      .select(REPLY_SELECT)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async clearAcceptedReplies(postId) {
     const { error } = await supabase
       .from('community_replies')
@@ -300,6 +312,18 @@ class CommunityModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async trackPostView(postId, viewerKey, windowMinutes = 30) {
+    const { data, error } = await supabase
+      .rpc('track_community_post_view', {
+        p_post_id: postId,
+        p_viewer_key: viewerKey,
+        p_window_minutes: windowMinutes,
+      });
+
+    if (error) throw error;
+    return Boolean(data);
   }
 
   static async createReport(reportData) {

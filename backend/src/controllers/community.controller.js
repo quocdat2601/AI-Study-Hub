@@ -1,12 +1,51 @@
+const crypto = require('crypto');
+const supabase = require('../config/supabase');
 const communityService = require('../services/community.service');
+
+async function buildOptionalViewerContext(req) {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+
+    try {
+      const { data, error } = await supabase.auth.getUser(token);
+      if (!error && data?.user?.id) {
+        return {
+          userId: data.user.id,
+          viewerKey: `user:${data.user.id}`,
+        };
+      }
+    } catch (_) {
+      // Fall through to guest fingerprinting for public access.
+    }
+  }
+
+  const forwardedFor = Array.isArray(req.headers['x-forwarded-for'])
+    ? req.headers['x-forwarded-for'][0]
+    : String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = forwardedFor || req.ip || req.socket?.remoteAddress || 'unknown';
+  const userAgent = String(req.headers['user-agent'] || 'unknown');
+  const acceptLanguage = String(req.headers['accept-language'] || '');
+  const fingerprint = crypto
+    .createHash('sha256')
+    .update(`${ip}|${userAgent}|${acceptLanguage}`)
+    .digest('hex');
+
+  return {
+    viewerKey: `guest:${fingerprint}`,
+  };
+}
 
 async function getHome(req, res, next) {
   try {
+    const viewerContext = await buildOptionalViewerContext(req);
     res.json(await communityService.getCommunityHome({
       tab: req.query.tab,
       postType: req.query.postType,
       subjectCode: req.query.subject,
       limit: req.query.limit,
+      viewerContext,
     }));
   } catch (err) {
     next(err);
@@ -15,11 +54,13 @@ async function getHome(req, res, next) {
 
 async function getFeed(req, res, next) {
   try {
+    const viewerContext = await buildOptionalViewerContext(req);
     res.json(await communityService.listPublicFeed({
       tab: req.query.tab,
       postType: req.query.postType,
       subjectCode: req.query.subject,
       limit: req.query.limit,
+      viewerContext,
     }));
   } catch (err) {
     next(err);
@@ -28,7 +69,10 @@ async function getFeed(req, res, next) {
 
 async function getPostById(req, res, next) {
   try {
-    res.json(await communityService.getPublicPostById(req.params.id));
+    res.json(await communityService.getPublicPostById(
+      req.params.id,
+      await buildOptionalViewerContext(req),
+    ));
   } catch (err) {
     next(err);
   }
@@ -88,6 +132,18 @@ async function addReply(req, res, next) {
       postId: req.params.id,
       userId: req.user.id,
       body: req.body.body,
+      parentReplyId: req.body.parentReplyId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteReply(req, res, next) {
+  try {
+    res.json(await communityService.deleteReply({
+      replyId: req.params.id,
+      userId: req.user.id,
     }));
   } catch (err) {
     next(err);
@@ -150,6 +206,7 @@ module.exports = {
   updatePost,
   deletePost,
   addReply,
+  deleteReply,
   votePost,
   voteReply,
   acceptReply,
