@@ -66,7 +66,7 @@ export default function WorkspaceTextView({ document }) {
 
   return (
     <div className="min-h-full px-4 py-6 sm:px-6">
-      <article className="mx-auto w-full max-w-[620px] rounded-xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
+      <article className="mx-auto w-full max-w-[620px] select-text rounded-xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
           Nội dung text
         </p>

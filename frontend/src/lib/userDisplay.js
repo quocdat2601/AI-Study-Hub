@@ -1,10 +1,43 @@
+const PLACEHOLDER_NAMES = new Set([
+  "anonymous user",
+  "người dùng ẩn danh",
+  "anonymous",
+  "google user",
+  "user",
+]);
+
+function normalizeName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isPlaceholderDisplayName(value) {
+  const normalized = normalizeName(value);
+  return !normalized || PLACEHOLDER_NAMES.has(normalized);
+}
+
+function nameFromEmail(email) {
+  const local = String(email || "").split("@")[0] || "";
+  return local.replace(/[._-]+/g, " ").trim();
+}
+
 export function getDisplayName(user) {
-  if (user?.displayName) return user.displayName;
-  if (user?.display_name) return user.display_name;
-  if (user?.name) return user.name;
-  if (user?.fullName) return user.fullName;
-  if (user?.full_name) return user.full_name;
-  if (user?.email) return user.email.split("@")[0].replace(/[._-]+/g, " ");
+  const candidates = [
+    user?.displayName,
+    user?.display_name,
+    user?.fullName,
+    user?.full_name,
+    user?.name,
+  ];
+
+  const resolved = candidates.find((candidate) => !isPlaceholderDisplayName(candidate));
+  if (resolved) return String(resolved).trim();
+
+  const fromEmail = nameFromEmail(user?.email);
+  if (!isPlaceholderDisplayName(fromEmail)) return fromEmail;
+
+  const handle = String(user?.handle || "").replace(/^@/, "").trim();
+  if (handle) return handle;
+
   return "Student";
 }
 
@@ -15,7 +48,12 @@ export function getUserHandle(user) {
 }
 
 export function getUserInitials(user) {
-  return getDisplayName(user).slice(0, 2).toUpperCase();
+  const displayName = getDisplayName(user);
+  const parts = displayName.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+  }
+  return displayName.slice(0, 2).toUpperCase();
 }
 
 export function formatJoinDate(value) {

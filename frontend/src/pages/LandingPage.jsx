@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import LandingCTA from "../components/landing/LandingCTA.jsx";
+import LandingChatbot from "../components/landing/LandingChatbot.jsx";
 import LandingFooter from "../components/landing/LandingFooter.jsx";
 import LandingHeader from "../components/landing/LandingHeader.jsx";
 import LandingHero from "../components/landing/LandingHero.jsx";
@@ -40,6 +41,7 @@ export default function LandingPage() {
       </main>
 
       <LandingFooter />
+      <LandingChatbot />
     </div>
   );
 }

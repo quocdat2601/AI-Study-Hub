@@ -1,9 +1,41 @@
+const accountModel = require('../models/account.model');
 const userModel = require('../models/user.model');
 const createError = require('../utils/createError');
+const {
+  extractAuthDisplayName,
+  isPlaceholderDisplayName,
+  nameFromEmail,
+} = require('../utils/displayName');
 const { publicUser } = require('./user.service');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function buildDefaultHandle(email) {
+  const base = normalizeEmail(email).split('@')[0] || 'student';
+  return base.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30);
+}
+
+async function maybeBackfillDisplayName(authUser, accountUser) {
+  if (!accountUser || (!isPlaceholderDisplayName(accountUser.display_name) && accountUser.display_name)) {
+    return;
+  }
+
+  const normalizedEmail = normalizeEmail(authUser.email);
+  const preferredName = extractAuthDisplayName(authUser) || nameFromEmail(normalizedEmail);
+  if (isPlaceholderDisplayName(preferredName)) {
+    return;
+  }
+
+  try {
+    await accountModel.updateProfile(authUser.id, {
+      display_name: preferredName,
+      ...(accountUser.handle ? {} : { handle: buildDefaultHandle(normalizedEmail) }),
+    });
+  } catch {
+    // Profile columns may not exist yet.
+  }
 }
 
 async function syncUserProfile(authUser) {
@@ -46,6 +78,13 @@ async function syncUserProfile(authUser) {
       role: 'user',
       updated_at: new Date().toISOString(),
     });
+  }
+
+  try {
+    const accountUser = await accountModel.findByUserId(authUser.id);
+    await maybeBackfillDisplayName(authUser, accountUser);
+  } catch {
+    // Ignore profile backfill errors during auth sync.
   }
 
   return publicUser(user);

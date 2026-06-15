@@ -4,6 +4,7 @@ const documentModel = require('../models/document.model');
 const activityService = require('./activity.service');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
+const { resolveDisplayName } = require('../utils/displayName');
 const { normalizeRole } = require('./user.service');
 const { buildSafeStorageFileName } = require('../utils/sanitizeFileName');
 
@@ -84,7 +85,11 @@ function mapAccount(user, storage, docCount, activities, avatarUrl) {
     profile: {
       id: user.id,
       email,
-      displayName: user.display_name || email.split('@')[0],
+      displayName: resolveDisplayName({
+        display_name: user.display_name,
+        email,
+        handle: user.handle,
+      }),
       handle: `@${handle}`,
       major: user.major || 'Student · AI Study Hub',
       role: normalizeRole(user.role),

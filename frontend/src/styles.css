@@ -31,7 +31,6 @@ body,
     color: #172033;
     font-family: "Plus Jakarta Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
     margin: 0;
-    user-select: none;
   }
 
   html.dark body {
@@ -121,6 +120,225 @@ body,
   }
 }
 
+/* chatbot animations */
+@keyframes chatbot-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes chatbot-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes chatbot-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  25% {
+    transform: rotate(-8deg);
+  }
+
+  75% {
+    transform: rotate(8deg);
+  }
+}
+
+@keyframes chatbot-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes chatbot-panel-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 20px 50px rgba(15, 23, 42, 0.18),
+      0 0 0 0 rgba(99, 102, 241, 0);
+  }
+
+  50% {
+    box-shadow:
+      0 24px 56px rgba(79, 70, 229, 0.22),
+      0 0 0 3px rgba(99, 102, 241, 0.12);
+  }
+}
+
+@keyframes chatbot-part-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chatbot-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes chatbot-message-user-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes chatbot-message-bot-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes chatbot-typing {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-5px);
+  }
+}
+
+.chatbot-launcher {
+  position: relative;
+}
+
+.chatbot-pulse-ring {
+  animation: chatbot-pulse 2s ease-out infinite;
+  border: 2px solid #6366f1;
+  border-radius: 9999px;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.chatbot-float-btn {
+  animation: chatbot-float 2.2s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
+}
+
+.chatbot-float-btn.is-open {
+  animation: none;
+}
+
+.chatbot-float-btn:not(.is-open) .chatbot-mascot-img {
+  animation: chatbot-wiggle 2.4s ease-in-out infinite;
+}
+
+.chatbot-header-mascot {
+  animation: chatbot-wiggle 3s ease-in-out infinite;
+}
+
+.chatbot-panel {
+  animation:
+    chatbot-panel-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    chatbot-panel-glow 3s ease-in-out 0.4s infinite;
+  transform-origin: bottom right;
+}
+
+.chatbot-panel-header {
+  animation: chatbot-part-in 0.35s ease-out 0.1s both;
+}
+
+.chatbot-panel-body {
+  animation: chatbot-part-in 0.35s ease-out 0.2s both;
+}
+
+.chatbot-panel-footer {
+  animation: chatbot-part-in 0.35s ease-out 0.3s both;
+}
+
+.chatbot-message-user {
+  animation: chatbot-message-user-in 0.28s ease-out;
+}
+
+.chatbot-message-bot {
+  animation: chatbot-message-bot-in 0.28s ease-out;
+}
+
+.chatbot-message {
+  animation: chatbot-message-in 0.3s ease-out;
+}
+
+.chatbot-typing-dot {
+  animation: chatbot-typing 1s ease-in-out infinite;
+}
+
+.chatbot-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.chatbot-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatbot-float-btn,
+  .chatbot-float-btn .chatbot-mascot-img,
+  .chatbot-header-mascot,
+  .chatbot-pulse-ring,
+  .chatbot-panel,
+  .chatbot-panel-header,
+  .chatbot-panel-body,
+  .chatbot-panel-footer,
+  .chatbot-message,
+  .chatbot-message-user,
+  .chatbot-message-bot,
+  .chatbot-typing-dot {
+    animation: none !important;
+  }
+}
+
 .workspace-scrollbar {
   scrollbar-color: #cbd5e1 transparent;
   scrollbar-width: thin;
@@ -147,6 +365,17 @@ body,
 
 .workspace-panel {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Cho phép bôi đen / copy nội dung tài liệu trong workspace */
+#workspace-viewer-area {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Canvas PDF nằm trên text layer — tắt pointer-events để chọn chữ được */
+#workspace-viewer-area .react-pdf__Page__canvas {
+  pointer-events: none;
 }
 
 @layer base {

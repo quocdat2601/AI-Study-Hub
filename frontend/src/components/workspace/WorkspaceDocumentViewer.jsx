@@ -138,7 +138,7 @@ export default function WorkspaceDocumentViewer({ className = "" }) {
       </header>
 
       <div
-        className="workspace-scrollbar min-h-0 flex-1 overflow-y-auto rounded-b-xl border border-t-0 border-slate-200/80 bg-[#eef0f2]"
+        className="workspace-scrollbar min-h-0 flex-1 select-text overflow-y-auto rounded-b-xl border border-t-0 border-slate-200/80 bg-[#eef0f2]"
         id="workspace-viewer-area"
       >
         <WorkspacePDFViewer />

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { getDisplayName } from "../../lib/userDisplay.js";
+import { getDisplayName, getUserInitials } from "../../lib/userDisplay.js";
 import { LogOutIcon, SettingsIcon } from "./WorkspaceIcons.jsx";
 
 function formatPlanLabel(plan) {
@@ -11,7 +11,7 @@ function formatPlanLabel(plan) {
 
 export default function WorkspaceAccountFooter({ user, onLogout }) {
   const displayName = getDisplayName(user);
-  const initials = displayName.slice(0, 2).toUpperCase();
+  const initials = getUserInitials(user);
   const planLabel = formatPlanLabel(user?.plan);
 
   return (

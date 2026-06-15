@@ -17,6 +17,7 @@ const adminRoutes = require('./routes/admin.routes');
 const publicRoutes = require('./routes/public.routes');
 const accountRoutes = require('./routes/account.routes');
 const workspaceRoutes = require('./routes/workspace.routes');
+const chatbotRoutes = require('./routes/chatbot.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -44,6 +45,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/workspace', workspaceRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 app.use(errorHandler);
 

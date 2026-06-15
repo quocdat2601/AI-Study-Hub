@@ -60,7 +60,7 @@ function WorkspaceLazyPdfPage({ pageNumber, width, onPageVisible }) {
           }
           pageNumber={pageNumber}
           renderAnnotationLayer={false}
-          renderTextLayer={false}
+          renderTextLayer
           width={width}
         />
       ) : (
