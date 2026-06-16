@@ -30,7 +30,7 @@ export function hasRecoveryContext(locationLike = window.location) {
   return hasRecoveryParams(locationLike) || safeSessionStorage((storage) => storage.getItem(RECOVERY_FLAG_KEY) === "1", false);
 }
 
-function isInvalidRefreshTokenError(error) {
+export function isInvalidRefreshTokenError(error) {
   const message = String(error?.message || "").toLowerCase();
   return (
     error?.code === "refresh_token_not_found" ||

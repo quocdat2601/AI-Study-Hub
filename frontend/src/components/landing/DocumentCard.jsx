@@ -1,56 +1,85 @@
 import React from "react";
 
-function Thumbnail({ document, className }) {
+function Thumbnail({ document }) {
   if (document.image) {
-    return <img className={className} src={document.image} alt="" loading="lazy" />;
+    return (
+      <img
+        className="h-full w-full object-contain object-center p-4"
+        src={document.image}
+        alt=""
+        loading="lazy"
+      />
+    );
   }
 
   return (
-    <div className={`${className} flex items-center justify-center bg-[#f7f9fb]`}>
-      <div className="flex h-[72%] w-[58%] flex-col gap-2 rounded border border-[#c7c4d7] bg-white p-3 shadow-sm">
-        <span className="h-2 w-4/5 rounded bg-[#d5e3fc]" />
-        <span className="h-2 w-full rounded bg-[#e8edf5]" />
-        <span className="h-2 w-3/4 rounded bg-[#e8edf5]" />
-        <span className="mt-auto text-[10px] font-black text-[#4648d4]">{document.fileType || "DOC"}</span>
+    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50/40 p-6">
+      <div className="flex h-full w-[72%] max-w-[140px] flex-col gap-2 rounded-lg border border-slate-200/80 bg-white p-3 shadow-sm">
+        <span className="h-2 w-4/5 rounded bg-indigo-100" />
+        <span className="h-2 w-full rounded bg-slate-100" />
+        <span className="h-2 w-3/4 rounded bg-slate-100" />
+        <span className="mt-auto text-[10px] font-bold uppercase tracking-wide text-indigo-600">
+          {document.fileType || "PDF"}
+        </span>
       </div>
     </div>
   );
 }
 
-export default function DocumentCard({ document, featured = false }) {
-  if (featured) {
-    return (
-      <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden col-span-2 row-span-2">
-        <div className="bg-[#eceef0] relative h-64">
-          <Thumbnail document={document} className="w-full h-full object-cover object-top" />
-          <span className="absolute top-4 left-4 bg-[#4648d4] text-white text-xs font-bold rounded-full px-3 py-[5px]">{document.badge}</span>
-        </div>
-        <div className="p-6">
-          <p className="text-[#4648d4] text-sm font-extrabold m-0 mb-3">{document.course}</p>
-          <h3 className="text-xl leading-[1.4] m-0 mb-3">{document.title}</h3>
-          <p className="text-[#464554] text-sm leading-[1.45] m-0 mb-6">{document.description}</p>
-          <footer className="flex items-center justify-between border-t border-[#c7c4d7] pt-[17px] text-xs text-[#767586]">
-            <div className="flex items-center gap-2 text-[#172033]">
-              <span className="inline-flex items-center justify-center bg-[#d5e3fc] rounded-full text-[#4648d4] font-extrabold h-8 w-8">{document.initials}</span>
-              <strong>{document.author}</strong>
-            </div>
-            <span>{document.rating}</span>
-          </footer>
-        </div>
-      </article>
-    );
-  }
-
+export default function DocumentCard({ document, highlighted = false }) {
   return (
-    <article className="bg-white border border-[#c7c4d7] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
-      <div className="bg-[#eceef0] relative h-40">
-        <Thumbnail document={document} className="w-full h-full object-cover object-top" />
-        {document.pages ? <span className="absolute bottom-2 right-2 backdrop-blur-sm bg-white/90 rounded text-[#172033] text-xs font-bold px-2 py-1">{document.pages}</span> : null}
+    <article
+      className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-white transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(70,72,212,0.12)] ${
+        highlighted
+          ? "shadow-[0_12px_32px_rgba(70,72,212,0.14)] ring-1 ring-indigo-200"
+          : "shadow-[0_4px_20px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/80"
+      }`}
+    >
+      <div className="relative aspect-[5/3] overflow-hidden bg-slate-100">
+        <Thumbnail document={document} />
+        {highlighted ? (
+          <span className="absolute left-3 top-3 rounded-md bg-indigo-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm">
+            Top pick
+          </span>
+        ) : null}
+        {document.pages ? (
+          <span className="absolute bottom-3 right-3 rounded-md bg-white/95 px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur-sm">
+            {document.pages}
+          </span>
+        ) : null}
+        {document.badge ? (
+          <span className="absolute bottom-3 left-3 rounded-md bg-slate-900/75 px-2 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+            {document.badge}
+          </span>
+        ) : null}
       </div>
-      <div className="p-4">
-        <p className="text-[#464554] text-xs font-extrabold tracking-[0.6px] uppercase m-0 mb-[6px]">{document.course}</p>
-        <h3 className="text-sm leading-[1.42] m-0 mb-2">{document.title}</h3>
-        <span className="text-[#767586] block text-xs font-bold">{document.school}</span>
+
+      <div className="flex flex-1 flex-col p-5">
+        <p className="m-0 mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-indigo-600">
+          {document.course}
+        </p>
+        <h3
+          className="m-0 mb-2 line-clamp-2 text-[15px] font-bold leading-snug text-slate-900"
+          title={document.title}
+        >
+          {document.title}
+        </h3>
+        {document.description ? (
+          <p className="m-0 mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-slate-500">
+            {document.description}
+          </p>
+        ) : (
+          <div className="flex-1" />
+        )}
+        <footer className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-xs font-bold text-indigo-600">
+              {document.initials}
+            </span>
+            <span className="truncate text-sm font-medium text-slate-700">{document.author}</span>
+          </div>
+          <span className="shrink-0 text-xs font-medium text-slate-400">{document.rating}</span>
+        </footer>
       </div>
     </article>
   );

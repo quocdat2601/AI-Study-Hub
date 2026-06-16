@@ -146,6 +146,18 @@ async function revokeDocumentShare(req, res, next) {
   }
 }
 
+async function saveOcrText(req, res, next) {
+  try {
+    res.json(await documentService.saveOcrText({
+      document: req.document,
+      text: req.body.text,
+      append: req.body.append === true,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllDocuments,
   getDocumentById,
@@ -158,4 +170,5 @@ module.exports = {
   listDocumentShares,
   shareDocument,
   revokeDocumentShare,
+  saveOcrText,
 };
