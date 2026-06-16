@@ -413,9 +413,18 @@ export default function WorkspacePage() {
       cacheDocumentChat(selectedDocument.id, { processResult: result });
       setProcessResult(result);
       setDocuments((current) => {
+        const updatedDocument = result.document || {};
         const nextDocuments = current.map((doc) => (
           Number(doc.id) === Number(selectedDocument.id)
-            ? { ...doc, extraction_status: "ready", status: "indexed" }
+            ? {
+                ...doc,
+                ...updatedDocument,
+                extracted_text: updatedDocument.extracted_text ?? doc.extracted_text,
+                extraction_status: updatedDocument.extraction_status ?? "ready",
+                extraction_error: updatedDocument.extraction_error ?? null,
+                extraction_metadata: updatedDocument.extraction_metadata ?? doc.extraction_metadata,
+                status: updatedDocument.status ?? "indexed",
+              }
             : doc
         ));
         cacheWorkspaceState({ documents: nextDocuments });

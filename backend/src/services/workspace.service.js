@@ -18,6 +18,25 @@ function isChatReady(document) {
   return document.extraction_status === 'ready' && text.length >= 50;
 }
 
+function getFileExtension(mimeType) {
+  if (mimeType === 'application/pdf') return '.pdf';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    return '.docx';
+  }
+  if (mimeType === 'image/png') return '.png';
+  if (mimeType === 'image/jpeg') return '.jpg';
+  if (mimeType === 'image/tiff') return '.tiff';
+  if (mimeType === 'image/bmp') return '.bmp';
+  return '';
+}
+
+function buildDownloadFileName(title, mimeType) {
+  const baseName = String(title || 'document').trim() || 'document';
+  const extension = getFileExtension(mimeType);
+  if (!extension || baseName.toLowerCase().endsWith(extension)) return baseName;
+  return `${baseName}${extension}`;
+}
+
 async function getBootstrap({ userId, search, subjectId }) {
   const [documents, subjects, bookmarks] = await Promise.all([
     documentService.listDocuments({ userId, search, subjectId }),
@@ -68,11 +87,12 @@ async function getDocumentPdf({ userId, docId }) {
 
   const blob = await supabaseService.downloadFileBlob(storagePath);
   const buffer = Buffer.from(await blob.arrayBuffer());
+  const mimeType = document.cloud_files?.mime_type || 'application/pdf';
 
   return {
     buffer,
-    mimeType: document.cloud_files?.mime_type || 'application/pdf',
-    fileName: document.title || 'document',
+    mimeType,
+    fileName: buildDownloadFileName(document.title, mimeType),
   };
 }
 

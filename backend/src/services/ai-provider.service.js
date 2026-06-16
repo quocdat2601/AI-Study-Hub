@@ -3,8 +3,14 @@ const geminiService = require('./gemini.service');
 const ollamaService = require('./ollama.service');
 
 function buildModeInstruction(mode) {
+  const languageInstruction = [
+    'Answer in the same language as the user question.',
+    'If the user question language is unclear or mixed, answer in Vietnamese.',
+  ].join('\n');
+
   if (mode === 'document_only') {
     return [
+      languageInstruction,
       'Answer mode: document_only.',
       'Use only the provided source chunks.',
       'Do not use outside knowledge.',
@@ -13,11 +19,14 @@ function buildModeInstruction(mode) {
   }
 
   return [
+    languageInstruction,
     'Answer mode: hybrid.',
-    'Always use two sections titled exactly "Based on the document" and "Additional study explanation".',
-    'In "Based on the document", answer only from the provided source chunks.',
+    'Always use two sections in the response language.',
+    'For English answers, title the sections exactly "Based on the document" and "Additional study explanation".',
+    'For Vietnamese answers, title the sections exactly "Dựa trên tài liệu" and "Giải thích bổ sung".',
+    'In the document-based section, answer only from the provided source chunks.',
     'If the chunks are insufficient, explicitly say: "The document does not provide enough information to fully answer this."',
-    'In "Additional study explanation", add concise general academic or software knowledge that helps the student understand the topic.',
+    'In the additional explanation section, add concise general academic or software knowledge that helps the student understand the topic.',
     'Do not cite or imply that general knowledge came from the document.',
     'Keep the answer concise and useful.',
   ].join('\n');

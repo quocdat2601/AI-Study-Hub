@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from "react";
 import { Page } from "react-pdf";
+import "react-pdf/dist/Page/TextLayer.css";
 
 function WorkspaceLazyPdfPage({ pageNumber, width, onPageVisible }) {
   const containerRef = useRef(null);
@@ -60,7 +61,7 @@ function WorkspaceLazyPdfPage({ pageNumber, width, onPageVisible }) {
           }
           pageNumber={pageNumber}
           renderAnnotationLayer={false}
-          renderTextLayer={false}
+          renderTextLayer
           width={width}
         />
       ) : (

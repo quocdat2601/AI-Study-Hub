@@ -139,6 +139,14 @@ router.delete(
   documentController.revokeDocumentShare
 );
 
+router.patch(
+  '/:id/visibility',
+  verifyToken,
+  requireRole('student', 'admin'),
+  requireDocumentOwner(),
+  documentController.updateDocumentVisibility
+);
+
 /**
  * @swagger
  * /api/documents/{id}:

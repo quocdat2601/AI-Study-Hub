@@ -87,12 +87,12 @@ export default function WorkspaceSidebar({
         <div className="mb-4 flex items-center gap-2">
           <Link
             aria-label="Back to dashboard"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 no-underline transition hover:bg-slate-100 hover:text-slate-800"
+            className="no-caret flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 no-underline transition hover:bg-slate-100 hover:text-slate-800"
             to="/dashboard"
           >
             <ChevronLeftIcon size={18} />
           </Link>
-          <Link className="truncate text-[17px] font-bold text-[#5b4fd4] no-underline" to="/dashboard">
+          <Link className="no-caret truncate text-[17px] font-bold text-[#5b4fd4] no-underline" to="/dashboard">
             AI Study Hub
           </Link>
         </div>
@@ -131,7 +131,7 @@ export default function WorkspaceSidebar({
           </button>
         </div>
 
-        <div className="mt-3 flex rounded-xl bg-slate-100 p-1">
+        <div className="no-caret mt-3 flex rounded-xl bg-slate-100 p-1">
           {TABS.map((tab) => (
             <button
               className={`flex-1 cursor-pointer rounded-lg border-0 px-1 py-2 text-[11px] font-semibold transition ${
@@ -149,7 +149,7 @@ export default function WorkspaceSidebar({
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+          <span className="no-caret text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
             Filter options
           </span>
           <button

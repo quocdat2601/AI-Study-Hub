@@ -63,8 +63,11 @@ async function extractTextFromStorage(doc) {
     throw createError(404, 'Document file not found');
   }
 
-  if (mimeType !== documentTextService.MIME_TYPES.PDF) {
-    throw createError(400, 'Only text-based PDF processing is supported in this temporary workspace');
+  const canExtractFromStorage = mimeType === documentTextService.MIME_TYPES.PDF
+    || documentTextService.IMAGE_MIME_TYPES.has(mimeType);
+
+  if (!canExtractFromStorage) {
+    throw createError(400, 'Only PDF and image OCR processing is supported in this temporary workspace');
   }
 
   const buffer = await supabaseService.downloadFile(storagePath);
@@ -80,7 +83,7 @@ async function getProcessableDocument({ id, userId }) {
   return doc;
 }
 
-async function processDocument({ id, userId, sendEvent }) {
+async function processDocument({ id, userId, sendEvent, force = false }) {
   const doc = await getProcessableDocument({ id, userId });
   const existingText = String(doc.extracted_text || '').trim();
   let text = existingText;
@@ -88,7 +91,11 @@ async function processDocument({ id, userId, sendEvent }) {
   let extractionError = doc.extraction_error || null;
   let savedDoc = doc;
 
-  if (!text || extractionStatus !== 'ready') {
+  if (
+    force
+    || extractionStatus !== 'ready'
+    || !documentTextService.isExtractedTextUseful(text)
+  ) {
     const extraction = await extractTextFromStorage(doc);
     text = extraction.text;
     extractionStatus = extraction.status;
@@ -109,7 +116,7 @@ async function processDocument({ id, userId, sendEvent }) {
     throw createError(400, 'No readable document chunks could be created');
   }
 
-  let chunksToSave = chunks;
+  let chunksToSave;
   try {
     sendEvent?.('status', { message: 'Creating embeddings...' });
     chunksToSave = await embeddingService.embedChunks(chunks);
@@ -121,11 +128,7 @@ async function processDocument({ id, userId, sendEvent }) {
   const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunksToSave);
 
   return {
-    document: {
-      id: savedDoc.id,
-      title: savedDoc.title,
-      extractionStatus: savedDoc.extraction_status,
-    },
+    document: savedDoc,
     chunkCount: savedChunks.length,
     status: 'ready',
   };
@@ -321,7 +324,7 @@ async function prepareAskDocument({ id, userId, question, mode, model, sendEvent
   const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
 
   let chunks;
-  let autoProcessed = false;
+  let autoProcessed;
   try {
     ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId, sendEvent }));
   } catch (err) {

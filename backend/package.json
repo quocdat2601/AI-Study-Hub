@@ -6,6 +6,7 @@
     "dev": "nodemon server.js",
     "start": "node server.js",
     "seed:demo": "node scripts/seed-demo-data.js",
+    "thumbnails:backfill": "node scripts/backfill-thumbnails.js",
     "migrate:account": "node scripts/run-account-migration.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"

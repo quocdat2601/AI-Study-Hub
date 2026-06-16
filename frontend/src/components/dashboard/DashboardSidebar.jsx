@@ -71,8 +71,8 @@ function SidebarIcon({ name }) {
 
 function navItemClass(isActive) {
   return isActive
-    ? "relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 no-underline transition before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300"
-    : "flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 no-underline transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white";
+    ? "no-caret relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-indigo-50 px-3 text-left text-[13px] font-semibold text-indigo-700 no-underline transition before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300"
+    : "no-caret flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-medium text-slate-600 no-underline transition hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white";
 }
 
 function isNavItemActive(pathname, item) {
@@ -91,7 +91,7 @@ export default function DashboardSidebar({ onLogout, userName, userPlan, avatarU
       className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"
       aria-label="Dashboard navigation"
     >
-      <Link className="mb-6 flex items-center gap-3 no-underline" to="/dashboard">
+      <Link className="no-caret mb-6 flex items-center gap-3 no-underline" to="/dashboard">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.28)]">
           A
         </span>
@@ -102,7 +102,7 @@ export default function DashboardSidebar({ onLogout, userName, userPlan, avatarU
       </Link>
 
       <Link
-        className="mb-6 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-[13px] font-semibold text-white no-underline shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
+        className="no-caret mb-6 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-[13px] font-semibold text-white no-underline shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
         to="/documents?upload=true"
       >
         <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">

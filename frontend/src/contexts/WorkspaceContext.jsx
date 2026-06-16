@@ -28,7 +28,14 @@ function formatDocDate(value) {
 function mapDocument(doc) {
   const subjectCode = doc.subjects?.code || doc.subjects?.name || "DOC";
   const mimeType = doc.cloud_files?.mime_type || "";
-  const fileType = mimeType.includes("pdf") ? "PDF" : mimeType.includes("word") ? "DOCX" : "FILE";
+  let fileType = "FILE";
+  if (mimeType.includes("pdf")) {
+    fileType = "PDF";
+  } else if (mimeType.includes("word")) {
+    fileType = "DOCX";
+  } else if (mimeType.startsWith("image/")) {
+    fileType = "IMAGE";
+  }
 
   return {
     id: doc.id,
@@ -47,6 +54,7 @@ function mapDocument(doc) {
 
 export function WorkspaceProvider({ children }) {
   const { user, logout } = useAuth();
+  const userId = user?.id;
   const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
@@ -90,7 +98,7 @@ export function WorkspaceProvider({ children }) {
     }
 
     if (activeTab === "shared") {
-      list = list.filter((doc) => user?.id && doc.userId !== user.id);
+      list = list.filter((doc) => userId && doc.userId !== userId);
     }
 
     if (fileTypeFilter === "PDF") {
@@ -102,7 +110,7 @@ export function WorkspaceProvider({ children }) {
     }
 
     return list;
-  }, [documents, activeTab, bookmarkedDocIds, fileTypeFilter, user?.id]);
+  }, [documents, activeTab, bookmarkedDocIds, fileTypeFilter, userId]);
 
   const selectedDocument = useMemo(() => {
     const base = documents.find((doc) => doc.id === selectedDocId);
@@ -179,10 +187,12 @@ export function WorkspaceProvider({ children }) {
     setSessionId(null);
     setCurrentPage(1);
     setTotalPages(1);
+    let fileMimeType = "application/pdf";
 
     try {
       const data = await getWorkspaceDocumentContext(docId);
       const doc = data.document || {};
+      fileMimeType = doc.cloud_files?.mime_type || fileMimeType;
 
       setDocumentDetails((current) => ({
         ...current,
@@ -206,7 +216,9 @@ export function WorkspaceProvider({ children }) {
 
     try {
       const pdfBuffer = await fetchWorkspacePdf(docId);
-      const blob = new Blob([new Uint8Array(pdfBuffer)], { type: "application/pdf" });
+      const blob = new Blob([new Uint8Array(pdfBuffer)], {
+        type: fileMimeType || "application/octet-stream",
+      });
       const blobUrl = URL.createObjectURL(blob);
       if (pdfBlobUrlRef.current) {
         URL.revokeObjectURL(pdfBlobUrlRef.current);

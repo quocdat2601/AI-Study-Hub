@@ -83,6 +83,7 @@ function getDocumentFileType(doc) {
   const mimeType = doc.cloud_files?.mime_type || '';
   if (mimeType.includes('pdf')) return 'PDF';
   if (mimeType.includes('word')) return 'DOC';
+  if (mimeType.startsWith('image/')) return 'IMAGE';
   return 'DOC';
 }
 
@@ -130,8 +131,10 @@ async function addThumbnailUrls(documents) {
   }));
 }
 
-async function updateVisibility({ id, userId, isPublic }) {
-  const doc = await canEditDocument(userId, id);
+async function updateVisibility({ id, userId, role, isPublic }) {
+  const doc = role === 'admin'
+    ? await documentModel.findById(id)
+    : await canEditDocument(userId, id);
   if (!doc) {
     throw createError(404, 'Document not found');
   }
@@ -479,6 +482,10 @@ async function saveOcrText({ document, text, append }) {
     text: merged,
     status: merged.length >= 50 ? 'ready' : 'empty',
     error: null,
+    metadata: {
+      extractionMethod: 'manual-ocr-text',
+      fallbackFromPdfParse: false,
+    },
   });
 
   const [documentWithThumbnail] = await addThumbnailUrls([updated]);

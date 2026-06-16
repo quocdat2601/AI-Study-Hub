@@ -3,37 +3,43 @@ import {
   listDocumentShares,
   revokeDocumentShare,
   shareDocument,
+  updateDocumentVisibility,
 } from "../services/documentApi.js";
 
 export default function ShareDocumentModal({ document, isOpen, onClose, onSuccess }) {
+  const documentId = document?.id;
+  const documentIsPublic = Boolean(document?.is_public ?? document?.isPublic);
   const [email, setEmail] = useState("");
   const [shares, setShares] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
   const [error, setError] = useState("");
 
   const loadShares = useCallback(async () => {
-    if (!document?.id) return;
+    if (!documentId) return;
 
     setIsLoading(true);
     setError("");
 
     try {
-      setShares(await listDocumentShares(document.id));
+      setShares(await listDocumentShares(documentId));
     } catch (err) {
       setShares([]);
       setError(err.response?.data?.error || "Could not load shares.");
     } finally {
       setIsLoading(false);
     }
-  }, [document?.id]);
+  }, [documentId]);
 
   useEffect(() => {
     if (!isOpen || !document) return;
     setEmail("");
     setError("");
+    setIsPublic(documentIsPublic);
     loadShares();
-  }, [document, isOpen, loadShares]);
+  }, [document, documentIsPublic, isOpen, loadShares]);
 
   if (!isOpen || !document) return null;
 
@@ -48,7 +54,7 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
     setError("");
 
     try {
-      await shareDocument(document.id, trimmedEmail);
+      await shareDocument(documentId, trimmedEmail);
       setEmail("");
       await loadShares();
       onSuccess?.();
@@ -63,11 +69,28 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
     setError("");
 
     try {
-      await revokeDocumentShare(document.id, shareId);
+      await revokeDocumentShare(documentId, shareId);
       await loadShares();
       onSuccess?.();
     } catch (err) {
       setError(err.response?.data?.error || "Could not revoke share.");
+    }
+  }
+
+  async function handleVisibilityChange(event) {
+    const nextIsPublic = event.target.checked;
+    setIsUpdatingVisibility(true);
+    setError("");
+
+    try {
+      const result = await updateDocumentVisibility(documentId, nextIsPublic);
+      setIsPublic(Boolean(result.document?.is_public ?? result.document?.isPublic));
+      onSuccess?.(result.document);
+    } catch (err) {
+      setIsPublic(documentIsPublic);
+      setError(err.response?.data?.error || "Could not update visibility.");
+    } finally {
+      setIsUpdatingVisibility(false);
     }
   }
 
@@ -78,6 +101,27 @@ export default function ShareDocumentModal({ document, isOpen, onClose, onSucces
         <p className="mt-1 text-sm text-[#66758a] dark:text-slate-400">
           Share <strong>{document.title}</strong> with another student by email.
         </p>
+
+        <div className="mt-5 rounded-xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="m-0 text-sm font-bold text-[#344154] dark:text-slate-200">Public visibility</h3>
+              <p className="m-0 mt-1 text-xs leading-relaxed text-[#66758a] dark:text-slate-400">
+                Public documents can appear on the landing page. Private documents stay visible only to you and people you share with.
+              </p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-bold text-[#344154] dark:text-slate-200">
+              <input
+                checked={isPublic}
+                className="h-4 w-4 accent-[#4648d4]"
+                disabled={isUpdatingVisibility}
+                onChange={handleVisibilityChange}
+                type="checkbox"
+              />
+              {isPublic ? "Public" : "Private"}
+            </label>
+          </div>
+        </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
           <input

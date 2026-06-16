@@ -31,7 +31,6 @@ body,
     color: #172033;
     font-family: "Plus Jakarta Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
     margin: 0;
-    user-select: none;
   }
 
   html.dark body {
@@ -52,8 +51,19 @@ body,
 
   input,
   select,
-  textarea {
+  textarea,
+  [contenteditable="true"] {
+    caret-color: auto;
     user-select: text;
+  }
+
+  button,
+  summary,
+  [role="button"],
+  .no-caret,
+  .workspace-no-select {
+    caret-color: transparent;
+    user-select: none;
   }
 }
 
@@ -143,10 +153,47 @@ body,
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  user-select: text;
 }
 
 .workspace-panel {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.no-caret {
+  caret-color: transparent;
+  user-select: none;
+}
+
+.no-caret input,
+.no-caret textarea,
+.no-caret select,
+.no-caret [contenteditable="true"] {
+  caret-color: auto;
+  user-select: text;
+}
+
+.workspace-selectable,
+.workspace-selectable * {
+  caret-color: auto;
+  user-select: text;
+}
+
+.workspace-selectable button,
+.workspace-selectable summary,
+.workspace-selectable [role="button"],
+.workspace-selectable .no-caret,
+.workspace-selectable .workspace-no-select {
+  caret-color: transparent;
+  user-select: none;
+}
+
+.react-pdf__Page__textContent,
+.react-pdf__Page__textContent *,
+.textLayer,
+.textLayer * {
+  caret-color: auto;
+  user-select: text;
 }
 
 @layer base {

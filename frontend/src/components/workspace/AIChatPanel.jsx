@@ -99,7 +99,7 @@ function SourceList({ sources }) {
               Chunk {Number(source.chunkIndex || 0) + 1}
               {source.score ? <span className="ml-2 font-medium text-slate-400">{Number(source.score).toFixed(2)}</span> : null}
             </summary>
-            <p className="mt-1.5 line-clamp-4 whitespace-pre-wrap leading-relaxed text-slate-500">{source.content}</p>
+            <p className="mt-1.5 line-clamp-4 select-text whitespace-pre-wrap leading-relaxed text-slate-500">{source.content}</p>
           </details>
         ))}
       </div>
@@ -135,8 +135,8 @@ function MessageBubble({ message }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[78%] rounded-2xl rounded-tr-md bg-indigo-600 px-3.5 py-2 text-sm leading-relaxed text-white shadow-sm">
-          <p className="m-0 whitespace-pre-wrap break-words">{message.content}</p>
+        <div className="workspace-selectable max-w-[78%] select-text rounded-2xl rounded-tr-md bg-indigo-600 px-3.5 py-2 text-sm leading-relaxed text-white shadow-sm">
+          <p className="m-0 select-text whitespace-pre-wrap break-words">{message.content}</p>
         </div>
       </div>
     );
@@ -148,8 +148,8 @@ function MessageBubble({ message }) {
     <div className="flex justify-start">
       <div className="max-w-[88%]">
         <ModelBadge message={message} />
-        <div className="rounded-2xl rounded-tl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800">
-          <p className="m-0 whitespace-pre-wrap break-words">{content}</p>
+        <div className="workspace-selectable rounded-2xl rounded-tl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800">
+          <p className="m-0 select-text whitespace-pre-wrap break-words">{content}</p>
           <SourceList sources={message.sources} />
         </div>
         {message.content ? (
@@ -392,7 +392,7 @@ export default function AIChatPanel({
         </div>
       </div>
 
-      <div className="workspace-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto bg-white p-3" onScroll={onChatScroll} ref={chatScrollRef}>
+      <div className="workspace-scrollbar workspace-selectable min-h-0 flex-1 space-y-3 overflow-y-auto bg-white p-3" onScroll={onChatScroll} ref={chatScrollRef}>
         {isLoadingMessages ? (
           <div className="grid gap-3">
             <div className="h-14 animate-pulse rounded-2xl bg-slate-100" />

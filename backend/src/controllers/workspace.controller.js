@@ -31,9 +31,32 @@ async function getDocumentPdf(req, res, next) {
     });
 
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}.pdf"`);
+    const asciiFileName = fileName.replace(/["\\\r\n]/g, '_');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${asciiFileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getDocumentPreviewData(req, res, next) {
+  try {
+    const { buffer, mimeType, fileName } = await workspaceService.getDocumentPdf({
+      userId: req.user.id,
+      docId: req.params.id,
+    });
+
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.json({
+      fileName,
+      mimeType,
+      contentBase64: buffer.toString('base64'),
+    });
   } catch (err) {
     next(err);
   }
@@ -77,6 +100,7 @@ module.exports = {
   getBootstrap,
   getDocumentContext,
   getDocumentPdf,
+  getDocumentPreviewData,
   sendMessage,
   addBookmark,
   removeBookmark,

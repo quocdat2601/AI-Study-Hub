@@ -146,6 +146,19 @@ async function revokeDocumentShare(req, res, next) {
   }
 }
 
+async function updateDocumentVisibility(req, res, next) {
+  try {
+    res.json(await documentService.updateVisibility({
+      id: req.params.id,
+      userId: req.user.id,
+      role: req.user.role,
+      isPublic: req.body.isPublic === true,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function saveOcrText(req, res, next) {
   try {
     res.json(await documentService.saveOcrText({
@@ -170,5 +183,6 @@ module.exports = {
   listDocumentShares,
   shareDocument,
   revokeDocumentShare,
+  updateDocumentVisibility,
   saveOcrText,
 };

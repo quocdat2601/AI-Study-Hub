@@ -29,7 +29,7 @@ export default function WorkspaceAccountFooter({ user, onLogout }) {
       </div>
 
       <Link
-        className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e8f2ff] px-3 py-2.5 text-sm font-semibold text-[#5b4fd4] no-underline transition hover:bg-[#dcecff]"
+        className="no-caret mb-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#e8f2ff] px-3 py-2.5 text-sm font-semibold text-[#5b4fd4] no-underline transition hover:bg-[#dcecff]"
         to="/account"
       >
         <SettingsIcon size={16} />
