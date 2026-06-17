@@ -92,7 +92,6 @@ async function restoreDocument(req, res, next) {
     res.json(await documentService.restoreDocument({
       id: req.params.id,
       userId: req.user.id,
-      role: req.user.role,
     }));
   } catch (err) {
     next(err);
@@ -100,7 +99,7 @@ async function restoreDocument(req, res, next) {
 }
 
 /**
- * Xóa cứng vĩnh viễn (chỉ admin)
+ * Xóa cứng vĩnh viễn (chủ sở hữu doc của mình, hoặc admin doc bất kỳ)
  */
 async function purgeDocument(req, res, next) {
   try {
@@ -108,6 +107,75 @@ async function purgeDocument(req, res, next) {
       id: req.params.id,
       userId: req.user.id,
     }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Đổ sạch thùng rác của user (purge toàn bộ)
+ */
+async function emptyTrash(req, res, next) {
+  try {
+    res.json(await documentService.emptyTrash({ userId: req.user.id }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Xóa mềm nhiều doc cùng lúc — body: { ids: [..] }
+ */
+async function bulkSoftDelete(req, res, next) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
+    }
+    res.json(await documentService.bulkSoftDelete({
+      ids,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Khôi phục nhiều doc cùng lúc — body: { ids: [..] }
+ */
+async function bulkRestore(req, res, next) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
+    }
+    res.json(await documentService.bulkRestore({
+      ids,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Chạy auto-purge thủ công (chỉ admin) — để test/demo, không cần chờ cron
+ */
+async function purgeExpiredTrash(req, res, next) {
+  try {
+    res.json(await documentService.purgeExpiredTrash());
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin xem lịch sử xóa/khôi phục tài liệu (chỉ metadata)
+ */
+async function getDeletionLogs(req, res, next) {
+  try {
+    res.json(await documentService.listDeletionLogs({ limit: req.query.limit }));
   } catch (err) {
     next(err);
   }
@@ -180,6 +248,11 @@ module.exports = {
   listTrash,
   restoreDocument,
   purgeDocument,
+  emptyTrash,
+  bulkSoftDelete,
+  bulkRestore,
+  purgeExpiredTrash,
+  getDeletionLogs,
   listDocumentShares,
   shareDocument,
   revokeDocumentShare,

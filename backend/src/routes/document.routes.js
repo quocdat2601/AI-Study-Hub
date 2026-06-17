@@ -50,6 +50,95 @@ router.get('/trash', verifyToken, documentController.listTrash);
 
 /**
  * @swagger
+ * /api/documents/trash/empty:
+ *   post:
+ *     summary: Empty trash — permanently delete all own trashed documents
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: Trash emptied }
+ */
+router.post('/trash/empty', verifyToken, requireRole('student', 'admin'), documentController.emptyTrash);
+
+/**
+ * @swagger
+ * /api/documents/bulk-delete:
+ *   post:
+ *     summary: Soft-delete multiple documents at once
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [ids]
+ *             properties:
+ *               ids: { type: array, items: { type: integer } }
+ *     responses:
+ *       200: { description: Bulk soft-delete result }
+ */
+router.post('/bulk-delete', verifyToken, requireRole('student', 'admin'), documentController.bulkSoftDelete);
+
+/**
+ * @swagger
+ * /api/documents/bulk-restore:
+ *   post:
+ *     summary: Restore multiple documents from trash at once
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [ids]
+ *             properties:
+ *               ids: { type: array, items: { type: integer } }
+ *     responses:
+ *       200: { description: Bulk restore result }
+ */
+router.post('/bulk-restore', verifyToken, requireRole('student', 'admin'), documentController.bulkRestore);
+
+/**
+ * @swagger
+ * /api/documents/purge-expired:
+ *   post:
+ *     summary: Manually run auto-purge of expired trash (admin only — for testing)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: Auto-purge result }
+ *       403: { description: Forbidden (admin only) }
+ */
+router.post('/purge-expired', verifyToken, requireRole('admin'), documentController.purgeExpiredTrash);
+
+/**
+ * @swagger
+ * /api/documents/deletion-logs:
+ *   get:
+ *     summary: Admin views document deletion/restore history (metadata only)
+ *     tags: [Documents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deletion history }
+ *       403: { description: Forbidden (admin only) }
+ */
+router.get('/deletion-logs', verifyToken, requireRole('admin'), documentController.getDeletionLogs);
+
+/**
+ * @swagger
  * /api/documents/{id}:
  *   get:
  *     summary: Get one document (owner or shared)
@@ -245,7 +334,7 @@ router.post(
  * @swagger
  * /api/documents/{id}/purge:
  *   delete:
- *     summary: Permanently delete a document (admin only)
+ *     summary: Permanently delete a document (owner of own doc, or admin)
  *     tags: [Documents]
  *     security:
  *       - bearerAuth: []
@@ -256,13 +345,13 @@ router.post(
  *         schema: { type: integer }
  *     responses:
  *       200: { description: Document permanently deleted }
- *       403: { description: Forbidden (admin only) }
+ *       403: { description: Forbidden }
  *       404: { description: Document not found }
  */
 router.delete(
   '/:id/purge',
   verifyToken,
-  requireRole('admin'),
+  requireRole('student', 'admin'),
   documentController.purgeDocument
 );
 
