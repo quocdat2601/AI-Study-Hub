@@ -110,6 +110,18 @@ class DocumentModel {
     return data || [];
   }
 
+  // Doc trong thùng rác đã quá hạn giữ (deleted_at < cutoff) — cho auto-purge
+  static async findExpiredTrash(cutoffISO) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .not('deleted_at', 'is', null)
+      .lt('deleted_at', cutoffISO);
+
+    if (error) throw error;
+    return data || [];
+  }
+
   // Xóa mềm: đánh dấu deleted_at = now()
   static async softDelete(id) {
     const { data, error } = await supabase
