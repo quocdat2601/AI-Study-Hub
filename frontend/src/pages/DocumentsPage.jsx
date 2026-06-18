@@ -96,6 +96,32 @@ function ActionButton({ children, disabled = false, onClick, tone = "default" })
   );
 }
 
+function VisibilityToggleButton({ doc, disabled, onClick }) {
+  const isPublic = Boolean(doc.is_public);
+  const statusClass = isPublic
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800"
+    : "bg-indigo-50 text-[#4648d4] ring-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:ring-indigo-800";
+  const knobClass = isPublic ? "translate-x-4 bg-emerald-500" : "translate-x-0 bg-[#4648d4]";
+
+  return (
+    <button
+      className={`group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-black ring-1 transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${statusClass}`}
+      disabled={disabled}
+      onClick={onClick}
+      title={isPublic ? "Click to make this document private" : "Click to publish this document"}
+      type="button"
+    >
+      <span className="relative h-4 w-8 rounded-full bg-white/80 ring-1 ring-black/5 dark:bg-slate-900/80">
+        <span className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full transition-transform ${knobClass}`} />
+      </span>
+      <span>{disabled ? "Saving..." : isPublic ? "Public" : "Private"}</span>
+      <span className="hidden font-bold opacity-65 transition group-hover:opacity-100 sm:inline">
+        {isPublic ? "Make private" : "Publish"}
+      </span>
+    </button>
+  );
+}
+
 export default function DocumentsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -314,13 +340,11 @@ export default function DocumentsPage() {
                       {isOwner ? (
                         <>
                           <ActionButton onClick={() => setEditingDoc(doc)} tone="muted">Edit</ActionButton>
-                          <ActionButton
+                          <VisibilityToggleButton
+                            doc={doc}
                             disabled={updatingVisibilityId === doc.id}
                             onClick={() => handleToggleVisibility(doc)}
-                            tone={doc.is_public ? "muted" : "share"}
-                          >
-                            {updatingVisibilityId === doc.id ? "Updating..." : doc.is_public ? "Make Private" : "Make Public"}
-                          </ActionButton>
+                          />
                           <ActionButton onClick={() => setSharingDoc(doc)} tone="share">Share</ActionButton>
                           <ActionButton onClick={() => handleDelete(doc)} tone="danger">Delete</ActionButton>
                         </>

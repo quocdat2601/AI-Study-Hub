@@ -13,6 +13,12 @@ function formatMegabytes(bytes) {
   return Math.round(Number(bytes || 0) / 1024 / 1024);
 }
 
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+  return false;
+}
+
 async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
   if (document?.id) {
     try {
@@ -82,7 +88,7 @@ async function upload({ userId, file, title, subjectId, tags, isPublic = false }
       file_id: cloudFile.id,
       status: 'uploaded',
       extraction_status: 'pending',
-      is_public: Boolean(isPublic),
+      is_public: parseBoolean(isPublic),
     });
 
     await documentThumbnailService.generateAndSaveThumbnail({
