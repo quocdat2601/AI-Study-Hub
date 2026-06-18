@@ -256,6 +256,38 @@ export default function WorkspacePage() {
     };
   }, []);
 
+  async function loadChatHistory(docId, options = {}) {
+    const { showLoader = true } = options;
+    try {
+      if (showLoader) setIsLoadingMessages(true);
+      setError("");
+      const session = await getOrCreateDocumentChatSession(docId);
+      const payload = await getChatSessionMessages(session.id);
+      const nextMessages = (payload.messages || []).map(mapStoredMessage);
+      const restoredModel = findLatestMessageModel(nextMessages);
+      cacheDocumentChat(docId, { sessionId: session.id, messages: nextMessages, selectedModel: restoredModel || getCachedDocumentChat(docId).selectedModel });
+      if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
+        return;
+      }
+      setSessionId(session.id);
+      setMessages(nextMessages);
+      if (restoredModel) {
+        setSelectedModel(restoredModel);
+        cacheWorkspaceState({ selectedModel: restoredModel });
+      }
+    } catch (err) {
+      if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
+        return;
+      }
+      setSessionId(null);
+      cacheDocumentChat(docId, { sessionId: null });
+      if (showLoader) setMessages([]);
+      setError(err.response?.data?.error || "Could not load chat history");
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }
+
   useEffect(() => {
     if (selectedId) {
       cacheWorkspaceState({ selectedId });
@@ -307,37 +339,7 @@ export default function WorkspacePage() {
     previousMessageCountRef.current = messages.length;
   }, [messages.length, selectedId, isAsking]);
 
-  async function loadChatHistory(docId, options = {}) {
-    const { showLoader = true } = options;
-    try {
-      if (showLoader) setIsLoadingMessages(true);
-      setError("");
-      const session = await getOrCreateDocumentChatSession(docId);
-      const payload = await getChatSessionMessages(session.id);
-      const nextMessages = (payload.messages || []).map(mapStoredMessage);
-      const restoredModel = findLatestMessageModel(nextMessages);
-      cacheDocumentChat(docId, { sessionId: session.id, messages: nextMessages, selectedModel: restoredModel || getCachedDocumentChat(docId).selectedModel });
-      if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
-        return;
-      }
-      setSessionId(session.id);
-      setMessages(nextMessages);
-      if (restoredModel) {
-        setSelectedModel(restoredModel);
-        cacheWorkspaceState({ selectedModel: restoredModel });
-      }
-    } catch (err) {
-      if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
-        return;
-      }
-      setSessionId(null);
-      cacheDocumentChat(docId, { sessionId: null });
-      if (showLoader) setMessages([]);
-      setError(err.response?.data?.error || "Could not load chat history");
-    } finally {
-      setIsLoadingMessages(false);
-    }
-  }
+
 
   async function refreshUsage(model = selectedModel) {
     try {
@@ -519,7 +521,8 @@ export default function WorkspacePage() {
         cacheDocumentChat(selectedDocument.id, { processResult: nextProcessResult });
         return nextProcessResult;
       });
-    } catch (err) {
+    } catch (streamErr) {
+      let err = streamErr;
       const hasStreamedText = getCachedDocumentChat(selectedDocument.id).messages
         .some((message) => message.id === streamAssistantId && message.content);
       if (!hasStreamedText) {
