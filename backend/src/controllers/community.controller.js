@@ -2,22 +2,36 @@ const crypto = require('crypto');
 const supabase = require('../config/supabase');
 const communityService = require('../services/community.service');
 
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payloadJson = Buffer.from(parts[1], 'base64').toString('utf8');
+    return JSON.parse(payloadJson);
+  } catch (_) {
+    return null;
+  }
+}
+
 async function buildOptionalViewerContext(req) {
   const authHeader = req.headers.authorization;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
 
-    try {
-      const { data, error } = await supabase.auth.getUser(token);
-      if (!error && data?.user?.id) {
-        return {
-          userId: data.user.id,
-          viewerKey: `user:${data.user.id}`,
-        };
+    const payload = decodeJwtPayload(token);
+    if (payload && payload.exp && Date.now() < payload.exp * 1000) {
+      try {
+        const { data, error } = await supabase.auth.getUser(token);
+        if (!error && data?.user?.id) {
+          return {
+            userId: data.user.id,
+            viewerKey: `user:${data.user.id}`,
+          };
+        }
+      } catch (_) {
+        // Fall through to guest fingerprinting for public access.
       }
-    } catch (_) {
-      // Fall through to guest fingerprinting for public access.
     }
   }
 
