@@ -5,7 +5,6 @@ import CommunityComposer from "../components/community/CommunityComposer.jsx";
 import CommunityLoginPromptModal from "../components/community/CommunityLoginPromptModal.jsx";
 import CommunityPageShell from "../components/community/CommunityPageShell.jsx";
 import { normalizeComposeType, validateDraft, mapServerErrorsToFields, mergeSubjectIds } from "../components/community/communityComposerUtils.js";
-import { getUserDisplayName } from "../components/community/communityUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { listChatSessions } from "../services/chatApi.js";
 import {
@@ -27,7 +26,7 @@ function buildComposerRouteSearch(draft) {
 }
 
 export default function CommunityCreatePostPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -49,7 +48,6 @@ export default function CommunityCreatePostPage() {
     documentId: "",
     chatSessionId: "",
   });
-  const displayName = getUserDisplayName(user);
   const loginTarget = useMemo(() => ({
     pathname: location.pathname,
     search: buildComposerRouteSearch(draft),
@@ -101,6 +99,23 @@ export default function CommunityCreatePostPage() {
       chatSessionId: composeSearchParam === "ai_study_log" ? current.chatSessionId : "",
     }));
   }, [composeSearchParam, searchParams]);
+
+  useEffect(() => {
+    const subjectSearchParam = searchParams.get("subject");
+    if (!subjects.length || !subjectSearchParam) return;
+    const matchedSubject = subjects.find(
+      (s) => s.code?.toLowerCase() === subjectSearchParam.toLowerCase()
+    );
+    if (matchedSubject) {
+      setDraft((current) => {
+        if (current.subjectIds.length) return current;
+        return {
+          ...current,
+          subjectIds: [String(matchedSubject.id)],
+        };
+      });
+    }
+  }, [subjects, searchParams]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -193,7 +208,6 @@ export default function CommunityCreatePostPage() {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      userName={displayName}
     >
       <CommunityLoginPromptModal
         isOpen={isLoginPromptOpen}

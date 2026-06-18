@@ -4,6 +4,7 @@ import CommunityAttachmentPreview from "../components/community/CommunityAttachm
 import CommunityBanner from "../components/community/CommunityBanner.jsx";
 import CommunityPageShell from "../components/community/CommunityPageShell.jsx";
 import CommunityReportModal from "../components/community/CommunityReportModal.jsx";
+import CommunityConfirmModal from "../components/community/CommunityConfirmModal.jsx";
 import CommunityThreadItem from "../components/community/CommunityThreadItem.jsx";
 import {
   getDetailPost,
@@ -11,7 +12,7 @@ import {
   isThreadDetailResponse,
   normalizeThreadPost,
 } from "../components/community/communityThreadViewModel.js";
-import { formatForumDate, getSafeText, getUserDisplayName } from "../components/community/communityUtils.js";
+import { formatForumDate, getSafeText } from "../components/community/communityUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import useCommunityRealtime from "../hooks/useCommunityRealtime.js";
 import { getDocumentSignedUrl } from "../services/documentApi.js";
@@ -26,13 +27,16 @@ import {
   toggleCommunityReplyVote,
 } from "../services/communityApi.js";
 
-function DetailSkeleton({ isAuthenticated, userName }) {
+function DetailSkeleton({ isAuthenticated }) {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      userName={userName}
     >
-      <div className="h-6 w-52 rounded bg-[#e8edf5] animate-pulse" />
+      <div className="flex items-center gap-2">
+        <div className="h-5 w-16 rounded bg-[#e8edf5] animate-pulse" />
+        <span className="text-xs text-[#a0aec0] font-bold">/</span>
+        <div className="h-5 w-32 rounded bg-[#e8edf5] animate-pulse" />
+      </div>
       <div className="overflow-hidden rounded-[24px] border border-[#dbe3ed] bg-white">
         <div className="grid md:grid-cols-[160px_minmax(0,1fr)]">
           <div className="border-b border-[#dbe3ed] bg-[#f7f9fb] p-4 md:border-b-0 md:border-r">
@@ -53,11 +57,10 @@ function DetailSkeleton({ isAuthenticated, userName }) {
   );
 }
 
-function EmptyState({ title, description, action, isAuthenticated, userName }) {
+function EmptyState({ title, description, action, isAuthenticated }) {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      userName={userName}
     >
       <div className="mx-auto max-w-[1120px] rounded-[24px] border border-[#dbe3ed] bg-white p-8 text-center shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
         <h1 className="m-0 text-[28px] font-black text-[#172033]">{title}</h1>
@@ -102,7 +105,12 @@ export default function CommunityPostDetailPage() {
   const [reportedKeys, setReportedKeys] = useState({});
   const [highlightedReplyId, setHighlightedReplyId] = useState(null);
   const [pendingReplyVotes, setPendingReplyVotes] = useState({});
-  const displayName = getUserDisplayName(user);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+  });
 
   const loadThreadDetail = useCallback(async ({ showLoading = true } = {}) => {
     const loadId = latestLoadIdRef.current + 1;
@@ -406,20 +414,26 @@ export default function CommunityPostDetailPage() {
     focusReply(targetReplyId);
   }
 
-  async function handleDeletePost(post) {
+  function triggerDeletePost(post) {
     if (!isAuthenticated) {
       openLoginForAction();
       return;
     }
-
     if (!post?.id) return;
-    if (!window.confirm("Delete this post? This action cannot be undone.")) {
-      return;
-    }
 
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete post",
+      message: "Are you sure you want to delete this post? This action cannot be undone.",
+      onConfirm: () => performDeletePost(post.id),
+    });
+  }
+
+  async function performDeletePost(postId) {
+    setConfirmModal((current) => ({ ...current, isOpen: false }));
     try {
       setActionError("");
-      await deleteCommunityPost(post.id);
+      await deleteCommunityPost(postId);
       showNotice("Post deleted");
       navigate("/community");
     } catch (err) {
@@ -427,22 +441,28 @@ export default function CommunityPostDetailPage() {
     }
   }
 
-  async function handleDeleteReply(reply) {
+  function triggerDeleteReply(reply) {
     if (!isAuthenticated) {
       openLoginForAction();
       return;
     }
-
     if (!reply?.id) return;
-    if (!window.confirm("Delete this comment? This action cannot be undone.")) {
-      return;
-    }
 
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete comment",
+      message: "Are you sure you want to delete this comment? This action cannot be undone.",
+      onConfirm: () => performDeleteReply(reply.id),
+    });
+  }
+
+  async function performDeleteReply(replyId) {
+    setConfirmModal((current) => ({ ...current, isOpen: false }));
     try {
       setActionError("");
-      const response = await deleteCommunityReply(reply.id);
+      const response = await deleteCommunityReply(replyId);
       setThreadDetail(response);
-      if (replyTarget?.id && String(replyTarget.id) === String(reply.id)) {
+      if (replyTarget?.id && String(replyTarget.id) === String(replyId)) {
         setReplyTarget(null);
       }
       showNotice("Comment deleted");
@@ -698,7 +718,6 @@ export default function CommunityPostDetailPage() {
     return (
       <DetailSkeleton
         isAuthenticated={isAuthenticated}
-        userName={displayName}
       />
     );
   }
@@ -707,7 +726,6 @@ export default function CommunityPostDetailPage() {
     return (
       <EmptyState
         isAuthenticated={isAuthenticated}
-        userName={displayName}
         title="Could not load thread"
         description={error}
         action={(
@@ -732,7 +750,6 @@ export default function CommunityPostDetailPage() {
     return (
       <EmptyState
         isAuthenticated={isAuthenticated}
-        userName={displayName}
         title="Thread not found"
         description="This post does not exist, has been removed, or is not available yet."
         action={(
@@ -752,7 +769,7 @@ export default function CommunityPostDetailPage() {
     ...(isPostOwner ? [{
       id: "delete-post",
       label: "Delete post",
-      onClick: () => handleDeletePost(normalizedDetail.rootPost),
+      onClick: () => triggerDeletePost(normalizedDetail.rootPost),
     }] : []),
     {
       id: "report-post",
@@ -769,7 +786,6 @@ export default function CommunityPostDetailPage() {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      userName={displayName}
     >
       <CommunityReportModal
         isOpen={Boolean(reportTarget)}
@@ -785,6 +801,15 @@ export default function CommunityPostDetailPage() {
           setReportError("");
         }}
         onSubmit={handleSubmitReport}
+      />
+
+      <CommunityConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((current) => ({ ...current, isOpen: false }))}
+        isDanger
       />
 
       {notice ? (
@@ -844,7 +869,7 @@ export default function CommunityPostDetailPage() {
             ...(isReplyOwner ? [{
               id: `delete-reply-${reply.id}`,
               label: "Delete comment",
-              onClick: () => handleDeleteReply(reply),
+              onClick: () => triggerDeleteReply(reply),
             }] : []),
             {
               id: `report-reply-${reply.id}`,

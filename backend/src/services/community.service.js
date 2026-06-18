@@ -7,7 +7,7 @@ const chatService = require('./chat.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 
-const FEED_LIMIT_MAX = 60;
+const FEED_LIMIT_MAX = 250;
 const POST_TYPES = new Set(['discussion', 'question', 'document_share', 'ai_study_log']);
 const FEED_TABS = new Set(['latest', 'trending', 'unanswered', 'solved']);
 const POST_STATUSES = new Set(['active', 'hidden', 'removed']);

@@ -5,7 +5,6 @@ import CommunityFeedRow from "../components/community/CommunityFeedRow.jsx";
 import CommunityPageShell from "../components/community/CommunityPageShell.jsx";
 import { buildCommunityPanelSearch, normalizeCommunityPanel } from "../components/community/communityPanelUtils.js";
 import { normalizeThreadPost } from "../components/community/communityThreadViewModel.js";
-import { getUserDisplayName } from "../components/community/communityUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import useCommunityRealtime from "../hooks/useCommunityRealtime.js";
 import { getCommunityHome } from "../services/communityApi.js";
@@ -72,13 +71,15 @@ function buildLegacyComposerSearch(searchParams) {
 }
 
 export default function CommunityPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { code } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedPanel = normalizeCommunityPanel(searchParams.get("panel"), "find");
   const activePanel = requestedPanel === "new" ? "find" : requestedPanel;
   const [communityData, setCommunityData] = useState({ feed: [], subjects: [], topContributors: [] });
+  const [visibleLimit, setVisibleLimit] = useState(20);
+  const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const isMountedRef = useRef(true);
@@ -90,7 +91,6 @@ export default function CommunityPage() {
     sort: DEFAULT_SORT,
   });
   const deferredSearch = useDeferredValue(filterState.search);
-  const displayName = getUserDisplayName(user);
 
   useEffect(() => {
     return () => {
@@ -119,6 +119,10 @@ export default function CommunityPage() {
     }
   }, [filterState.type, filterState.sort]);
 
+  useEffect(() => {
+    setVisibleLimit(20);
+  }, [filterState.sort, filterState.type, filterState.subject, deferredSearch]);
+
   const loadCommunity = useCallback(async ({ showLoading = true } = {}) => {
     const loadId = latestLoadIdRef.current + 1;
     latestLoadIdRef.current = loadId;
@@ -135,16 +139,27 @@ export default function CommunityPage() {
         postType: filterState.type === DEFAULT_TYPE ? undefined : filterState.type,
         subject: filterState.subject || undefined,
         search: deferredSearch || undefined,
-        limit: 30,
+        limit: visibleLimit + 1,
       });
 
       if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
 
-      setCommunityData({
-        feed: Array.isArray(data.feed) ? data.feed : [],
-        subjects: Array.isArray(data.subjects) ? data.subjects : [],
-        topContributors: Array.isArray(data.topContributors) ? data.topContributors : [],
-      });
+      const rawFeed = Array.isArray(data.feed) ? data.feed : [];
+      if (rawFeed.length > visibleLimit) {
+        setHasMore(true);
+        setCommunityData({
+          feed: rawFeed.slice(0, visibleLimit),
+          subjects: Array.isArray(data.subjects) ? data.subjects : [],
+          topContributors: Array.isArray(data.topContributors) ? data.topContributors : [],
+        });
+      } else {
+        setHasMore(false);
+        setCommunityData({
+          feed: rawFeed,
+          subjects: Array.isArray(data.subjects) ? data.subjects : [],
+          topContributors: Array.isArray(data.topContributors) ? data.topContributors : [],
+        });
+      }
     } catch (err) {
       if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
       setError(err.response?.data?.error || "Could not load community posts.");
@@ -153,7 +168,7 @@ export default function CommunityPage() {
         setIsLoading(false);
       }
     }
-  }, [deferredSearch, filterState.sort, filterState.subject, filterState.type]);
+  }, [deferredSearch, filterState.sort, filterState.subject, filterState.type, visibleLimit]);
 
   useEffect(() => {
     loadCommunity();
@@ -251,14 +266,13 @@ export default function CommunityPage() {
   const bannerContent = getPanelBannerContent(activePanel);
   const bannerNavItems = [
     { id: "find", label: "Find", isActive: activePanel === "find", to: `${getCommunityPath()}${buildCommunityPanelSearch({ panel: "find" })}` },
-    { id: "new", label: "New Post", to: "/community/new?compose=discussion" },
+    { id: "new", label: "New Post", to: filterState.subject ? `/community/new?compose=discussion&subject=${filterState.subject}` : "/community/new?compose=discussion" },
     { id: "people", label: "Top Contributors", isActive: activePanel === "people", to: `${getCommunityPath()}${buildCommunityPanelSearch({ panel: "people" })}` },
   ];
 
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      userName={displayName}
     >
       <CommunityBanner
         title={bannerContent.title}
@@ -290,8 +304,11 @@ export default function CommunityPage() {
               </div>
 
               {hasActiveFilterContext ? (
-                <button className="inline-flex items-center gap-2 rounded-full bg-[#eef2f7] px-3 py-2 text-xs font-extrabold text-[#42526a]" onClick={clearFilters} type="button">
-                  <span>x</span>
+                <button className="inline-flex items-center gap-1.5 rounded-full bg-[#eef2f7] px-3 py-2 text-xs font-extrabold text-[#42526a] hover:bg-[#e2e8f0] transition" onClick={clearFilters} type="button">
+                  <svg className="h-3 w-3 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
                   <span>Clear Filters</span>
                 </button>
               ) : null}
@@ -347,7 +364,11 @@ export default function CommunityPage() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#172033] text-sm font-black text-white">{index + 1}</span>
                 <div>
                   <strong className="block text-sm text-[#172033]">{person.displayName}</strong>
-                  <span className="text-xs text-[#66758a]">{person.email}</span>
+                  <span className="text-xs text-[#66758a]">
+                    {person.displayName
+                      ? `@${person.displayName.toLowerCase().replace(/[^a-z0-9_]/g, "")}`
+                      : (person.email ? `@${person.email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "")}` : "@student")}
+                  </span>
                 </div>
                 <span className="text-xs font-extrabold text-[#4648d4]">{person.score} pts</span>
               </div>
@@ -357,6 +378,21 @@ export default function CommunityPage() {
       </CommunityBanner>
 
       {error ? <div className="rounded-2xl border border-[#fecaca] bg-[#fff7f7] px-5 py-4 text-sm font-bold text-[#991b1b]">{error}</div> : null}
+
+      {!isAuthenticated ? (
+        <div className="rounded-[24px] border border-[#dbe3ed] bg-gradient-to-br from-[#f8fafc] to-white p-6 shadow-sm text-center md:text-left md:flex md:items-center md:justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="text-lg font-extrabold text-[#172033]">Join the Study Hub Community</h3>
+            <p className="text-sm text-[#66758a]">Sign in to ask questions, share helpful documents, save study sessions, and earn reputation points.</p>
+          </div>
+          <Link
+            className="mt-4 md:mt-0 inline-flex min-h-10 items-center justify-center rounded-full bg-[#172033] px-6 text-sm font-extrabold text-white no-underline hover:bg-[#2c3e50] transition whitespace-nowrap"
+            to="/login"
+          >
+            Sign In to Participate
+          </Link>
+        </div>
+      ) : null}
 
       <section className="grid gap-4">
         {isLoading ? (
@@ -391,6 +427,18 @@ export default function CommunityPage() {
           </div>
         )}
       </section>
+
+      {hasMore && !isLoading ? (
+        <div className="mt-4 flex justify-center">
+          <button
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#dbe3ed] bg-white px-8 text-sm font-extrabold text-[#172033] hover:border-[#172033] hover:bg-slate-50 transition"
+            onClick={() => setVisibleLimit((prev) => prev + 20)}
+            type="button"
+          >
+            Load More Posts
+          </button>
+        </div>
+      ) : null}
     </CommunityPageShell>
   );
 }
