@@ -62,3 +62,12 @@ export async function reportCommunityPost(postId, payload) {
 export async function getCommunityPostDetail(postId) {
   return getCommunityPost(postId);
 }
+
+export async function uploadCommunityImage(file) {
+  const formData = new FormData();
+  formData.append("image", file);
+  const response = await api.post("/community/images", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}

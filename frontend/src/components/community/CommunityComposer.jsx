@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { uploadCommunityImage } from "../../services/communityApi.js";
 import {
   CREATE_POST_RULES,
   getComposerContent,
@@ -220,6 +221,45 @@ export default function CommunityComposer({
   const [isDocumentPickerOpen, setIsDocumentPickerOpen] = useState(false);
   const [isSessionPickerOpen, setIsSessionPickerOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState("");
+  const bodyRef = useRef(null);
+  const imageInputRef = useRef(null);
+
+  const wrapSelection = useCallback((before, after) => {
+    const textarea = bodyRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end);
+    const replacement = `${before}${selected || "text"}${after}`;
+    const next = textarea.value.slice(0, start) + replacement + textarea.value.slice(end);
+    updateField("body", next);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + before.length, start + before.length + (selected || "text").length);
+    });
+  }, []);
+
+  async function handleImageUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = "";
+    setImageUploadError("");
+    setIsUploadingImage(true);
+    try {
+      const result = await uploadCommunityImage(file);
+      const textarea = bodyRef.current;
+      const cursorPos = textarea ? textarea.selectionStart : (draft.body?.length ?? 0);
+      const insert = `\n![](${result.url})\n`;
+      const next = (draft.body || "").slice(0, cursorPos) + insert + (draft.body || "").slice(cursorPos);
+      updateField("body", next);
+    } catch (err) {
+      setImageUploadError(err.response?.data?.error || "Image upload failed. Try again.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }
 
   const readyDocuments = useMemo(
     () => documents.filter((doc) => doc.status === "indexed" && doc.extraction_status === "ready"),
@@ -331,22 +371,88 @@ export default function CommunityComposer({
               <FieldError message={validationErrors.title} />
             </label>
 
-            <label className="grid gap-2 text-sm font-bold">
-              <div className="flex items-center justify-between gap-3">
-                <span>Body</span>
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between gap-3 text-sm font-bold">
+                <span className="text-white">Body</span>
                 <span className="text-xs font-black text-[#9fb0c3]">{draft.body.trim().length}/{CREATE_POST_RULES.bodyMax}</span>
               </div>
+
+              <div className="flex items-center gap-1 rounded-t-2xl border border-b-0 border-[#43526a] bg-[rgba(255,255,255,0.05)] px-3 py-1.5">
+                <button
+                  aria-label="Bold (Ctrl+B)"
+                  className="rounded px-2 py-1 text-sm font-black text-white transition hover:bg-[rgba(255,255,255,0.12)] disabled:opacity-40"
+                  disabled={!isAuthenticated}
+                  onClick={() => wrapSelection("**", "**")}
+                  title="Bold (Ctrl+B)"
+                  type="button"
+                >
+                  B
+                </button>
+                <button
+                  aria-label="Italic (Ctrl+I)"
+                  className="rounded px-2 py-1 text-sm font-bold italic text-white transition hover:bg-[rgba(255,255,255,0.12)] disabled:opacity-40"
+                  disabled={!isAuthenticated}
+                  onClick={() => wrapSelection("*", "*")}
+                  title="Italic (Ctrl+I)"
+                  type="button"
+                >
+                  I
+                </button>
+                <div className="mx-1 h-4 w-px bg-[rgba(255,255,255,0.18)]" aria-hidden="true" />
+                <button
+                  aria-label="Insert image"
+                  className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-bold text-white transition hover:bg-[rgba(255,255,255,0.12)] disabled:opacity-40"
+                  disabled={!isAuthenticated || isUploadingImage}
+                  onClick={() => imageInputRef.current?.click()}
+                  title="Insert image"
+                  type="button"
+                >
+                  {isUploadingImage ? (
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" strokeLinecap="round" opacity="0.3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M1 5.25A2.25 2.25 0 0 1 3.25 3h13.5A2.25 2.25 0 0 1 19 5.25v9.5A2.25 2.25 0 0 1 16.75 17H3.25A2.25 2.25 0 0 1 1 14.75v-9.5Zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 0 0 .75-.75v-2.69l-2.22-2.219a.75.75 0 0 0-1.06 0l-1.91 1.909-.138-.138a.75.75 0 0 0-1.06 0L6.17 11.086l-3.67-3.67v3.654Zm2.5-7.56a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                  {isUploadingImage ? "Uploading…" : "Photo"}
+                </button>
+                <input
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  aria-hidden="true"
+                  className="hidden"
+                  disabled={!isAuthenticated || isUploadingImage}
+                  onChange={handleImageUpload}
+                  ref={imageInputRef}
+                  type="file"
+                />
+              </div>
+
               <textarea
-                className={`min-h-[180px] rounded-2xl border bg-white px-4 py-3 text-[#172033] ${validationErrors.body ? "border-[#ff8c8c]" : "border-[#43526a]"}`}
+                ref={bodyRef}
+                className={`-mt-px min-h-[180px] rounded-b-2xl rounded-t-none border bg-white px-4 py-3 text-[#172033] ${validationErrors.body ? "border-[#ff8c8c]" : "border-[#43526a]"}`}
                 disabled={!isAuthenticated}
                 maxLength={CREATE_POST_RULES.bodyMax}
                 placeholder={composerContent.bodyPlaceholder}
                 value={draft.body}
                 onChange={(event) => updateField("body", event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "b") {
+                    event.preventDefault();
+                    wrapSelection("**", "**");
+                  }
+                  if ((event.ctrlKey || event.metaKey) && event.key === "i") {
+                    event.preventDefault();
+                    wrapSelection("*", "*");
+                  }
+                }}
               />
-              <p className="m-0 text-xs leading-5 text-[#9fb0c3]">{composerContent.bodyHint}</p>
+              {imageUploadError ? <p className="m-0 text-xs font-bold text-[#ffb4b4]">{imageUploadError}</p> : null}
+              <p className="m-0 text-xs leading-5 text-[#9fb0c3]">{composerContent.bodyHint} Supports **bold**, *italic*, and inline images.</p>
               <FieldError message={validationErrors.body} />
-            </label>
+            </div>
 
             {draft.postType === "document_share" ? (
               <div className="grid gap-2">

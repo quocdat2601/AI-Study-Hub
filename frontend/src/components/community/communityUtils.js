@@ -108,3 +108,63 @@ export function getCommunityBadgeToneClasses(tone, variant = "light") {
   const toneMap = variant === "dark" ? darkToneMap : lightToneMap;
   return toneMap[normalizedTone] || toneMap.indigo;
 }
+
+export function renderMarkdownBody(text, React) {
+  if (!text || typeof text !== "string") return null;
+
+  const lines = text.split("\n");
+  const nodes = [];
+
+  function parseInline(line, lineKey) {
+    const parts = [];
+    const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*|!\[([^\]]*)\]\(([^)]+)\))/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pattern.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+
+      if (match[2] !== undefined) {
+        parts.push(React.createElement("strong", { key: `b-${match.index}` }, match[2]));
+      } else if (match[3] !== undefined) {
+        parts.push(React.createElement("em", { key: `i-${match.index}` }, match[3]));
+      } else if (match[5] !== undefined) {
+        parts.push(
+          React.createElement("img", {
+            key: `img-${match.index}`,
+            src: match[5],
+            alt: match[4] || "",
+            className: "my-2 max-w-full rounded-xl border border-[#dbe3ed]",
+            style: { maxHeight: "480px", display: "block" },
+          })
+        );
+      }
+
+      lastIndex = pattern.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+
+    return parts;
+  }
+
+  lines.forEach((line, index) => {
+    const inlineParts = parseInline(line, index);
+    const hasImage = line.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+
+    if (hasImage) {
+      nodes.push(React.createElement("span", { key: `line-${index}`, className: "block" }, inlineParts));
+    } else if (line.trim() === "") {
+      nodes.push(React.createElement("br", { key: `br-${index}` }));
+    } else {
+      nodes.push(React.createElement("span", { key: `line-${index}`, className: "block" }, inlineParts));
+    }
+  });
+
+  return nodes;
+}
+

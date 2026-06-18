@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import CommunityAvatar from "./CommunityAvatar.jsx";
-import { cx, formatCount, formatForumDate, getCommunityBadgeToneClasses, getSafeText } from "./communityUtils.js";
+import { cx, formatCount, formatForumDate, getCommunityBadgeToneClasses, getSafeText, renderMarkdownBody } from "./communityUtils.js";
 
 function ShareIcon() {
   return (
@@ -299,7 +299,7 @@ export default function CommunityThreadItem({
                 </div>
               ) : null}
               <div className={cx("text-[15px] leading-7", isLight ? "text-[#344154]" : "text-[#d1dae5]", title && showTitle && "mt-4")}>
-                <p className="m-0 whitespace-pre-wrap break-words">{content}</p>
+                <div className="m-0 whitespace-pre-wrap break-words">{renderMarkdownBody(content, React)}</div>
               </div>
             </div>
 
