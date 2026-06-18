@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import NotificationBell from "../NotificationBell.jsx";
 
 function NavLink({ to, href, children, isActive = false }) {
-  const className = `whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-semibold no-underline transition ${
+  const className = `no-caret whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-semibold no-underline transition ${
     isActive
       ? "bg-indigo-50 text-indigo-700"
       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -32,7 +32,7 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5 md:px-8">
-        <Link className="flex items-center gap-2.5 whitespace-nowrap no-underline" to="/">
+        <Link className="no-caret flex items-center gap-2.5 whitespace-nowrap no-underline" to="/">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-extrabold text-white shadow-[0_4px_14px_rgba(79,70,229,0.35)]">
             AI
           </span>
@@ -76,13 +76,13 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
           ) : (
             <>
               <Link
-                className="hidden h-10 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 no-underline transition hover:bg-slate-50 sm:inline-flex"
+                className="no-caret hidden h-10 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 no-underline transition hover:bg-slate-50 sm:inline-flex"
                 to="/login"
               >
                 Log in
               </Link>
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white no-underline shadow-[0_4px_14px_rgba(79,70,229,0.28)] transition hover:bg-indigo-700"
+                className="no-caret inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white no-underline shadow-[0_4px_14px_rgba(79,70,229,0.28)] transition hover:bg-indigo-700"
                 to="/login?mode=register"
               >
                 Sign up

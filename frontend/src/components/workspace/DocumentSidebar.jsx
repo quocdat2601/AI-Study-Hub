@@ -119,8 +119,8 @@ export default function DocumentSidebar({
 
       <div className="px-4 pb-4 pt-5">
         <div className="mb-4">
-          <p className="m-0 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
-          <h1 className="m-0 mt-1 truncate text-[18px] font-extrabold text-slate-900">My Documents</h1>
+          <p className="no-caret m-0 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
+          <h1 className="no-caret m-0 mt-1 truncate text-[18px] font-extrabold text-slate-900">My Documents</h1>
         </div>
 
         {onNewDocument ? (
@@ -156,7 +156,7 @@ export default function DocumentSidebar({
           </button>
         </div>
 
-        <div className="mt-3 flex rounded-xl bg-slate-100 p-1">
+        <div className="no-caret mt-3 flex rounded-xl bg-slate-100 p-1">
           {TABS.map((tab) => (
             <button
               className={activeTab === tab.id

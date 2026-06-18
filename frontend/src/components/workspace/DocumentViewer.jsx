@@ -150,7 +150,7 @@ function PdfBody({
   }
 
   return (
-    <div className="min-h-full bg-[#eef0f2] px-4 py-8 sm:px-8">
+    <div className="workspace-selectable min-h-full bg-[#eef0f2] px-4 py-8 sm:px-8">
       <div className="mx-auto flex w-full max-w-[680px] flex-col gap-5">
         <Document
           error={<div className="rounded-sm bg-white p-10 text-center text-sm text-red-600 shadow-md">Could not display PDF.</div>}
@@ -238,11 +238,11 @@ export default function DocumentViewer({
           </div>
 
           {selectedDocument && status === "ready" ? (
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">AI ready</span>
+            <span className="no-caret rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">AI ready</span>
           ) : null}
 
           {showPdfControls ? (
-            <div className="hidden shrink-0 items-center gap-1.5 text-[12px] text-slate-600 xl:flex">
+            <div className="no-caret hidden shrink-0 items-center gap-1.5 text-[12px] text-slate-600 xl:flex">
               <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50" onClick={() => changeZoom(-10)} type="button">-</button>
               <span className="min-w-10 text-center font-medium">{zoom}%</span>
               <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50" onClick={() => changeZoom(10)} type="button">+</button>
@@ -276,7 +276,7 @@ export default function DocumentViewer({
         </div>
       </header>
 
-      <div className="workspace-scrollbar min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
+      <div className="workspace-scrollbar workspace-selectable min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
         <PdfBody
           currentPage={currentPage}
           isPdfLoading={isPdfLoading}

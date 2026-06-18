@@ -11,6 +11,7 @@ async function upload(req, res, next) {
       title: req.body.title,
       subjectId: req.body.subjectId,
       tags: req.body.tags,
+      isPublic: req.body.isPublic === 'true',
     });
     res.status(201).json(result);
   } catch (err) {

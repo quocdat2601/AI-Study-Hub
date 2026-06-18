@@ -4,6 +4,7 @@ const userModel = require('../models/user.model');
 const documentService = require('./document.service');
 const supabaseService = require('./supabase.service');
 const documentTextService = require('./document-text.service');
+const documentThumbnailService = require('./document-thumbnail.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 const { buildSafeStorageFileName } = require('../utils/sanitizeFileName');
@@ -41,7 +42,7 @@ async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
 /**
  * UploadDoc — upload file lên Supabase Storage và lưu metadata vào DB.
  */
-async function upload({ userId, file, title, subjectId, tags }) {
+async function upload({ userId, file, title, subjectId, tags, isPublic = false }) {
   if (!file) {
     throw createError(400, 'No file uploaded');
   }
@@ -81,6 +82,13 @@ async function upload({ userId, file, title, subjectId, tags }) {
       file_id: cloudFile.id,
       status: 'uploaded',
       extraction_status: 'pending',
+      is_public: Boolean(isPublic),
+    });
+
+    await documentThumbnailService.generateAndSaveThumbnail({
+      document,
+      buffer: file.buffer,
+      mimeType: file.mimetype,
     });
 
     let extraction;
@@ -96,9 +104,10 @@ async function upload({ userId, file, title, subjectId, tags }) {
       await tagModel.setForDocument(savedDocument.id, tags);
     }
 
-    const documentWithTags = documentService.mapDocument(
-      await documentModel.findById(savedDocument.id)
-    );
+    const [documentWithThumbnail] = await documentService.addThumbnailUrls([
+      await documentModel.findById(savedDocument.id),
+    ]);
+    const documentWithTags = documentService.mapDocument(documentWithThumbnail);
 
     activityService.log({
       userId,

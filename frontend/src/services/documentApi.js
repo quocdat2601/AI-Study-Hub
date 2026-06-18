@@ -19,13 +19,18 @@ export async function getDocumentSignedUrl(id, options = {}) {
   return response.data;
 }
 
-export async function listTrendingDocuments(limit = 5) {
+export async function listTrendingDocuments(limit = 12) {
   const response = await api.get("/public/documents/trending", { params: { limit } });
   return response.data;
 }
 
 export async function updateDocument(id, data) {
   const response = await api.patch(`/documents/${id}`, data);
+  return response.data;
+}
+
+export async function updateDocumentVisibility(id, isPublic) {
+  const response = await api.patch(`/documents/${id}/visibility`, { isPublic });
   return response.data;
 }
 

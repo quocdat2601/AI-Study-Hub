@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import DocumentCard from "./DocumentCard.jsx";
 import { listTrendingDocuments } from "../../services/documentApi.js";
@@ -22,6 +22,7 @@ function getFileType(doc) {
 }
 
 export default function TrendingDocuments() {
+  const carouselRef = useRef(null);
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -30,7 +31,7 @@ export default function TrendingDocuments() {
 
     async function loadTrendingDocuments() {
       try {
-        const data = await listTrendingDocuments(6);
+        const data = await listTrendingDocuments(12);
         if (isMounted) setDocuments(Array.isArray(data) ? data : []);
       } catch {
         if (isMounted) setDocuments([]);
@@ -64,10 +65,20 @@ export default function TrendingDocuments() {
     };
   }), [documents]);
 
+  function scrollCarousel(direction) {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+
+    carousel.scrollBy({
+      left: direction * Math.max(280, Math.round(carousel.clientWidth * 0.82)),
+      behavior: "smooth",
+    });
+  }
+
   return (
-    <section className="relative px-6 py-20 md:px-8" id="courses">
+    <section className="relative px-6 py-16 md:px-8" id="courses">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
             <p className="m-0 mb-2 text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">
               Popular resources
@@ -79,19 +90,38 @@ export default function TrendingDocuments() {
               The most viewed public documents from students on campus right now.
             </p>
           </div>
-          <Link
-            className="inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 no-underline transition hover:text-indigo-800"
-            to="/documents"
-          >
-            View all documents
-            <span aria-hidden="true">→</span>
-          </Link>
+
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="Previous documents"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-base font-bold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+              onClick={() => scrollCarousel(-1)}
+              type="button"
+            >
+              {"<"}
+            </button>
+            <button
+              aria-label="Next documents"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-base font-bold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+              onClick={() => scrollCarousel(1)}
+              type="button"
+            >
+              {">"}
+            </button>
+            <Link
+              className="ml-1 inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 no-underline transition hover:text-indigo-800"
+              to="/documents"
+            >
+              View all
+              <span aria-hidden="true">-&gt;</span>
+            </Link>
+          </div>
         </div>
 
         {isLoading ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2, 3, 4, 5].map((item) => (
-              <div className="h-[360px] animate-pulse rounded-2xl bg-white ring-1 ring-slate-200/80" key={item} />
+          <div className="workspace-scrollbar flex gap-5 overflow-x-auto pb-4">
+            {Array.from({ length: 4 }, (_, item) => (
+              <div className="h-[360px] min-w-[min(82vw,320px)] animate-pulse rounded-2xl bg-white ring-1 ring-slate-200/80 sm:min-w-[320px] lg:min-w-[340px]" key={item} />
             ))}
           </div>
         ) : mappedDocuments.length === 0 ? (
@@ -108,13 +138,20 @@ export default function TrendingDocuments() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className="workspace-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth pb-4"
+            ref={carouselRef}
+          >
             {mappedDocuments.map((document, index) => (
-              <DocumentCard
+              <div
+                className="min-w-[min(82vw,320px)] snap-start sm:min-w-[320px] lg:min-w-[340px]"
                 key={`${document.title}-${index}`}
-                document={document}
-                highlighted={index === 0}
-              />
+              >
+                <DocumentCard
+                  document={document}
+                  highlighted={index === 0}
+                />
+              </div>
             ))}
           </div>
         )}

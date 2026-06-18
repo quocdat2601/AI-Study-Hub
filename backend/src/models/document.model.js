@@ -53,6 +53,19 @@ class DocumentModel {
     return data;
   }
 
+  static async findOwnedById(id, userId) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async findAccessibleById(id, userId) {
     const doc = await this.findById(id);
     if (!doc) return null;
@@ -92,6 +105,18 @@ class DocumentModel {
       .eq('user_id', userId)
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Doc trong thùng rác đã quá hạn giữ (deleted_at < cutoff) — cho auto-purge
+  static async findExpiredTrash(cutoffISO) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .not('deleted_at', 'is', null)
+      .lt('deleted_at', cutoffISO);
 
     if (error) throw error;
     return data || [];
@@ -199,6 +224,7 @@ class DocumentModel {
         extracted_text: extractionData.text,
         extraction_status: extractionData.status,
         extraction_error: extractionData.error,
+        extraction_metadata: extractionData.metadata || {},
         extracted_at: new Date().toISOString(),
         status: extractionData.status === 'ready' ? 'indexed' : 'uploaded',
         updated_at: new Date().toISOString(),
@@ -332,6 +358,36 @@ class DocumentModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async findThumbnailBackfillCandidates({ limit = 50, force = false } = {}) {
+    let query = supabase
+      .from('documents')
+      .select(`
+        id,
+        user_id,
+        title,
+        thumbnail_path,
+        thumbnail_status,
+        thumbnail_error,
+        thumbnail_generated_at,
+        cloud_files!inner (storage_path, mime_type)
+      `)
+      .is('deleted_at', null)
+      .in('cloud_files.mime_type', [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ])
+      .order('created_at', { ascending: true })
+      .limit(Math.min(Math.max(Number(limit) || 50, 1), 500));
+
+    if (!force) {
+      query = query.or('thumbnail_path.is.null,thumbnail_status.in.(pending,failed)');
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
   }
 
   static async findAdminOverviewDocuments(sinceDate) {

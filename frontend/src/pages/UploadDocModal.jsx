@@ -16,6 +16,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   const [title, setTitle] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [tags, setTags] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -26,6 +27,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
     setTitle("");
     setSubjectId("");
     setTags("");
+    setIsPublic(false);
     setProgress(0);
     setIsUploading(false);
     setIsProcessing(false);
@@ -86,6 +88,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
         title: title.trim() || file.name,
         subjectId: subjectId || undefined,
         tags: tags.trim() || undefined,
+        isPublic,
         onProgress: handleProgress,
         signal: controller.signal,
       });
@@ -138,7 +141,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
                 Add New Document
               </h2>
               <p className="m-0 mt-1 text-sm text-white/85">
-                PDF or DOCX up to {UPLOAD_DOC_MAX_SIZE_MB}MB
+                PDF, DOCX, or image up to {UPLOAD_DOC_MAX_SIZE_MB}MB
               </p>
             </div>
             <button
@@ -267,6 +270,27 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
                   value={tags}
                 />
               </label>
+            </div>
+
+            <div className="rounded-xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="m-0 text-sm font-bold text-[#344154] dark:text-slate-200">Visibility</h3>
+                  <p className="m-0 mt-1 text-xs leading-relaxed text-[#66758a] dark:text-slate-400">
+                    Public documents can appear on the landing page. Private documents stay visible only to you and people you share with.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-bold text-[#344154] dark:text-slate-200">
+                  <input
+                    checked={isPublic}
+                    className="h-4 w-4 accent-[#4648d4]"
+                    disabled={isUploading}
+                    onChange={(event) => setIsPublic(event.target.checked)}
+                    type="checkbox"
+                  />
+                  {isPublic ? "Public" : "Private"}
+                </label>
+              </div>
             </div>
           </div>
 

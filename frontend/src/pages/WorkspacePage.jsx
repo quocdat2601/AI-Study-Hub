@@ -61,6 +61,12 @@ function mapStoredMessage(message) {
   };
 }
 
+function findLatestMessageModel(messages) {
+  return [...(messages || [])]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.model)?.model || "";
+}
+
 function getDocumentType(document) {
   const mime = document?.cloud_files?.mime_type || document?.mime_type || "";
   const title = document?.title || document?.name || "";
@@ -92,7 +98,7 @@ export default function WorkspacePage() {
   const [sessionId, setSessionId] = useState(() => initialChat.sessionId);
   const [question, setQuestion] = useState("");
   const [answerMode, setAnswerMode] = useState(() => cachedWorkspace.answerMode || "hybrid");
-  const [selectedModel, setSelectedModel] = useState(() => cachedWorkspace.selectedModel || "");
+  const [selectedModel, setSelectedModel] = useState(() => initialChat.selectedModel || cachedWorkspace.selectedModel || "");
   const [availableModels, setAvailableModels] = useState(() => cachedWorkspace.availableModels || DEFAULT_MODELS);
   const [modelStatus, setModelStatus] = useState(() => cachedWorkspace.modelStatus || null);
   const [usage, setUsage] = useState(() => cachedWorkspace.usage || null);
@@ -224,7 +230,8 @@ export default function WorkspacePage() {
         cacheWorkspaceState({ availableModels: nextModels, modelStatus: status });
         setAvailableModels(nextModels);
         setSelectedModel((current) => {
-          const nextModel = current || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-2.5-flash";
+          const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
+          const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-2.5-flash";
           cacheWorkspaceState({ selectedModel: nextModel });
           return nextModel;
         });
@@ -233,7 +240,8 @@ export default function WorkspacePage() {
           setAvailableModels(DEFAULT_MODELS);
           cacheWorkspaceState({ availableModels: DEFAULT_MODELS });
           setSelectedModel((current) => {
-            const nextModel = current || getWorkspaceCache().selectedModel || "gemini-2.5-flash";
+            const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
+            const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || "gemini-2.5-flash";
             cacheWorkspaceState({ selectedModel: nextModel });
             return nextModel;
           });
@@ -307,12 +315,17 @@ export default function WorkspacePage() {
       const session = await getOrCreateDocumentChatSession(docId);
       const payload = await getChatSessionMessages(session.id);
       const nextMessages = (payload.messages || []).map(mapStoredMessage);
-      cacheDocumentChat(docId, { sessionId: session.id, messages: nextMessages });
+      const restoredModel = findLatestMessageModel(nextMessages);
+      cacheDocumentChat(docId, { sessionId: session.id, messages: nextMessages, selectedModel: restoredModel || getCachedDocumentChat(docId).selectedModel });
       if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
         return;
       }
       setSessionId(session.id);
       setMessages(nextMessages);
+      if (restoredModel) {
+        setSelectedModel(restoredModel);
+        cacheWorkspaceState({ selectedModel: restoredModel });
+      }
     } catch (err) {
       if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
         return;
@@ -359,9 +372,12 @@ export default function WorkspacePage() {
   useEffect(() => {
     if (selectedModel) {
       cacheWorkspaceState({ selectedModel });
+      if (selectedId) {
+        cacheDocumentChat(selectedId, { selectedModel });
+      }
       refreshUsage(selectedModel);
     }
-  }, [selectedModel]);
+  }, [selectedModel, selectedId]);
 
   useEffect(() => {
     cacheWorkspaceState({ answerMode });
@@ -373,6 +389,9 @@ export default function WorkspacePage() {
     setSelectedId(docId);
     setMessages(cachedChat.messages);
     setSessionId(cachedChat.sessionId);
+    if (cachedChat.selectedModel) {
+      setSelectedModel(cachedChat.selectedModel);
+    }
     setQuestion("");
     setProcessResult(cachedChat.processResult);
     setError("");
@@ -394,9 +413,18 @@ export default function WorkspacePage() {
       cacheDocumentChat(selectedDocument.id, { processResult: result });
       setProcessResult(result);
       setDocuments((current) => {
+        const updatedDocument = result.document || {};
         const nextDocuments = current.map((doc) => (
           Number(doc.id) === Number(selectedDocument.id)
-            ? { ...doc, extraction_status: "ready", status: "indexed" }
+            ? {
+                ...doc,
+                ...updatedDocument,
+                extracted_text: updatedDocument.extracted_text ?? doc.extracted_text,
+                extraction_status: updatedDocument.extraction_status ?? "ready",
+                extraction_error: updatedDocument.extraction_error ?? null,
+                extraction_metadata: updatedDocument.extraction_metadata ?? doc.extraction_metadata,
+                status: updatedDocument.status ?? "indexed",
+              }
             : doc
         ));
         cacheWorkspaceState({ documents: nextDocuments });
@@ -554,7 +582,8 @@ export default function WorkspacePage() {
   }
 
   return (
-    <main className="workspace-theme flex h-[calc(100vh-64px)] gap-2 overflow-hidden bg-[#eceef1] p-2 text-sm leading-relaxed text-slate-800">
+    <div className="flex h-[calc(100dvh-65px)] flex-col overflow-hidden bg-[#eceef1] text-slate-800">
+      <main className="workspace-theme flex min-h-0 flex-1 gap-2 overflow-hidden bg-[#eceef1] p-2 text-sm leading-relaxed text-slate-800">
       <DocumentSidebar
         collapsed={sidebarCollapsed}
         documents={documents}
@@ -613,6 +642,7 @@ export default function WorkspacePage() {
         usage={usage}
         width={chatWidth}
       />
-    </main>
+      </main>
+    </div>
   );
 }

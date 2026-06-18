@@ -56,8 +56,8 @@ export default function WorkspaceTextView({ document }) {
 
   if (!paragraphs.length) {
     return (
-      <div className="flex min-h-full items-start justify-center px-5 py-8">
-        <div className="w-full max-w-[620px] rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+      <div className="workspace-selectable flex min-h-full items-start justify-center px-5 py-8">
+        <div className="w-full max-w-[620px] select-text rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <EmptyTextState document={document} />
         </div>
       </div>
@@ -65,8 +65,8 @@ export default function WorkspaceTextView({ document }) {
   }
 
   return (
-    <div className="min-h-full px-4 py-6 sm:px-6">
-      <article className="mx-auto w-full max-w-[620px] rounded-xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
+    <div className="workspace-selectable min-h-full px-4 py-6 sm:px-6">
+      <article className="mx-auto w-full max-w-[620px] select-text rounded-xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
           Nội dung text
         </p>

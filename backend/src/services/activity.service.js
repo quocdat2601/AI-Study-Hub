@@ -14,8 +14,13 @@ async function listByUserId(userId, limit) {
   return activityModel.listByUserId(userId, limit);
 }
 
+async function listByActions(actions, limit) {
+  return activityModel.listByActions(actions, limit);
+}
+
 module.exports = {
   log,
   listLatest,
   listByUserId,
+  listByActions,
 };
