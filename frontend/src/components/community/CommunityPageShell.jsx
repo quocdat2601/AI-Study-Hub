@@ -1,43 +1,39 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "../dashboard/DashboardSidebar.jsx";
+import { useAuth } from "../../contexts/AuthContext.jsx";
+import { getDisplayName } from "../../lib/userDisplay.js";
 
 export default function CommunityPageShell({
   isAuthenticated,
-  isSidebarCollapsed,
-  onToggleSidebar,
-  userName,
   children,
 }) {
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  function handleSidebarSectionChange(sectionId) {
-    if (!sectionId || sectionId === "community") return;
-    navigate("/dashboard", {
-      state: { activeSection: sectionId },
-    });
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
   }
 
+  const displayName = getDisplayName(user);
+
   const shellClass = isAuthenticated
-    ? (isSidebarCollapsed
-      ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:64px_minmax(0,1fr)] [scrollbar-gutter:stable]"
-      : "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:224px_minmax(0,1fr)] [scrollbar-gutter:stable]")
+    ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:248px_minmax(0,1fr)] [scrollbar-gutter:stable]"
     : "min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [scrollbar-gutter:stable]";
   const contentClass = isAuthenticated
-    ? (isSidebarCollapsed ? "px-4 py-4 lg:px-6" : "p-5 lg:p-6")
+    ? "p-5 lg:p-6"
     : "px-4 py-5 md:px-8";
 
   return (
     <main className={shellClass}>
       {isAuthenticated ? (
         <DashboardSidebar
-          activeSection="community"
-          isCollapsed={isSidebarCollapsed}
-          onSectionChange={handleSidebarSectionChange}
-          onToggleCollapse={onToggleSidebar}
-          userName={userName}
-          newDocumentTo="/library"
-          newDocumentLabel="Upload Document"
+          avatarUrl={user?.avatarUrl}
+          onLogout={handleLogout}
+          userName={displayName}
+          userPlan={user?.plan}
+          className="sticky top-16 flex h-[calc(100vh-64px)] w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"
         />
       ) : null}
 

@@ -41,7 +41,6 @@ export default function CommunityCreatePostPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [draft, setDraft] = useState({
     postType: "discussion",
     subjectIds: [],
@@ -194,8 +193,6 @@ export default function CommunityCreatePostPage() {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
       userName={displayName}
     >
       <CommunityLoginPromptModal

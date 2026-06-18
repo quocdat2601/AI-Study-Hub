@@ -135,13 +135,14 @@ function DefaultSidebar({
   userName,
   userPlan,
   avatarUrl,
+  className,
 }) {
   const { t } = useTranslation();
   const pathname = useLocation().pathname;
 
   return (
     <aside
-      className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"
+      className={className || "sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"}
       aria-label="Dashboard navigation"
     >
       <Link className="no-caret mb-6 flex items-center gap-3 no-underline" to="/dashboard">

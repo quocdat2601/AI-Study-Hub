@@ -26,12 +26,10 @@ import {
   toggleCommunityReplyVote,
 } from "../services/communityApi.js";
 
-function DetailSkeleton({ isAuthenticated, isSidebarCollapsed, onToggleSidebar, userName }) {
+function DetailSkeleton({ isAuthenticated, userName }) {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onToggleSidebar={onToggleSidebar}
       userName={userName}
     >
       <div className="h-6 w-52 rounded bg-[#e8edf5] animate-pulse" />
@@ -55,12 +53,10 @@ function DetailSkeleton({ isAuthenticated, isSidebarCollapsed, onToggleSidebar, 
   );
 }
 
-function EmptyState({ title, description, action, isAuthenticated, isSidebarCollapsed, onToggleSidebar, userName }) {
+function EmptyState({ title, description, action, isAuthenticated, userName }) {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onToggleSidebar={onToggleSidebar}
       userName={userName}
     >
       <div className="mx-auto max-w-[1120px] rounded-[24px] border border-[#dbe3ed] bg-white p-8 text-center shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
@@ -96,7 +92,6 @@ export default function CommunityPostDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptingReplyId, setAcceptingReplyId] = useState(null);
   const [isPostVotePending, setIsPostVotePending] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [replyTarget, setReplyTarget] = useState(null);
   const [pendingScrollReplyId, setPendingScrollReplyId] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -703,8 +698,6 @@ export default function CommunityPostDetailPage() {
     return (
       <DetailSkeleton
         isAuthenticated={isAuthenticated}
-        isSidebarCollapsed={isSidebarCollapsed}
-        onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
       />
     );
@@ -714,8 +707,6 @@ export default function CommunityPostDetailPage() {
     return (
       <EmptyState
         isAuthenticated={isAuthenticated}
-        isSidebarCollapsed={isSidebarCollapsed}
-        onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
         title="Could not load thread"
         description={error}
@@ -741,8 +732,6 @@ export default function CommunityPostDetailPage() {
     return (
       <EmptyState
         isAuthenticated={isAuthenticated}
-        isSidebarCollapsed={isSidebarCollapsed}
-        onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
         title="Thread not found"
         description="This post does not exist, has been removed, or is not available yet."
@@ -780,8 +769,6 @@ export default function CommunityPostDetailPage() {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
       userName={displayName}
     >
       <CommunityReportModal

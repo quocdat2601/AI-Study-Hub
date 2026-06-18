@@ -81,7 +81,6 @@ export default function CommunityPage() {
   const [communityData, setCommunityData] = useState({ feed: [], subjects: [], topContributors: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const isMountedRef = useRef(true);
   const latestLoadIdRef = useRef(0);
   const [filterState, setFilterState] = useState({
@@ -259,8 +258,6 @@ export default function CommunityPage() {
   return (
     <CommunityPageShell
       isAuthenticated={isAuthenticated}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
       userName={displayName}
     >
       <CommunityBanner
