@@ -68,6 +68,7 @@ class ChatModel {
       `)
       .eq('user_id', userId)
       .eq('chat_session_documents.doc_id', docId)
+      .is('chat_session_documents.removed_at', null)
       .order('last_activity_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -96,13 +97,16 @@ class ChatModel {
     const rows = docIds.map((docId) => ({
       session_id: sessionId,
       doc_id: docId,
+      added_at: new Date().toISOString(),
+      removed_at: null,
+      removed_by: null,
     }));
 
     const { data, error } = await supabase
       .from('chat_session_documents')
       .upsert(rows, {
         onConflict: 'session_id,doc_id',
-        ignoreDuplicates: true,
+        ignoreDuplicates: false,
       })
       .select();
 
@@ -115,6 +119,7 @@ class ChatModel {
       .from('chat_session_documents')
       .select(`
         added_at,
+        removed_at,
         documents (
           id,
           title,
@@ -131,18 +136,121 @@ class ChatModel {
           thumbnail_status,
           thumbnail_error,
           thumbnail_generated_at,
+          document_scope,
+          origin_session_id,
+          lifecycle_status,
+          last_accessed_at,
+          expires_at,
+          expired_at,
+          purge_after,
           subjects (name, code),
           cloud_files (storage_path, mime_type, size_bytes)
         )
       `)
       .eq('session_id', sessionId)
+      .is('removed_at', null)
       .order('added_at', { ascending: true });
 
     if (error) throw error;
 
+    const now = Date.now();
     return (data || [])
       .map((row) => row.documents)
-      .filter(Boolean);
+      .filter((document) => {
+        if (!document || document.deleted_at || document.lifecycle_status !== 'active') return false;
+        return !document.expires_at || new Date(document.expires_at).getTime() > now;
+      });
+  }
+
+  static async countActiveSessionDocuments(sessionId) {
+    const { count, error } = await supabase
+      .from('chat_session_documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('session_id', sessionId)
+      .is('removed_at', null);
+
+    if (error) throw error;
+    return count || 0;
+  }
+
+  static async findActiveSessionDocument(sessionId, docId) {
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .select(`
+        *,
+        documents!inner (
+          id,
+          lifecycle_status,
+          deleted_at,
+          expires_at
+        )
+      `)
+      .eq('session_id', sessionId)
+      .eq('doc_id', docId)
+      .is('removed_at', null)
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data?.documents?.expires_at && new Date(data.documents.expires_at).getTime() <= Date.now()) {
+      return null;
+    }
+    return data;
+  }
+
+  static async findSessionDocumentLink(sessionId, docId) {
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('doc_id', docId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async listActiveSessionDocumentLinks(sessionId) {
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .select(`
+        *,
+        documents!inner (
+          id,
+          lifecycle_status,
+          deleted_at,
+          expires_at
+        )
+      `)
+      .eq('session_id', sessionId)
+      .is('removed_at', null)
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null)
+      .order('added_at', { ascending: true });
+
+    if (error) throw error;
+    const now = Date.now();
+    return (data || []).filter((row) => (
+      !row.documents?.expires_at || new Date(row.documents.expires_at).getTime() > now
+    ));
+  }
+
+  static async softRemoveSessionDocument(sessionId, docId, removedBy) {
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .update({
+        removed_at: new Date().toISOString(),
+        removed_by: removedBy || null,
+      })
+      .eq('session_id', sessionId)
+      .eq('doc_id', docId)
+      .is('removed_at', null)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   }
 
   static async getMessages(sessionId) {

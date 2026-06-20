@@ -3,6 +3,7 @@ import {
   UPLOAD_DOC_ACCEPT_ATTR,
   UPLOAD_DOC_MAX_SIZE_MB,
   getUploadDocFileLabel,
+  isUploadDocTimeoutError,
   uploadDocument,
   validateUploadDocFile,
 } from "../services/uploadDocApi.js";
@@ -125,6 +126,10 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
     } catch (err) {
       if (err.code === "ERR_CANCELED") {
         setError("Upload cancelled.");
+      } else if (isUploadDocTimeoutError(err)) {
+        const message = "Upload timed out while the server was processing the document. Please check your documents before trying again.";
+        setError(message);
+        onError?.(message);
       } else {
         const message = err.response?.data?.error || "Upload failed. Please try again.";
         setError(message);

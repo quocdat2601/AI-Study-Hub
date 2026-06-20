@@ -65,7 +65,8 @@ class SubjectModel {
     const { count, error } = await supabase
       .from('documents')
       .select('*', { count: 'exact', head: true })
-      .eq('subject_id', id);
+      .eq('subject_id', id)
+      .eq('document_scope', 'library');
 
     if (error) throw error;
     return count || 0;
