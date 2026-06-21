@@ -6,14 +6,20 @@ class BookmarkModel {
       .from('bookmarks')
       .select(`
         *,
-        documents (
+        documents!inner (
           id,
           title,
           subject_id,
+          document_scope,
+          lifecycle_status,
+          deleted_at,
           subjects (name, code)
         )
       `)
       .eq('user_id', userId)
+      .eq('documents.document_scope', 'library')
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -23,8 +29,11 @@ class BookmarkModel {
   static async countByUserId(userId) {
     const { count, error } = await supabase
       .from('bookmarks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
+      .select('*, documents!inner(id)', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('documents.document_scope', 'library')
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null);
 
     if (error) throw error;
     return count || 0;

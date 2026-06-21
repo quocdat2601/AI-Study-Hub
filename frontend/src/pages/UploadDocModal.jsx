@@ -3,10 +3,37 @@ import {
   UPLOAD_DOC_ACCEPT_ATTR,
   UPLOAD_DOC_MAX_SIZE_MB,
   getUploadDocFileLabel,
+  isUploadDocTimeoutError,
   uploadDocument,
   validateUploadDocFile,
 } from "../services/uploadDocApi.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
+
+function VisibilityOption({ active, disabled, label, description, onClick, tone }) {
+  const activeClass = tone === "public"
+    ? "border-emerald-300 bg-emerald-50 text-emerald-800 shadow-[0_8px_22px_rgba(16,185,129,0.16)] dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+    : "border-indigo-300 bg-indigo-50 text-indigo-800 shadow-[0_8px_22px_rgba(99,102,241,0.16)] dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-200";
+  const inactiveClass = "border-[#dbe3ed] bg-white text-[#344154] hover:border-[#b8c3d6] hover:bg-[#f8faff] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500";
+  const dotClass = tone === "public"
+    ? active ? "bg-emerald-500" : "bg-emerald-200 dark:bg-emerald-800"
+    : active ? "bg-[#4648d4]" : "bg-indigo-200 dark:bg-indigo-800";
+
+  return (
+    <button
+      aria-pressed={active}
+      className={`flex min-h-[82px] flex-1 items-start gap-3 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${active ? activeClass : inactiveClass}`}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <span className={`mt-1 h-3 w-3 flex-none rounded-full ${dotClass}`} />
+      <span>
+        <span className="block text-sm font-black">{label}</span>
+        <span className="mt-1 block text-xs font-semibold leading-relaxed opacity-75">{description}</span>
+      </span>
+    </button>
+  );
+}
 
 export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, onError }) {
   const inputRef = useRef(null);
@@ -99,6 +126,10 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
     } catch (err) {
       if (err.code === "ERR_CANCELED") {
         setError("Upload cancelled.");
+      } else if (isUploadDocTimeoutError(err)) {
+        const message = "Upload timed out while the server was processing the document. Please check your documents before trying again.";
+        setError(message);
+        onError?.(message);
       } else {
         const message = err.response?.data?.error || "Upload failed. Please try again.";
         setError(message);
@@ -272,24 +303,35 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
               </label>
             </div>
 
-            <div className="rounded-xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="m-0 text-sm font-bold text-[#344154] dark:text-slate-200">Visibility</h3>
-                  <p className="m-0 mt-1 text-xs leading-relaxed text-[#66758a] dark:text-slate-400">
-                    Public documents can appear on the landing page. Private documents stay visible only to you and people you share with.
-                  </p>
+            <div className="rounded-2xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="m-0 text-sm font-black text-[#344154] dark:text-slate-200">Visibility</h3>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wide ${isPublic ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-indigo-100 text-[#4648d4] dark:bg-indigo-950 dark:text-indigo-300"}`}>
+                    {isPublic ? "Public" : "Private"}
+                  </span>
                 </div>
-                <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-bold text-[#344154] dark:text-slate-200">
-                  <input
-                    checked={isPublic}
-                    className="h-4 w-4 accent-[#4648d4]"
-                    disabled={isUploading}
-                    onChange={(event) => setIsPublic(event.target.checked)}
-                    type="checkbox"
-                  />
-                  {isPublic ? "Public" : "Private"}
-                </label>
+                <p className="m-0 mt-1 text-xs leading-relaxed text-[#66758a] dark:text-slate-400">
+                  Choose whether this document stays in your library or can appear on the public landing page.
+                </p>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2" role="group" aria-label="Document visibility">
+                <VisibilityOption
+                  active={!isPublic}
+                  description="Only you and invited people can access it."
+                  disabled={isUploading}
+                  label="Private"
+                  onClick={() => setIsPublic(false)}
+                  tone="private"
+                />
+                <VisibilityOption
+                  active={isPublic}
+                  description="Can be discovered by other students."
+                  disabled={isUploading}
+                  label="Public"
+                  onClick={() => setIsPublic(true)}
+                  tone="public"
+                />
               </div>
             </div>
           </div>

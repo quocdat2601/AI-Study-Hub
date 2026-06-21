@@ -18,9 +18,7 @@ const DEFAULT_GEMINI_MODELS = [
   "gemini-3.5-flash",
 ];
 const DEFAULT_OLLAMA_MODELS = [
-  "qwen2.5:1.5b",
   "qwen2.5:3b",
-  "qwen2.5:7b",
 ];
 const DEFAULT_MODELS = [...DEFAULT_GEMINI_MODELS, ...DEFAULT_OLLAMA_MODELS];
 

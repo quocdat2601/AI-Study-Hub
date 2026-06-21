@@ -87,6 +87,49 @@ async function canWriteChatSession(userId, sessionId) {
   return chatModel.findOwnedSession(normalizedSessionId, userId);
 }
 
+async function listActiveSessionAttachments({ sessionId, userId }) {
+  const session = await canReadChatSession(userId, sessionId);
+  if (!session) {
+    throw createError(404, 'Chat session not found');
+  }
+  return chatModel.listSessionDocuments(session.id);
+}
+
+async function findActiveSessionAttachment({ sessionId, docId, userId }) {
+  const session = await canReadChatSession(userId, sessionId);
+  if (!session) {
+    throw createError(404, 'Chat session not found');
+  }
+  return chatModel.findActiveSessionDocument(session.id, normalizeNumericId(docId, 'docId'));
+}
+
+async function reattachSessionDocuments({ sessionId, docIds, userId }) {
+  const session = await canWriteChatSession(userId, sessionId);
+  if (!session) {
+    throw createError(404, 'Chat session not found');
+  }
+  const normalizedDocIds = [...new Set((docIds || []).map((docId) => normalizeNumericId(docId, 'docId')))];
+  const links = await Promise.all(
+    normalizedDocIds.map((docId) => chatModel.findSessionDocumentLink(session.id, docId))
+  );
+  if (links.some((link) => !link)) {
+    throw createError(404, 'Session attachment not found');
+  }
+  return chatModel.attachDocuments(session.id, normalizedDocIds);
+}
+
+async function softRemoveSessionAttachment({ sessionId, docId, userId }) {
+  const session = await canWriteChatSession(userId, sessionId);
+  if (!session) {
+    throw createError(404, 'Chat session not found');
+  }
+  return chatModel.softRemoveSessionDocument(
+    session.id,
+    normalizeNumericId(docId, 'docId'),
+    userId
+  );
+}
+
 async function buildChatContext(documents) {
   const readyTexts = (documents || [])
     .map((doc) => ({
@@ -335,4 +378,8 @@ module.exports = {
   getPublicChatShare,
   canReadChatSession,
   canWriteChatSession,
+  listActiveSessionAttachments,
+  findActiveSessionAttachment,
+  reattachSessionDocuments,
+  softRemoveSessionAttachment,
 };
