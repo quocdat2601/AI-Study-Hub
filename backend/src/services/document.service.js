@@ -529,7 +529,7 @@ async function listTrash({ userId }) {
 // Khôi phục doc trong thùng rác (chỉ chủ sở hữu)
 async function restoreDocument({ id, userId }) {
   const doc = await documentModel.findAnyById(id);
-  if (!doc || !doc.deleted_at) {
+  if (!doc || doc.document_scope !== 'library' || !doc.deleted_at) {
     throw createError(404, 'Document not found in trash');
   }
   if (doc.user_id !== userId) {
@@ -553,7 +553,7 @@ const TRASH_RETENTION_DAYS = 30;
 // Xóa cứng vĩnh viễn — chỉ chủ sở hữu, và doc PHẢI đang ở thùng rác
 async function purgeDocument({ id, userId }) {
   const doc = await documentModel.findAnyById(id);
-  if (!doc) {
+  if (!doc || doc.document_scope !== 'library') {
     throw createError(404, 'Document not found');
   }
   if (doc.user_id !== userId) {
@@ -613,7 +613,7 @@ async function bulkRestore({ ids, userId }) {
   const failed = [];
   for (const id of ids) {
     const doc = await documentModel.findAnyById(id);
-    if (!doc || !doc.deleted_at) {
+    if (!doc || doc.document_scope !== 'library' || !doc.deleted_at) {
       failed.push({ id, reason: 'not in trash' });
       continue;
     }

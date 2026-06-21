@@ -14,6 +14,8 @@ class DocumentModel {
       .from('documents')
       .select(DOCUMENT_SELECT)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -22,12 +24,15 @@ class DocumentModel {
     const { data: shares, error: sharedError } = await supabase
       .from('doc_shares')
       .select(`
-        documents (
+        documents!inner (
           ${DOCUMENT_SELECT}
         )
       `)
       .eq('shared_to', userId)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('documents.document_scope', 'library')
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null);
 
     if (sharedError) throw sharedError;
 
@@ -46,8 +51,10 @@ class DocumentModel {
       .from('documents')
       .select(DOCUMENT_SELECT)
       .eq('id', id)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') throw error;
     return data;
@@ -59,6 +66,8 @@ class DocumentModel {
       .select(DOCUMENT_SELECT)
       .eq('id', id)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
       .maybeSingle();
 
@@ -83,6 +92,40 @@ class DocumentModel {
     return share ? doc : null;
   }
 
+  static async findActiveById(id) {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async findActiveSessionScopedById(id, sessionId) {
+    let query = supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('document_scope', 'session')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+
+    if (sessionId !== undefined && sessionId !== null) {
+      query = query.eq('origin_session_id', Number(sessionId));
+    }
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
   // ─── Soft delete / trash / restore ──────────────────────────────────────────
 
   // Tìm doc theo id BẤT KỂ đã xóa mềm hay chưa (cho restore/purge)
@@ -103,6 +146,7 @@ class DocumentModel {
       .from('documents')
       .select(DOCUMENT_SELECT)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false });
 
@@ -115,6 +159,7 @@ class DocumentModel {
     const { data, error } = await supabase
       .from('documents')
       .select(DOCUMENT_SELECT)
+      .eq('document_scope', 'library')
       .not('deleted_at', 'is', null)
       .lt('deleted_at', cutoffISO);
 
@@ -367,6 +412,7 @@ class DocumentModel {
       .from('documents')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
       .is('deleted_at', null);
 
     if (error) throw error;
@@ -381,6 +427,7 @@ class DocumentModel {
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('document_scope', 'library')
       .select(DOCUMENT_SELECT)
       .single();
 
@@ -492,6 +539,8 @@ class DocumentModel {
         cloud_files (storage_path, mime_type, size_bytes)
       `)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 5, 20));
@@ -519,6 +568,8 @@ class DocumentModel {
         cloud_files (mime_type, size_bytes)
       `)
       .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .eq('status', 'indexed')
       .eq('extraction_status', 'ready')
       .is('deleted_at', null)

@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
+const buildCorsOptions = require('./config/cors');
 const swaggerSpec = require('./config/swagger');
 
 const healthRoutes = require('./routes/health.routes');
@@ -22,7 +23,7 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
-app.use(cors());
+app.use(cors(buildCorsOptions()));
 app.use(express.json());
 
 // Swagger UI - available at /api-docs

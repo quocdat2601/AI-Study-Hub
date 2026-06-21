@@ -1,6 +1,7 @@
 import api from "./api.js";
 
 export const UPLOAD_DOC_MAX_SIZE_MB = 50;
+export const UPLOAD_DOC_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const UPLOAD_DOC_ACCEPTED_TYPES = [
   "application/pdf",
@@ -33,6 +34,12 @@ export function validateUploadDocFile(file) {
   return "";
 }
 
+export function isUploadDocTimeoutError(error) {
+  return error?.code === "ECONNABORTED"
+    || error?.code === "ETIMEDOUT"
+    || /timeout/i.test(String(error?.message || ""));
+}
+
 /**
  * Gọi backend POST /api/upload-doc
  */
@@ -46,6 +53,7 @@ export async function uploadDocument({ file, title, subjectId, tags, isPublic = 
 
   const response = await api.post("/upload-doc", formData, {
     signal,
+    timeout: UPLOAD_DOC_TIMEOUT_MS,
     onUploadProgress: (event) => {
       if (!onProgress || !event.total) return;
       onProgress(Math.round((event.loaded * 100) / event.total));
