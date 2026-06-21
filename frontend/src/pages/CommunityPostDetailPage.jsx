@@ -21,11 +21,60 @@ import {
   createCommunityReply,
   deleteCommunityPost,
   deleteCommunityReply,
+  editCommunityReply,
   getCommunityPostDetail,
   reportCommunityPost,
   toggleCommunityPostVote,
   toggleCommunityReplyVote,
 } from "../services/communityApi.js";
+
+function EditReplyForm({ initialBody, onSave, onCancel }) {
+  const [body, setBody] = React.useState(initialBody || "");
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!body.trim()) return;
+    setIsSaving(true);
+    try {
+      await onSave(body);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-[#4648d4] bg-white p-5 shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
+      <p className="m-0 mb-3 text-xs font-black uppercase tracking-[0.8px] text-[#4648d4]">Editing comment</p>
+      <form className="grid gap-3" onSubmit={handleSubmit}>
+        <textarea
+          autoFocus
+          className="min-h-[120px] w-full resize-y rounded-[18px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3 text-[15px] leading-7 text-[#172033] outline-none transition focus:border-[#4648d4] focus:bg-white focus:shadow-[0_0_0_4px_rgba(70,72,212,0.12)]"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          disabled={isSaving}
+        />
+        <div className="flex items-center justify-end gap-3">
+          <button
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[#dbe3ed] bg-white px-4 text-sm font-black text-[#172033] transition hover:border-[#172033]"
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+          >
+            Cancel
+          </button>
+          <button
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-4 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:border-[#c7d2e2] disabled:bg-[#e5e7eb] disabled:text-[#7f95ac]"
+            type="submit"
+            disabled={isSaving || !body.trim()}
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 function DetailSkeleton({ isAuthenticated }) {
   return (
@@ -111,6 +160,7 @@ export default function CommunityPostDetailPage() {
     message: "",
     onConfirm: null,
   });
+  const [editingReply, setEditingReply] = useState(null);
 
   const loadThreadDetail = useCallback(async ({ showLoading = true } = {}) => {
     const loadId = latestLoadIdRef.current + 1;
@@ -465,9 +515,25 @@ export default function CommunityPostDetailPage() {
       if (replyTarget?.id && String(replyTarget.id) === String(replyId)) {
         setReplyTarget(null);
       }
+      if (editingReply?.id && String(editingReply.id) === String(replyId)) {
+        setEditingReply(null);
+      }
       showNotice("Comment deleted");
     } catch (err) {
       setActionError(err.response?.data?.error || err.response?.data?.message || "Could not delete this comment.");
+    }
+  }
+
+  async function handleSaveEditReply(replyId, newBody) {
+    if (!newBody.trim()) return;
+    try {
+      setActionError("");
+      const response = await editCommunityReply(replyId, newBody.trim());
+      setThreadDetail(response);
+      setEditingReply(null);
+      showNotice("Comment updated");
+    } catch (err) {
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update this comment.");
     }
   }
 
@@ -866,11 +932,18 @@ export default function CommunityPostDetailPage() {
               && String(user.id) === String(reply.author.id)
           );
           const replyMenuItems = [
-            ...(isReplyOwner ? [{
-              id: `delete-reply-${reply.id}`,
-              label: "Delete comment",
-              onClick: () => triggerDeleteReply(reply),
-            }] : []),
+            ...(isReplyOwner ? [
+              {
+                id: `edit-reply-${reply.id}`,
+                label: "Edit comment",
+                onClick: () => setEditingReply({ id: reply.id, body: reply.content || reply.body || "" }),
+              },
+              {
+                id: `delete-reply-${reply.id}`,
+                label: "Delete comment",
+                onClick: () => triggerDeleteReply(reply),
+              },
+            ] : []),
             {
               id: `report-reply-${reply.id}`,
               label: reportedKeys[reportKey] ? "Report submitted" : "Report comment",
@@ -884,33 +957,42 @@ export default function CommunityPostDetailPage() {
           ];
 
           return (
-            <CommunityThreadItem
-              key={reply.id}
-              post={reply}
-              isRootPost={false}
-              footerActionSlot={reply.isAccepted ? (
-                <span className="inline-flex min-h-10 items-center rounded-full border border-[#bfe5d3] bg-[#ecfff5] px-4 text-sm font-black text-[#166534]">
-                  Accepted answer
-                </span>
-              ) : canAcceptReplies ? (
-                <button
-                  className="inline-flex min-h-10 items-center rounded-full border border-[#bfe5d3] bg-white px-4 text-sm font-black text-[#166534] transition hover:border-[#16a34a] hover:bg-[#f0fdf4] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:text-[#7f95ac]"
-                  disabled={Boolean(acceptingReplyId)}
-                  onClick={() => handleAcceptReply(reply)}
-                  type="button"
-                >
-                  {acceptingReplyId === reply.id ? "Saving..." : "Mark as answer"}
-                </button>
-              ) : null}
-              onReply={handleReplyToReply}
-              onParentReplyClick={handleParentReplyClick}
-              onShare={handleShare}
-              onUpvote={handleReplyVote}
-              menuItems={replyMenuItems}
-              LinkComponent={Link}
-              variant="light"
-              isHighlighted={String(highlightedReplyId) === String(reply.id)}
-            />
+            <div key={reply.id} id={`community-reply-${reply.id}`}>
+              {editingReply?.id === reply.id ? (
+                <EditReplyForm
+                  initialBody={editingReply.body}
+                  onSave={(body) => handleSaveEditReply(reply.id, body)}
+                  onCancel={() => setEditingReply(null)}
+                />
+              ) : (
+                <CommunityThreadItem
+                  post={reply}
+                  isRootPost={false}
+                  footerActionSlot={reply.isAccepted ? (
+                    <span className="inline-flex min-h-10 items-center rounded-full border border-[#bfe5d3] bg-[#ecfff5] px-4 text-sm font-black text-[#166534]">
+                      Accepted answer
+                    </span>
+                  ) : canAcceptReplies ? (
+                    <button
+                      className="inline-flex min-h-10 items-center rounded-full border border-[#bfe5d3] bg-white px-4 text-sm font-black text-[#166534] transition hover:border-[#16a34a] hover:bg-[#f0fdf4] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:text-[#7f95ac]"
+                      disabled={Boolean(acceptingReplyId)}
+                      onClick={() => handleAcceptReply(reply)}
+                      type="button"
+                    >
+                      {acceptingReplyId === reply.id ? "Saving..." : "Mark as answer"}
+                    </button>
+                  ) : null}
+                  onReply={handleReplyToReply}
+                  onParentReplyClick={handleParentReplyClick}
+                  onShare={handleShare}
+                  onUpvote={handleReplyVote}
+                  menuItems={replyMenuItems}
+                  LinkComponent={Link}
+                  variant="light"
+                  isHighlighted={String(highlightedReplyId) === String(reply.id)}
+                />
+              )}
+            </div>
           );
         })}
       </section>

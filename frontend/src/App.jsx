@@ -58,7 +58,11 @@ function AppRoutes() {
         />
         <Route
           path="/community/new"
-          element={<CommunityCreatePostPage />}
+          element={
+            <ProtectedRoute>
+              <CommunityCreatePostPage />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/community/posts/:id"

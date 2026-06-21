@@ -110,7 +110,7 @@ function buildAuthor(user, statsByUserId = null) {
   return {
     id: user.id,
     email: user.email,
-    displayName: displayNameFromEmail(user.email),
+    displayName: user.display_name || displayNameFromEmail(user.email),
     role: user.role,
     createdAt: user.created_at || null,
     postCount: stats?.postCount || 0,
@@ -709,6 +709,28 @@ async function deleteReply({ replyId, userId }) {
   return getPublicPostById(reply.post_id);
 }
 
+async function editReply({ replyId, userId, body }) {
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+
+  if (!reply || reply.status !== 'active' || String(reply.user_id) !== String(userId)) {
+    throw createError(404, 'Community reply not found');
+  }
+
+  const cleanedBody = requireText(body, 'body', 4000);
+  await CommunityModel.updateReply(normalizedReplyId, { body: cleanedBody });
+
+  activityService.log({
+    userId,
+    action: 'community.reply.edit',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+    metadata: { postId: reply.post_id },
+  });
+
+  return getPublicPostById(reply.post_id);
+}
+
 async function addReply({ postId, userId, body, parentReplyId }) {
   const normalizedPostId = normalizeNumericId(postId, 'postId');
   const post = await CommunityModel.findPostById(normalizedPostId);
@@ -1126,6 +1148,7 @@ module.exports = {
   createPost,
   updatePost,
   deletePost,
+  editReply,
   deleteReply,
   addReply,
   togglePostVote,

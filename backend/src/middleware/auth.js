@@ -1,16 +1,7 @@
 const supabase = require('../config/supabase');
 const authService = require('../services/auth.service');
+const decodeJwtPayload = require('../utils/decodeJwt');
 
-function decodeJwtPayload(token) {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payloadJson = Buffer.from(parts[1], 'base64').toString('utf8');
-    return JSON.parse(payloadJson);
-  } catch (_) {
-    return null;
-  }
-}
 
 async function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;

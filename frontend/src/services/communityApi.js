@@ -39,6 +39,11 @@ export async function deleteCommunityReply(replyId) {
   return response.data;
 }
 
+export async function editCommunityReply(replyId, body) {
+  const response = await api.patch(`/community/replies/${replyId}`, { body });
+  return response.data;
+}
+
 export async function toggleCommunityPostVote(postId) {
   const response = await api.post(`/community/posts/${postId}/vote`);
   return response.data;

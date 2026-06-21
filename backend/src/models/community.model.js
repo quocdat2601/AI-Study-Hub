@@ -3,7 +3,7 @@ const supabase = require('../config/supabase');
 const POST_SELECT = `
   *,
   subjects:subjects!community_posts_subject_id_fkey (id, name, code),
-  users!community_posts_user_id_fkey (id, email, role, status, created_at),
+  users!community_posts_user_id_fkey (id, email, role, status, created_at, display_name),
   documents (
     id,
     title,
@@ -35,7 +35,7 @@ const POST_SELECT = `
 
 const REPLY_SELECT = `
   *,
-  users!community_replies_user_id_fkey (id, email, role, status, created_at)
+  users!community_replies_user_id_fkey (id, email, role, status, created_at, display_name)
 `;
 
 const POST_SUBJECT_SELECT = `

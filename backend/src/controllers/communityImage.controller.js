@@ -1,27 +1,15 @@
-const crypto = require('crypto');
-const supabaseService = require('../services/supabase.service');
+const communityImageService = require('../services/communityImage.service');
 
-const COMMUNITY_IMAGE_BUCKET_PREFIX = 'community-images';
-
-async function uploadImage(req, res) {
-  const { file, user } = req;
-
-  if (!file) {
+async function uploadImage(req, res, next) {
+  if (!req.file) {
     return res.status(400).json({ error: 'No image file provided' });
   }
 
-  const ext = file.mimetype.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-  const uniqueName = `${crypto.randomBytes(12).toString('hex')}.${ext}`;
-  const storagePath = `${COMMUNITY_IMAGE_BUCKET_PREFIX}/${user.id}/${uniqueName}`;
-
   try {
-    await supabaseService.uploadFile(file.buffer, storagePath, file.mimetype);
-    const signedUrl = await supabaseService.getSignedUrl(storagePath, 60 * 60 * 24 * 365);
-
-    return res.status(201).json({ url: signedUrl, path: storagePath });
+    const result = await communityImageService.uploadCommunityImage(req.file, req.user.id);
+    return res.status(201).json(result);
   } catch (err) {
-    const message = err.publicMessage || err.message || 'Image upload failed';
-    return res.status(500).json({ error: message });
+    next(err);
   }
 }
 
