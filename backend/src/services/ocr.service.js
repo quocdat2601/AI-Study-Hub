@@ -141,6 +141,31 @@ function parseTsv(tsv) {
   };
 }
 
+function buildPageTextMetadata(pageResults) {
+  const boundaries = [];
+  const texts = [];
+  let offset = 0;
+
+  for (const result of pageResults) {
+    const text = String(result.text || '').trim();
+    if (!text) continue;
+    if (texts.length) offset += 2;
+    const startChar = offset;
+    texts.push(text);
+    offset += text.length;
+    boundaries.push({
+      pageNumber: result.page,
+      startChar,
+      endChar: offset,
+    });
+  }
+
+  return {
+    text: texts.join('\n\n'),
+    pageBoundaries: boundaries,
+  };
+}
+
 async function runTesseract(imagePath) {
   const { tesseractPath, ocrLang, timeoutMs } = getConfig();
 
@@ -226,6 +251,9 @@ async function extractImageText(buffer, mimeType) {
           failed: 0,
           max: 1,
         },
+        pageBoundaries: result.text
+          ? [{ pageNumber: 1, startChar: 0, endChar: result.text.length }]
+          : [],
       }),
     };
   } finally {
@@ -274,8 +302,9 @@ async function extractPdfText(buffer) {
       .map((result) => result.confidence)
       .filter((confidence) => Number.isFinite(confidence));
 
+    const pageText = buildPageTextMetadata(pageResults);
     return {
-      text: pageResults.map((result) => result.text).filter(Boolean).join('\n\n'),
+      text: pageText.text,
       metadata: buildBaseMetadata({
         ocrConfidence: confidences.length
           ? Math.round(confidences.reduce((total, value) => total + value, 0) / confidences.length)
@@ -287,6 +316,7 @@ async function extractPdfText(buffer) {
           max: maxPdfPages,
           errors: pageErrors,
         },
+        pageBoundaries: pageText.pageBoundaries,
       }),
     };
   } finally {

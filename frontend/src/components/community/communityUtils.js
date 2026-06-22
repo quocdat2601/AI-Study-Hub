@@ -146,8 +146,8 @@ export function renderMarkdownBody(text, React, onImageClick) {
         });
 
         parts.push(
-          onImageClick 
-            ? imgElement 
+          onImageClick
+            ? imgElement
             : React.createElement("a", {
                 key: `img-link-${match.index}`,
                 href: imgSrc,
@@ -182,4 +182,3 @@ export function renderMarkdownBody(text, React, onImageClick) {
 
   return nodes;
 }
-

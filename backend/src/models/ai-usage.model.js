@@ -7,6 +7,7 @@ class AiUsageModel {
       .insert([{
         user_id: logData.userId,
         doc_id: logData.docId,
+        session_id: logData.sessionId || null,
         provider: logData.provider || 'gemini',
         model: logData.model,
         request_type: logData.requestType || 'document_qa',

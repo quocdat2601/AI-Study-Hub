@@ -1117,7 +1117,7 @@ async function resolveReport({ reportId, adminUserId, status }) {
   });
 
   if (report.reported_by) {
-    notifyUser(report.reported_by, 'Your community report has been reviewed');
+    notify(report.reported_by, 'system', 'Your community report has been reviewed');
   }
 
   return {

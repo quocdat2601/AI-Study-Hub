@@ -13,6 +13,15 @@ export async function askDocument(id, question, mode = "hybrid", model) {
   return response.data;
 }
 
+export async function askSession(sessionId, question, mode = "hybrid", model) {
+  const response = await api.post(
+    `/ai/chat/sessions/${sessionId}/ask`,
+    { question, mode, model },
+    { timeout: 90000 }
+  );
+  return response.data;
+}
+
 function parseSseEvent(block) {
   const lines = block.split(/\r?\n/);
   let event = "message";
@@ -32,7 +41,7 @@ function parseSseEvent(block) {
   };
 }
 
-export async function askDocumentStream(id, { question, mode = "hybrid", model, onStatus, onToken }) {
+async function askStream(path, { question, mode = "hybrid", model, onStatus, onToken, signal }) {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
 
@@ -41,13 +50,14 @@ export async function askDocumentStream(id, { question, mode = "hybrid", model, 
     throw new Error("Missing authenticated session");
   }
 
-  const response = await fetch(`${API_BASE_URL}/ai/documents/${id}/ask/stream`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ question, mode, model }),
+    signal,
   });
 
   if (!response.ok || !response.body) {
@@ -88,6 +98,14 @@ export async function askDocumentStream(id, { question, mode = "hybrid", model, 
   }
 
   return donePayload;
+}
+
+export async function askDocumentStream(id, options) {
+  return askStream(`/ai/documents/${id}/ask/stream`, options);
+}
+
+export async function askSessionStream(sessionId, options) {
+  return askStream(`/ai/chat/sessions/${sessionId}/ask/stream`, options);
 }
 
 export async function getAiUsage(model) {

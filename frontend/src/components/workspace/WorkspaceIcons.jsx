@@ -206,3 +206,23 @@ export function ChevronDownIcon(props) {
     </Icon>
   );
 }
+
+export function PencilIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z" />
+      <path d="m14 7 3 3" />
+    </Icon>
+  );
+}
+
+export function TrashIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="m7 7 1 13h8l1-13" />
+      <path d="M10 11v5M14 11v5" />
+    </Icon>
+  );
+}

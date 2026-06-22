@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import ChatAttachmentBar from "./ChatAttachmentBar.jsx";
+import ChatSessionMenu from "./ChatSessionMenu.jsx";
 import { MODEL_LABELS } from "./workspaceDisplay.js";
 import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CopyIcon, SparklesIcon } from "./WorkspaceIcons.jsx";
 
@@ -84,25 +85,37 @@ function UsagePopover({ activeModel, isLoadingUsage, isOllamaModel, selectedMode
 
 function SourceList({ sources }) {
   if (!sources?.length) return null;
+  const validSources = sources.filter((source) => (
+    source.chunkDocumentId == null
+    || Number(source.documentId) === Number(source.chunkDocumentId)
+  ));
+  if (!validSources.length) return null;
 
   return (
     <details className="mt-2 rounded-xl border border-slate-200 bg-white/80 p-2 text-xs text-slate-600">
       <summary className="cursor-pointer list-none font-bold text-slate-600 marker:hidden">
         <span className="mr-1 text-slate-400">+</span>
-        Sources ({sources.length})
+        Sources ({validSources.length})
       </summary>
       <div className="mt-2 grid max-h-36 gap-1.5 overflow-y-auto pr-1">
-        {sources.map((source) => (
-          <details className="group rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1.5" key={source.id || source.chunkIndex}>
-            <summary className="cursor-pointer list-none font-semibold text-slate-700 marker:hidden">
-              <span className="mr-1 text-slate-400 group-open:hidden">+</span>
-              <span className="mr-1 hidden text-slate-400 group-open:inline">-</span>
-              Chunk {Number(source.chunkIndex || 0) + 1}
-              {source.score ? <span className="ml-2 font-medium text-slate-400">{Number(source.score).toFixed(2)}</span> : null}
-            </summary>
-            <p className="mt-1.5 line-clamp-4 select-text whitespace-pre-wrap leading-relaxed text-slate-500">{source.content}</p>
-          </details>
-        ))}
+        {validSources.map((source) => {
+          const pageStart = source.pageStart ?? source.pageNumber;
+          const pageEnd = source.pageEnd ?? source.pageNumber;
+          const pageLabel = pageStart == null
+            ? ""
+            : pageStart === pageEnd ? ` - Page ${pageStart}` : ` - Pages ${pageStart}-${pageEnd}`;
+          return (
+            <details className="group rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1.5" key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}>
+              <summary className="cursor-pointer list-none font-semibold text-slate-700 marker:hidden">
+                <span className="mr-1 text-slate-400 group-open:hidden">+</span>
+                <span className="mr-1 hidden text-slate-400 group-open:inline">-</span>
+                {source.documentTitle || "Document"}{pageLabel} - Chunk {Number(source.chunkIndex || 0) + 1}
+                {source.score ? <span className="ml-2 font-medium text-slate-400">{Number(source.score).toFixed(2)}</span> : null}
+              </summary>
+              <p className="mt-1.5 line-clamp-4 select-text whitespace-pre-wrap leading-relaxed text-slate-500">{source.content}</p>
+            </details>
+          );
+        })}
       </div>
     </details>
   );
@@ -373,6 +386,14 @@ export default function AIChatPanel({
   selectedDocument,
   selectedModel,
   sessionId,
+  sessions,
+  sessionAction,
+  sessionError,
+  isLoadingSessions,
+  onCreateSession,
+  onDeleteSession,
+  onRenameSession,
+  onSelectSession,
   usage,
   width,
 }) {
@@ -404,6 +425,19 @@ export default function AIChatPanel({
           />
         </div>
       </div>
+
+      <ChatSessionMenu
+        activeSessionId={sessionId}
+        busySessionId={sessionAction?.sessionId}
+        error={sessionError}
+        isCreating={sessionAction?.type === "create"}
+        isLoading={isLoadingSessions}
+        onCreate={onCreateSession}
+        onDelete={onDeleteSession}
+        onRename={onRenameSession}
+        onSelect={onSelectSession}
+        sessions={sessions}
+      />
 
       <ChatAttachmentBar
         action={attachmentAction}

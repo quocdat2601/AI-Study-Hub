@@ -8,6 +8,8 @@ const documentService = require('./document.service');
 const documentTextService = require('./document-text.service');
 const embeddingService = require('./embedding.service');
 const ragService = require('./rag.service');
+const ragComparisonService = require('./rag-comparison.service');
+const chatContextService = require('./chat-context.service');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
 
@@ -48,10 +50,14 @@ function getMimeType(doc) {
   return doc.cloud_files?.mime_type || '';
 }
 
-function estimatePromptTokens({ question, chunks }) {
-  const chars = String(question || '').length + (chunks || []).reduce((total, chunk) => {
-    return total + String(chunk.content || '').length;
-  }, 0);
+function estimatePromptTokens({ question, chunks, history, documentTitles, responseConstraints }) {
+  const chars = String(question || '').length
+    + (chunks || []).reduce((total, chunk) => (
+      total + String(chunk.promptContent || chunk.content || '').length
+    ), 0)
+    + (history || []).reduce((total, message) => total + String(message.content || '').length, 0)
+    + (documentTitles || []).join(' ').length
+    + JSON.stringify(responseConstraints || {}).length;
   return Math.ceil(chars / 4);
 }
 
@@ -122,6 +128,7 @@ async function processDocument({
   const chunks = ragService.splitTextIntoChunks(text, {
     documentId: doc.id,
     documentTitle: savedDoc.title,
+    pageBoundaries: savedDoc.extraction_metadata?.pageBoundaries || [],
   });
 
   if (!chunks.length) {
@@ -154,7 +161,7 @@ async function safeTouchSession(sessionId) {
   }
 }
 
-async function getOrCreateChunksForAsk({ doc, userId, sendEvent }) {
+async function getOrCreateChunksForAsk({ doc, userId, sessionId, sendEvent }) {
   let chunks = await documentChunkModel.findByDocumentId(doc.id);
 
   if (chunks.length) {
@@ -162,7 +169,13 @@ async function getOrCreateChunksForAsk({ doc, userId, sendEvent }) {
   }
 
   sendEvent?.('status', { message: 'Preparing document for AI...' });
-  await processDocument({ id: doc.id, userId, sendEvent });
+  await processDocument({
+    id: doc.id,
+    userId,
+    sendEvent,
+    allowSessionScoped: doc.document_scope === 'session',
+    sessionId,
+  });
   chunks = await documentChunkModel.findByDocumentId(doc.id);
 
   if (!chunks.length) {
@@ -173,7 +186,9 @@ async function getOrCreateChunksForAsk({ doc, userId, sendEvent }) {
 }
 
 function getChunkKey(chunk) {
-  return chunk.id == null ? `index:${chunk.chunk_index}` : `id:${chunk.id}`;
+  return chunk.id == null
+    ? `doc:${chunk.doc_id || chunk.metadata?.documentId}:index:${chunk.chunk_index}`
+    : `id:${chunk.id}`;
 }
 
 function mergeHybridChunks({ vectorChunks, keywordChunks, embeddingModel, limit = RAG_CONTEXT_LIMIT }) {
@@ -254,6 +269,8 @@ function buildAssistantMetadata({
   sources = [],
   needsProcessing = false,
   processingError = null,
+  requestContext = null,
+  comparisonMetadata = null,
 }) {
   const retrievalTypes = [...new Set(
     sources
@@ -270,19 +287,34 @@ function buildAssistantMetadata({
     processingError,
     retrieval: retrievalTypes.length === 1 ? retrievalTypes[0] : retrievalTypes,
     sources,
+    ...(requestContext ? {
+      intent: requestContext.intent,
+      comparedDocumentIds: requestContext.comparedDocumentIds,
+      substantiveQuestion: requestContext.substantiveQuestion,
+      retrievalQuery: requestContext.retrievalQuery,
+      responseConstraints: requestContext.responseConstraints,
+      comparisonDebug: requestContext.comparisonDebug || null,
+    } : {}),
+    ...(comparisonMetadata ? { comparison: comparisonMetadata } : {}),
   };
 }
 
-async function retrieveChunksForQuestion({ docId, question, chunks }) {
+async function retrieveChunksForQuestion({ docIds, question, chunks }) {
   const keywordChunks = ragService.retrieveRelevantChunks(question, chunks, RAG_CONTEXT_LIMIT);
 
   try {
     const queryEmbedding = await embeddingService.embedQuery(question);
-    const vectorChunks = await documentChunkModel.matchByEmbedding({
-      docId,
-      embedding: queryEmbedding.embedding,
-      limit: RAG_CONTEXT_LIMIT,
-    });
+    const vectorChunks = docIds.length === 1
+      ? await documentChunkModel.matchByEmbedding({
+        docId: docIds[0],
+        embedding: queryEmbedding.embedding,
+        limit: RAG_CONTEXT_LIMIT,
+      })
+      : await documentChunkModel.matchByEmbeddingAcrossDocuments({
+        docIds,
+        embedding: queryEmbedding.embedding,
+        limit: RAG_CONTEXT_LIMIT,
+      });
 
     if (vectorChunks.length) {
       return mergeHybridChunks({
@@ -311,105 +343,468 @@ async function getUsageBestEffort({ model, userId }) {
   });
 }
 
-async function saveAssistantAnswer({ sessionId, answer, provider, model, mode, usedRag, sources }) {
+async function saveAssistantAnswer({
+  sessionId,
+  answer,
+  provider,
+  model,
+  mode,
+  usedRag,
+  sources,
+  requestContext,
+  comparisonMetadata,
+}) {
   const assistantMetadata = buildAssistantMetadata({
     provider,
     model,
     mode,
     usedRag,
     sources,
+    requestContext,
+    comparisonMetadata,
   });
   const assistantMessage = await chatModel.addMessage(sessionId, 'assistant', answer, assistantMetadata);
   await safeTouchSession(sessionId);
   return assistantMessage;
 }
 
-async function prepareAskDocument({ id, userId, question, mode, model, sendEvent }) {
+function isDocumentReadyForRag(doc) {
+  return doc.extraction_status === 'ready'
+    && documentTextService.isExtractedTextUseful(doc.extracted_text);
+}
+
+async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
+  const normalizedSessionId = normalizeNumericId(sessionId, 'sessionId');
+  const session = await chatModel.findOwnedSession(normalizedSessionId, userId);
+  if (!session) throw createError(404, 'Chat session not found');
+
+  const links = await chatModel.listActiveSessionDocumentLinks(session.id);
+  const documents = [];
+  const excluded = {
+    inaccessible: 0,
+    unavailable: 0,
+    notReady: 0,
+  };
+
+  for (const link of links) {
+    const docId = Number(link.doc_id);
+    const document = await documentModel.findActiveById(docId);
+    if (!document) {
+      excluded.unavailable += 1;
+      continue;
+    }
+
+    const authorized = document.document_scope === 'session'
+      ? String(document.user_id) === String(userId)
+        && Number(document.origin_session_id) === Number(session.id)
+      : Boolean(await documentService.canAttachDocumentToSession(userId, docId));
+
+    if (!authorized) {
+      excluded.inaccessible += 1;
+      continue;
+    }
+    if (!isDocumentReadyForRag(document)) {
+      excluded.notReady += 1;
+      continue;
+    }
+    documents.push(document);
+  }
+
+  return { session, documents, excluded };
+}
+
+async function resolveAskScope({ id, sessionId, userId }) {
+  if (sessionId !== undefined && sessionId !== null) {
+    const resolved = await resolveAuthorizedSessionDocuments({ sessionId, userId });
+    return { ...resolved, compatibilityDocument: null };
+  }
+
+  const doc = await getProcessableDocument({ id, userId });
+  const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
+  return {
+    session,
+    documents: [doc],
+    excluded: { inaccessible: 0, unavailable: 0, notReady: 0 },
+    compatibilityDocument: doc,
+  };
+}
+
+async function loadSessionChunks({ documents, sessionId, userId, sendEvent }) {
+  const allChunks = [];
+  const usableDocuments = [];
+  const skippedDocumentIds = [];
+  let autoProcessed = false;
+  const existingChunks = await documentChunkModel.findByDocumentIds(
+    documents.map((document) => document.id)
+  );
+  const chunksByDocument = new Map();
+  for (const chunk of existingChunks) {
+    const docChunks = chunksByDocument.get(Number(chunk.doc_id)) || [];
+    docChunks.push(chunk);
+    chunksByDocument.set(Number(chunk.doc_id), docChunks);
+  }
+
+  for (const doc of documents) {
+    let chunks = chunksByDocument.get(Number(doc.id)) || [];
+    const ownsDocument = String(doc.user_id) === String(userId);
+
+    if (!chunks.length && ownsDocument) {
+      try {
+        sendEvent?.('status', { message: `Preparing ${doc.title || 'document'} for AI...` });
+        const result = await getOrCreateChunksForAsk({ doc, userId, sessionId, sendEvent });
+        chunks = result.chunks;
+        autoProcessed = autoProcessed || result.autoProcessed;
+      } catch (err) {
+        console.error(`Document ${doc.id} preparation failed:`, err.message);
+      }
+    }
+
+    if (!chunks.length) {
+      skippedDocumentIds.push(doc.id);
+      continue;
+    }
+
+    usableDocuments.push(doc);
+    allChunks.push(...chunks.map((chunk) => ({
+      ...chunk,
+      documentTitle: doc.title,
+      metadata: {
+        ...(chunk.metadata || {}),
+        documentId: doc.id,
+        documentTitle: doc.title,
+      },
+    })));
+  }
+
+  return { allChunks, usableDocuments, skippedDocumentIds, autoProcessed };
+}
+
+function buildScopeResponse({
+  answer,
+  sources,
+  documents,
+  compatibilityDocument,
+  session,
+  answerMode,
+  usedRag,
+  autoProcessed,
+  provider,
+  model,
+  usage,
+  userMessage,
+  assistantMessage,
+  excludedAttachments,
+  comparisonMetadata = null,
+  needsProcessing = false,
+  processingError = null,
+}) {
+  return {
+    answer,
+    sources,
+    documents: documents.map((doc) => ({ id: doc.id, title: doc.title })),
+    ...(compatibilityDocument ? {
+      document: { id: compatibilityDocument.id, title: compatibilityDocument.title },
+    } : {}),
+    sessionId: session.id,
+    mode: answerMode,
+    usedRag,
+    autoProcessed,
+    provider,
+    model,
+    usage,
+    needsProcessing,
+    processingError,
+    excludedAttachments,
+    comparison: comparisonMetadata,
+    messages: {
+      user: userMessage,
+      assistant: assistantMessage,
+    },
+  };
+}
+
+async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEvent }) {
   const cleanedQuestion = cleanQuestion(question);
   const answerMode = normalizeAnswerMode(mode);
   const selectedProviderModel = aiUsageService.resolveModel(model);
   const selectedModel = selectedProviderModel.model;
   const selectedProvider = selectedProviderModel.provider;
-  sendEvent?.('status', { message: 'Checking document...' });
-  const doc = await getProcessableDocument({ id, userId });
-  const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
-  const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
+  sendEvent?.('status', { message: sessionId ? 'Checking session attachments...' : 'Checking document...' });
+  const scope = await resolveAskScope({ id, sessionId, userId });
+  const { session, compatibilityDocument, excluded } = scope;
+  const storedHistory = await chatModel.getRecentMessages(
+    session.id,
+    chatContextService.MAX_HISTORY_MESSAGES
+  );
+  const requestContext = chatContextService.analyzeRequest({
+    question: cleanedQuestion,
+    history: storedHistory,
+    documents: scope.documents,
+  });
+  requestContext.comparisonDebug = {
+    resolvedActiveAttachmentIds: requestContext.activeAttachmentIds,
+    inheritedComparedDocumentIds: requestContext.inheritedComparedDocumentIds,
+    filteredComparedDocumentIds: requestContext.filteredComparedDocumentIds,
+    finalRetrievalQuery: requestContext.retrievalQuery,
+    selectedSourceDocumentIds: [],
+    comparisonEvidenceStrategy: null,
+  };
+  const userMetadata = {
+    intent: requestContext.intent,
+    comparedDocumentIds: requestContext.comparedDocumentIds,
+    substantiveQuestion: requestContext.substantiveQuestion,
+    retrievalQuery: requestContext.retrievalQuery,
+    responseConstraints: requestContext.responseConstraints,
+    comparisonDebug: requestContext.comparisonDebug,
+  };
+  const userMessage = await chatModel.addMessage(
+    session.id,
+    'user',
+    cleanedQuestion,
+    userMetadata
+  );
 
-  let chunks;
-  let autoProcessed;
-  try {
-    ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId, sendEvent }));
-  } catch (err) {
-    if (err.statusCode !== 400) throw err;
-    const answer = 'I could not prepare this document for AI automatically. Please make sure it is a readable text-based PDF, then try asking again.';
+  if (requestContext.comparisonUnavailable) {
+    const answer = chatContextService.buildComparisonUnavailableAnswer(cleanedQuestion);
+    const comparisonMetadata = {
+      strategy: 'active_attachment_scope',
+      confidence: 'none',
+      comparedDocumentIds: requestContext.filteredComparedDocumentIds,
+      ...requestContext.comparisonDebug,
+      comparisonEvidenceStrategy: 'active_attachment_scope',
+    };
+    requestContext.comparisonDebug = comparisonMetadata;
+    const assistantMetadata = buildAssistantMetadata({
+      provider: 'system',
+      model: null,
+      mode: answerMode,
+      usedRag: false,
+      requestContext,
+      comparisonMetadata,
+    });
+    const assistantMessage = await chatModel.addMessage(
+      session.id,
+      'assistant',
+      answer,
+      assistantMetadata
+    );
+    await safeTouchSession(session.id);
+    return {
+      systemResponse: buildScopeResponse({
+        answer,
+        sources: [],
+        documents: scope.documents,
+        compatibilityDocument,
+        session,
+        answerMode,
+        usedRag: false,
+        autoProcessed: false,
+        provider: 'system',
+        model: null,
+        usage: null,
+        userMessage,
+        assistantMessage,
+        excludedAttachments: excluded,
+        comparisonMetadata,
+      }),
+    };
+  }
+
+  const chunkResult = await loadSessionChunks({
+    documents: scope.documents,
+    sessionId: session.id,
+    userId,
+    sendEvent,
+  });
+  const excludedAttachments = {
+    ...excluded,
+    notIndexed: chunkResult.skippedDocumentIds.length,
+  };
+
+  if (!chunkResult.allChunks.length) {
+    const answer = compatibilityDocument
+      ? 'I could not prepare this document for AI automatically. Please make sure it is a readable document, then try asking again.'
+      : 'I could not find any readable, indexed document content in this chat session.';
+    const processingError = 'No usable document chunks are available';
     const assistantMetadata = buildAssistantMetadata({
       provider: 'system',
       model: null,
       mode: answerMode,
       usedRag: false,
       needsProcessing: true,
-      processingError: err.message,
+      processingError,
+      requestContext,
     });
     const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer, assistantMetadata);
     await safeTouchSession(session.id);
 
     return {
-      systemResponse: {
+      systemResponse: buildScopeResponse({
         answer,
         sources: [],
-        document: {
-          id: doc.id,
-          title: doc.title,
-        },
-        sessionId: session.id,
-        mode: answerMode,
-        needsProcessing: true,
-        processingError: err.message,
+        documents: scope.documents,
+        compatibilityDocument,
+        session,
+        answerMode,
         usedRag: false,
+        autoProcessed: chunkResult.autoProcessed,
         provider: 'system',
         model: null,
-        messages: {
-          user: userMessage,
-          assistant: assistantMessage,
-        },
-      },
+        usage: null,
+        userMessage,
+        assistantMessage,
+        excludedAttachments,
+        needsProcessing: true,
+        processingError,
+        comparisonMetadata: null,
+      }),
     };
   }
 
   sendEvent?.('status', { message: 'Searching relevant chunks...' });
-  const relevantChunks = await retrieveChunksForQuestion({
-    docId: doc.id,
-    question: cleanedQuestion,
-    chunks,
-  });
+  const comparisonDocuments = requestContext.intent === 'comparison'
+    ? chunkResult.usableDocuments.filter((document) => (
+      requestContext.comparedDocumentIds.includes(Number(document.id))
+    ))
+    : [];
+  let relevantChunks;
+  let comparisonMetadata = null;
+
+  if (comparisonDocuments.length >= 2) {
+    const comparison = await ragComparisonService.retrieveComparisonEvidence({
+      question: requestContext.retrievalQuery,
+      chunks: chunkResult.allChunks.filter((chunk) => (
+        requestContext.comparedDocumentIds.includes(Number(chunk.doc_id || chunk.metadata?.documentId))
+      )),
+      documents: comparisonDocuments,
+    });
+    comparisonMetadata = comparison.metadata;
+    comparisonMetadata = {
+      ...comparisonMetadata,
+      ...requestContext.comparisonDebug,
+      comparisonEvidenceStrategy: comparison.metadata.strategy,
+    };
+    requestContext.comparisonDebug = comparisonMetadata;
+
+    if (comparison.insufficient) {
+      const answer = ragComparisonService.buildInsufficientEvidenceAnswer(cleanedQuestion);
+      const assistantMetadata = buildAssistantMetadata({
+        provider: 'system',
+        model: null,
+        mode: answerMode,
+        usedRag: false,
+        requestContext,
+        comparisonMetadata,
+      });
+      const assistantMessage = await chatModel.addMessage(
+        session.id,
+        'assistant',
+        answer,
+        assistantMetadata
+      );
+      await safeTouchSession(session.id);
+      return {
+        systemResponse: buildScopeResponse({
+          answer,
+          sources: [],
+          documents: comparisonDocuments,
+          compatibilityDocument,
+          session,
+          answerMode,
+          usedRag: false,
+          autoProcessed: chunkResult.autoProcessed,
+          provider: 'system',
+          model: null,
+          usage: null,
+          userMessage,
+          assistantMessage,
+          excludedAttachments,
+          comparisonMetadata,
+        }),
+      };
+    }
+    relevantChunks = comparison.chunks;
+  } else {
+    relevantChunks = await retrieveChunksForQuestion({
+      docIds: chunkResult.usableDocuments.map((doc) => doc.id),
+      question: requestContext.retrievalQuery,
+      chunks: chunkResult.allChunks,
+    });
+  }
 
   if (!relevantChunks.length) {
     throw createError(400, 'No document context is available for this question');
   }
 
-  const estimatedTokens = estimatePromptTokens({ question: cleanedQuestion, chunks: relevantChunks });
+  const evidenceDocuments = comparisonDocuments.length >= 2
+    ? comparisonDocuments
+    : chunkResult.usableDocuments;
+  const documentsById = new Map(evidenceDocuments.map((doc) => [Number(doc.id), doc]));
+  const validatedEvidence = ragService.buildValidatedEvidence(relevantChunks, documentsById);
+  relevantChunks = validatedEvidence.chunks;
+  const sources = validatedEvidence.sources;
+  if (!relevantChunks.length) {
+    throw createError(400, 'No ownership-valid document context is available for this question');
+  }
+  const estimatedTokens = estimatePromptTokens({
+    question: cleanedQuestion,
+    chunks: relevantChunks,
+    history: requestContext.history,
+    documentTitles: evidenceDocuments.map((document) => document.title),
+    responseConstraints: requestContext.responseConstraints,
+  });
   if (selectedProvider === 'gemini') {
     await aiUsageService.assertQuota({ model: selectedModel, userId, estimatedTokens });
   }
 
-  const sources = ragService.buildSourcePayload(relevantChunks);
+  if (comparisonMetadata) {
+    const selectedSourceDocumentIds = [...new Set(
+      sources.map((source) => Number(source.documentId)).filter(Number.isInteger)
+    )];
+    const normalizedRetrievalTopic = chatContextService.normalizeComparable(
+      requestContext.retrievalQuery
+    );
+    const databaseOnly = /\b(database|db|co so du lieu|persistence)\b/.test(normalizedRetrievalTopic);
+    const groundedAnswer = ragComparisonService.buildGroundedProviderAnswer({
+      claims: comparisonMetadata.allowedDifferenceClaims,
+      databaseOnly,
+      compact: requestContext.formattingOnly && requestContext.responseConstraints.brief,
+    });
+    comparisonMetadata = {
+      ...comparisonMetadata,
+      selectedSourceDocumentIds,
+      sourceOwnershipValidation: validatedEvidence.validation,
+      promptResponseConstraints: requestContext.responseConstraints,
+      groundedAnswer,
+      databaseOnly,
+    };
+    requestContext.comparisonDebug = comparisonMetadata;
+    if (process.env.RAG_COMPARISON_DEBUG === 'true') {
+      console.info('RAG source ownership validation:', validatedEvidence.validation);
+      console.info('RAG prompt response constraints:', requestContext.responseConstraints);
+    }
+  }
 
   return {
     cleanedQuestion,
     answerMode,
     selectedProvider,
     selectedModel,
-    doc,
+    documents: evidenceDocuments,
+    compatibilityDocument,
     session,
     userMessage,
     relevantChunks,
     sources,
-    autoProcessed,
+    autoProcessed: chunkResult.autoProcessed,
+    excludedAttachments,
+    requestContext,
+    comparisonMetadata,
   };
 }
 
-async function askDocument({ id, userId, question, mode, model }) {
-  const prepared = await prepareAskDocument({ id, userId, question, mode, model });
+async function executeAsk({ id, sessionId, userId, question, mode, model }) {
+  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model });
   if (prepared.systemResponse) {
     return prepared.systemResponse;
   }
@@ -419,12 +814,16 @@ async function askDocument({ id, userId, question, mode, model }) {
     answerMode,
     selectedProvider,
     selectedModel,
-    doc,
+    documents,
+    compatibilityDocument,
     session,
     userMessage,
     relevantChunks,
     sources,
     autoProcessed,
+    excludedAttachments,
+    requestContext,
+    comparisonMetadata,
   } = prepared;
   let generationResult;
 
@@ -432,18 +831,25 @@ async function askDocument({ id, userId, question, mode, model }) {
     generationResult = await aiProviderService.generateAnswer({
       provider: selectedProvider,
       question: cleanedQuestion,
-      documentTitle: doc.title,
+      documentTitle: compatibilityDocument?.title,
+      documentTitles: documents.map((doc) => doc.title),
       chunks: relevantChunks,
       mode: answerMode,
       model: selectedModel,
+      history: requestContext.history,
+      responseConstraints: requestContext.responseConstraints,
+      comparisonMetadata,
+      substantiveQuestion: requestContext.substantiveQuestion,
+      retrievalQuery: requestContext.retrievalQuery,
     });
 
     await aiUsageService.logGeminiRequest({
       userId,
-      docId: doc.id,
+      docId: compatibilityDocument?.id || null,
+      sessionId: session.id,
       provider: selectedProvider,
       model: selectedModel,
-      requestType: 'document_qa',
+      requestType: compatibilityDocument ? 'document_qa' : 'session_qa',
       promptTokens: generationResult.usageMetadata?.promptTokens,
       completionTokens: generationResult.usageMetadata?.completionTokens,
       totalTokens: generationResult.usageMetadata?.totalTokens,
@@ -452,10 +858,11 @@ async function askDocument({ id, userId, question, mode, model }) {
   } catch (err) {
     await aiUsageService.logGeminiRequest({
       userId,
-      docId: doc.id,
+      docId: compatibilityDocument?.id || null,
+      sessionId: session.id,
       provider: selectedProvider,
       model: selectedModel,
-      requestType: 'document_qa',
+      requestType: compatibilityDocument ? 'document_qa' : 'session_qa',
       success: false,
       errorCode: err.code || err.statusCode || err.name || 'gemini_error',
     });
@@ -465,7 +872,8 @@ async function askDocument({ id, userId, question, mode, model }) {
     throw createError(503, 'AI service is temporarily unavailable. Please try again');
   }
 
-  const answer = generationResult.answer;
+  const answer = comparisonMetadata?.groundedAnswer
+    || aiProviderService.sanitizeAnswerCitationAttribution(generationResult.answer);
   const assistantMessage = await saveAssistantAnswer({
     sessionId: session.id,
     answer,
@@ -474,32 +882,32 @@ async function askDocument({ id, userId, question, mode, model }) {
     mode: answerMode,
     usedRag: true,
     sources,
+    requestContext,
+    comparisonMetadata,
   });
   const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
-  return {
+  return buildScopeResponse({
     answer,
     sources,
-    document: {
-      id: doc.id,
-      title: doc.title,
-    },
-    sessionId: session.id,
-    mode: answerMode,
+    documents,
+    compatibilityDocument,
+    session,
+    answerMode,
     usedRag: true,
     autoProcessed,
     provider: selectedProvider,
     model: selectedModel,
     usage,
-    messages: {
-      user: userMessage,
-      assistant: assistantMessage,
-    },
-  };
+    userMessage,
+    assistantMessage,
+    excludedAttachments,
+    comparisonMetadata,
+  });
 }
 
-async function askDocumentStream({ id, userId, question, mode, model, sendEvent }) {
-  const prepared = await prepareAskDocument({ id, userId, question, mode, model, sendEvent });
+async function executeAskStream({ id, sessionId, userId, question, mode, model, sendEvent }) {
+  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model, sendEvent });
   if (prepared.systemResponse) {
     sendEvent('token', { text: prepared.systemResponse.answer });
     sendEvent('done', prepared.systemResponse);
@@ -511,12 +919,16 @@ async function askDocumentStream({ id, userId, question, mode, model, sendEvent 
     answerMode,
     selectedProvider,
     selectedModel,
-    doc,
+    documents,
+    compatibilityDocument,
     session,
     userMessage,
     relevantChunks,
     sources,
     autoProcessed,
+    excludedAttachments,
+    requestContext,
+    comparisonMetadata,
   } = prepared;
 
   let answer = '';
@@ -527,14 +939,20 @@ async function askDocumentStream({ id, userId, question, mode, model, sendEvent 
     for await (const event of aiProviderService.streamAnswer({
       provider: selectedProvider,
       question: cleanedQuestion,
-      documentTitle: doc.title,
+      documentTitle: compatibilityDocument?.title,
+      documentTitles: documents.map((doc) => doc.title),
       chunks: relevantChunks,
       mode: answerMode,
       model: selectedModel,
+      history: requestContext.history,
+      responseConstraints: requestContext.responseConstraints,
+      comparisonMetadata,
+      substantiveQuestion: requestContext.substantiveQuestion,
+      retrievalQuery: requestContext.retrievalQuery,
     })) {
       if (event.type === 'token' && event.text) {
         answer += event.text;
-        sendEvent('token', { text: event.text });
+        if (!comparisonMetadata?.groundedAnswer) sendEvent('token', { text: event.text });
       } else if (event.type === 'usage') {
         usageMetadata = event.usageMetadata;
       }
@@ -542,10 +960,11 @@ async function askDocumentStream({ id, userId, question, mode, model, sendEvent 
 
     await aiUsageService.logGeminiRequest({
       userId,
-      docId: doc.id,
+      docId: compatibilityDocument?.id || null,
+      sessionId: session.id,
       provider: selectedProvider,
       model: selectedModel,
-      requestType: 'document_qa',
+      requestType: compatibilityDocument ? 'document_qa' : 'session_qa',
       promptTokens: usageMetadata?.promptTokens,
       completionTokens: usageMetadata?.completionTokens,
       totalTokens: usageMetadata?.totalTokens,
@@ -554,16 +973,20 @@ async function askDocumentStream({ id, userId, question, mode, model, sendEvent 
   } catch (err) {
     await aiUsageService.logGeminiRequest({
       userId,
-      docId: doc.id,
+      docId: compatibilityDocument?.id || null,
+      sessionId: session.id,
       provider: selectedProvider,
       model: selectedModel,
-      requestType: 'document_qa',
+      requestType: compatibilityDocument ? 'document_qa' : 'session_qa',
       success: false,
       errorCode: err.code || err.statusCode || err.name || 'stream_error',
     });
     throw err.publicMessage ? err : createError(503, 'AI service is temporarily unavailable. Please try again');
   }
 
+  answer = comparisonMetadata?.groundedAnswer
+    || aiProviderService.sanitizeAnswerCitationAttribution(answer);
+  if (comparisonMetadata?.groundedAnswer) sendEvent('token', { text: answer });
   const assistantMessage = await saveAssistantAnswer({
     sessionId: session.id,
     answer,
@@ -572,32 +995,50 @@ async function askDocumentStream({ id, userId, question, mode, model, sendEvent 
     mode: answerMode,
     usedRag: true,
     sources,
+    requestContext,
+    comparisonMetadata,
   });
   const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
-  sendEvent('done', {
+  sendEvent('done', buildScopeResponse({
     answer,
     sources,
-    document: {
-      id: doc.id,
-      title: doc.title,
-    },
-    sessionId: session.id,
-    mode: answerMode,
+    documents,
+    compatibilityDocument,
+    session,
+    answerMode,
     usedRag: true,
     autoProcessed,
     provider: selectedProvider,
     model: selectedModel,
     usage,
-    messages: {
-      user: userMessage,
-      assistant: assistantMessage,
-    },
-  });
+    userMessage,
+    assistantMessage,
+    excludedAttachments,
+    comparisonMetadata,
+  }));
+}
+
+async function askDocument(args) {
+  return executeAsk(args);
+}
+
+async function askSession(args) {
+  return executeAsk(args);
+}
+
+async function askDocumentStream(args) {
+  return executeAskStream(args);
+}
+
+async function askSessionStream(args) {
+  return executeAskStream(args);
 }
 
 module.exports = {
   processDocument,
   askDocument,
   askDocumentStream,
+  askSession,
+  askSessionStream,
 };

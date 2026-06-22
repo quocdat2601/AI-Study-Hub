@@ -115,4 +115,32 @@ router.post('/documents/:id/ask', aiController.askDocument);
  */
 router.post('/documents/:id/ask/stream', aiController.askDocumentStream);
 
+/**
+ * @swagger
+ * /api/ai/chat/sessions/{sessionId}/ask:
+ *   post:
+ *     summary: Ask an AI question across active session attachments
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: AI answer with multi-document sources }
+ *       401: { description: Unauthorized }
+ *       404: { description: Owned chat session not found }
+ */
+router.post('/chat/sessions/:sessionId/ask', aiController.askSession);
+
+/**
+ * @swagger
+ * /api/ai/chat/sessions/{sessionId}/ask/stream:
+ *   post:
+ *     summary: Stream an AI answer across active session attachments
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200: { description: Server-sent events stream }
+ */
+router.post('/chat/sessions/:sessionId/ask/stream', aiController.askSessionStream);
+
 module.exports = router;

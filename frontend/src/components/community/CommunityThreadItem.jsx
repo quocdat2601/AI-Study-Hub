@@ -368,16 +368,16 @@ export default function CommunityThreadItem({
       </div>
 
       {activeImageUrl ? (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4 backdrop-blur-sm transition-all duration-300"
           onClick={() => setActiveImageUrl(null)}
         >
           <div className="absolute right-4 top-4 flex items-center gap-3">
-            <a 
-              href={activeImageUrl} 
-              download 
-              target="_blank" 
-              rel="noopener noreferrer" 
+            <a
+              href={activeImageUrl}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/20 transition backdrop-blur border border-white/10"
             >
@@ -388,7 +388,7 @@ export default function CommunityThreadItem({
               </svg>
               <span>Download</span>
             </a>
-            <button 
+            <button
               className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition backdrop-blur border border-white/10 cursor-pointer"
               onClick={() => setActiveImageUrl(null)}
               type="button"
@@ -401,9 +401,9 @@ export default function CommunityThreadItem({
             </button>
           </div>
 
-          <img 
-            src={activeImageUrl} 
-            alt="Full view" 
+          <img
+            src={activeImageUrl}
+            alt="Full view"
             className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl transition-transform duration-200"
             onClick={(e) => e.stopPropagation()}
           />
