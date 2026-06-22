@@ -109,7 +109,7 @@ export function getCommunityBadgeToneClasses(tone, variant = "light") {
   return toneMap[normalizedTone] || toneMap.indigo;
 }
 
-export function renderMarkdownBody(text, React) {
+export function renderMarkdownBody(text, React, onImageClick) {
   if (!text || typeof text !== "string") return null;
 
   const lines = text.split("\n");
@@ -131,14 +131,29 @@ export function renderMarkdownBody(text, React) {
       } else if (match[3] !== undefined) {
         parts.push(React.createElement("em", { key: `i-${match.index}` }, match[3]));
       } else if (match[5] !== undefined) {
+        const imgSrc = match[5];
+        const imgAlt = match[4] || "";
+        const imgElement = React.createElement("img", {
+          key: `img-${match.index}`,
+          src: imgSrc,
+          alt: imgAlt,
+          className: "my-2 max-w-full rounded-xl border border-[#e4e0d8] cursor-zoom-in hover:opacity-95 transition",
+          style: { maxHeight: "480px", display: "block" },
+          onClick: onImageClick ? (e) => {
+            e.preventDefault();
+            onImageClick(imgSrc);
+          } : undefined
+        });
+
         parts.push(
-          React.createElement("img", {
-            key: `img-${match.index}`,
-            src: match[5],
-            alt: match[4] || "",
-            className: "my-2 max-w-full rounded-xl border border-[#dbe3ed]",
-            style: { maxHeight: "480px", display: "block" },
-          })
+          onImageClick 
+            ? imgElement 
+            : React.createElement("a", {
+                key: `img-link-${match.index}`,
+                href: imgSrc,
+                target: "_blank",
+                rel: "noopener noreferrer"
+              }, imgElement)
         );
       }
 

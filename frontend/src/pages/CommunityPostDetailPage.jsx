@@ -608,35 +608,37 @@ export default function CommunityPostDetailPage() {
       openLoginForAction();
       return;
     }
-    if (isPostVotePending || postVotePendingRef.current) {
-      return;
-    }
+    if (postVotePendingRef.current) return;
 
     const previousVoted = Boolean(normalizedDetail.rootPost?.isUpvoted);
     const previousVoteCount = Number(normalizedDetail.rootPost?.metrics?.upvoteCount || 0);
     const nextVoted = !previousVoted;
     const nextVoteCount = Math.max(0, previousVoteCount + (nextVoted ? 1 : -1));
 
+    postVotePendingRef.current = true;
+    setIsPostVotePending(true);
+    setActionError("");
+    setThreadDetail((current) => current ? {
+      ...current,
+      voteCount: nextVoteCount,
+      isUpvoted: nextVoted,
+      viewerUpvoted: nextVoted,
+    } : current);
+    rememberRecentVoteMutation(`post:${activePostId}`);
+
     try {
-      setActionError("");
-      postVotePendingRef.current = true;
-      setIsPostVotePending(true);
-      setThreadDetail((current) => current ? {
-        ...current,
-        voteCount: nextVoteCount,
-        viewerUpvoted: nextVoted,
-      } : current);
-      rememberRecentVoteMutation(`post:${activePostId}`);
       const result = await toggleCommunityPostVote(activePostId);
       setThreadDetail((current) => current ? {
         ...current,
         voteCount: result.voteCount,
+        isUpvoted: result.voted,
         viewerUpvoted: result.voted,
       } : current);
     } catch (err) {
       setThreadDetail((current) => current ? {
         ...current,
         voteCount: previousVoteCount,
+        isUpvoted: previousVoted,
         viewerUpvoted: previousVoted,
       } : current);
       setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update the post vote.");
@@ -651,9 +653,7 @@ export default function CommunityPostDetailPage() {
       openLoginForAction();
       return;
     }
-    if (!reply?.id || pendingReplyVotes[String(reply.id)] || pendingReplyVoteIdsRef.current.has(String(reply.id))) {
-      return;
-    }
+    if (!reply?.id || pendingReplyVoteIdsRef.current.has(String(reply.id))) return;
 
     const replyKey = String(reply.id);
     const previousVoted = Boolean(reply.isUpvoted);
@@ -661,35 +661,33 @@ export default function CommunityPostDetailPage() {
     const nextVoted = !previousVoted;
     const nextVoteCount = Math.max(0, previousVoteCount + (nextVoted ? 1 : -1));
 
-    try {
-      setActionError("");
-      pendingReplyVoteIdsRef.current.add(replyKey);
-      setPendingReplyVotes((current) => ({
+    pendingReplyVoteIdsRef.current.add(replyKey);
+    setPendingReplyVotes((current) => ({ ...current, [replyKey]: true }));
+    setActionError("");
+    setThreadDetail((current) => {
+      if (!current) return current;
+      return {
         ...current,
-        [replyKey]: true,
-      }));
-      setThreadDetail((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          replies: (current.replies || []).map((item) => (
-            String(item.id) === replyKey
-              ? { ...item, voteCount: nextVoteCount, viewerUpvoted: nextVoted }
-              : item
-          )),
-        };
-      });
-      rememberRecentVoteMutation(`reply:${reply.id}`);
+        replies: (current.replies || []).map((item) =>
+          String(item.id) === replyKey
+            ? { ...item, voteCount: nextVoteCount, isUpvoted: nextVoted, viewerUpvoted: nextVoted }
+            : item
+        ),
+      };
+    });
+    rememberRecentVoteMutation(`reply:${reply.id}`);
+
+    try {
       const result = await toggleCommunityReplyVote(reply.id);
       setThreadDetail((current) => {
         if (!current) return current;
         return {
           ...current,
-          replies: (current.replies || []).map((item) => (
+          replies: (current.replies || []).map((item) =>
             String(item.id) === String(reply.id)
-              ? { ...item, voteCount: result.voteCount, viewerUpvoted: result.voted }
+              ? { ...item, voteCount: result.voteCount, isUpvoted: result.voted, viewerUpvoted: result.voted }
               : item
-          )),
+          ),
         };
       });
     } catch (err) {
@@ -697,11 +695,11 @@ export default function CommunityPostDetailPage() {
         if (!current) return current;
         return {
           ...current,
-          replies: (current.replies || []).map((item) => (
+          replies: (current.replies || []).map((item) =>
             String(item.id) === replyKey
-              ? { ...item, voteCount: previousVoteCount, viewerUpvoted: previousVoted }
+              ? { ...item, voteCount: previousVoteCount, isUpvoted: previousVoted, viewerUpvoted: previousVoted }
               : item
-          )),
+          ),
         };
       });
       setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update the reply vote.");
@@ -915,12 +913,12 @@ export default function CommunityPostDetailPage() {
         showCreatedMeta
       />
 
-      <section className="flex items-center gap-4 rounded-[24px] border border-[#dbe3ed] bg-white px-5 py-4 shadow-[0_18px_40px_rgba(20,31,48,0.05)]">
-        <span className="h-px flex-1 bg-[#dbe3ed]" />
-        <h2 className="m-0 text-sm font-black uppercase tracking-[0.9px] text-[#66758a]">
-          Users replies ({normalizedDetail.replies.length})
+      <section className="flex items-center gap-4 rounded-xl border border-[#e4e0d8] bg-white px-5 py-3 shadow-sm">
+        <span className="h-px flex-1 bg-[#e8e4dc]" />
+        <h2 className="m-0 text-xs font-bold uppercase tracking-wider text-[#6b6660]">
+          Replies ({normalizedDetail.replies.length})
         </h2>
-        <span className="h-px flex-1 bg-[#dbe3ed]" />
+        <span className="h-px flex-1 bg-[#e8e4dc]" />
       </section>
 
       <section className="grid gap-4">
@@ -997,15 +995,15 @@ export default function CommunityPostDetailPage() {
         })}
       </section>
 
-      <section className="rounded-[24px] border border-[#dbe3ed] bg-white p-5 shadow-[0_18px_40px_rgba(20,31,48,0.06)]">
+      <section className="rounded-xl border border-[#e4e0d8] bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
-            <p className="m-0 text-xs font-black uppercase tracking-[0.8px] text-[#66758a]">Join the discussion</p>
-            <h2 className="mt-2 text-2xl font-black text-[#172033]">Your reply</h2>
+            <p className="m-0 text-[10px] font-bold uppercase tracking-wider text-[#8c857e]">Join the discussion</p>
+            <h2 className="mt-1 text-xl font-bold text-[#1a1a2e]">Your reply</h2>
           </div>
           {!isAuthLoading && !isAuthenticated ? (
             <Link
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-[#dbe3ed] px-4 text-sm font-black text-[#4648d4] no-underline transition hover:border-[#4648d4] hover:bg-[#eef2ff]"
+              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[#e8e4dc] px-4 text-xs font-bold text-[#4648d4] no-underline transition hover:border-[#4648d4] hover:bg-[#ede9fe]"
               to="/login"
               state={{ from: location }}
             >
@@ -1016,16 +1014,16 @@ export default function CommunityPostDetailPage() {
 
         <form className="grid gap-3" onSubmit={handleSubmitReply}>
           {replyTarget ? (
-            <div className="rounded-[20px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3">
+            <div className="rounded-xl border border-[#e8e4dc] bg-[#faf8f5] px-4 py-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="m-0 text-sm font-black text-[#172033]">
+                  <p className="m-0 text-sm font-bold text-[#1a1a2e]">
                     Replying to {getSafeText(replyTarget.author?.displayName) || getSafeText(replyTarget.author?.email, "Student")}
                     {replyTarget.index ? ` · #${replyTarget.index}` : ""}
                   </p>
                   {replyTarget.id ? (
                     <button
-                      className="mt-1 border-0 bg-transparent p-0 text-left text-xs font-black text-[#4648d4] transition hover:text-[#3537b8]"
+                      className="mt-1 border-0 bg-transparent p-0 text-left text-xs font-bold text-[#4648d4] transition hover:text-[#3537b8]"
                       onClick={() => focusReply(replyTarget.id)}
                       type="button"
                     >
@@ -1033,11 +1031,11 @@ export default function CommunityPostDetailPage() {
                     </button>
                   ) : null}
                   {getSafeText(replyTarget.excerpt) ? (
-                    <p className="mt-2 mb-0 text-sm leading-6 text-[#526173]">{getSafeText(replyTarget.excerpt)}</p>
+                    <p className="mt-2 mb-0 text-sm leading-relaxed text-[#6b6660]">{getSafeText(replyTarget.excerpt)}</p>
                   ) : null}
                 </div>
                 <button
-                  className="rounded-full border border-[#dbe3ed] bg-white px-3 py-1.5 text-xs font-extrabold text-[#172033]"
+                  className="rounded-full border border-[#e8e4dc] bg-white px-3 py-1 text-xs font-bold text-[#6b6660] hover:border-[#4648d4] hover:text-[#4648d4] transition"
                   onClick={() => setReplyTarget(null)}
                   type="button"
                 >
@@ -1048,10 +1046,10 @@ export default function CommunityPostDetailPage() {
           ) : null}
 
           <label className="grid gap-2">
-            <span className="text-sm font-bold text-[#66758a]">Your reply</span>
+            <span className="text-sm font-bold text-[#6b6660]">Your reply</span>
             <textarea
               ref={composerRef}
-              className="min-h-[180px] w-full resize-y rounded-[22px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3 text-[15px] leading-7 text-[#172033] outline-none transition placeholder:text-[#7a8798] focus:border-[#4648d4] focus:bg-white focus:shadow-[0_0_0_4px_rgba(70,72,212,0.12)] disabled:cursor-not-allowed disabled:border-[#dbe3ed] disabled:bg-[#f2f5f8] disabled:text-[#7b8fa4]"
+              className="min-h-[180px] w-full resize-y rounded-xl border border-[#e4e0d8] bg-[#faf8f5] px-4 py-3 text-[15px] leading-relaxed text-[#1a1a2e] outline-none transition placeholder:text-[#8c857e] focus:border-[#4648d4] focus:bg-white focus:shadow-[0_0_0_3px_rgba(70,72,212,0.12)] disabled:cursor-not-allowed disabled:border-[#e8e4dc] disabled:bg-[#f0ece4] disabled:text-[#8c857e]"
               placeholder={isAuthenticated ? "Share your explanation, resource, or study experience..." : "Log in to reply to this thread."}
               value={replyBody}
               onChange={(event) => setReplyBody(event.target.value)}
@@ -1066,14 +1064,14 @@ export default function CommunityPostDetailPage() {
           ) : null}
 
           {!isAuthLoading && !isAuthenticated ? (
-            <div className="rounded-xl border border-dashed border-[#c7d2e2] bg-[#f8fafc] px-4 py-3 text-sm text-[#66758a]">
+            <div className="rounded-xl border border-dashed border-[#e4e0d8] bg-[#faf8f5] px-4 py-3 text-xs text-[#6b6660]">
               Guests can read the thread and view previews. Log in to join the conversation.
             </div>
           ) : null}
 
           <div className="flex items-center justify-end">
             <button
-              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-5 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:border-[#c7d2e2] disabled:bg-[#e5e7eb] disabled:text-[#7f95ac]"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#4648d4] px-6 text-sm font-bold text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:bg-[#e8e4dc] disabled:text-[#8c857e]"
               type="submit"
               disabled={!isAuthenticated || isSubmitting || !replyBody.trim()}
             >
