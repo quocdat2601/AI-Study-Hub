@@ -220,6 +220,52 @@ class DocumentModel {
     return true;
   }
 
+  // Tìm một cloud_file đã có cùng mã nội dung (dedup) — để dùng lại storage_path
+  static async findCloudFileByHash(contentHash) {
+    if (!contentHash) return null;
+
+    const { data, error } = await supabase
+      .from('cloud_files')
+      .select('id, storage_path, mime_type, size_bytes, content_hash')
+      .eq('content_hash', contentHash)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Đếm số cloud_file còn trỏ tới cùng object vật lý — để biết khi nào được xóa file thật
+  static async countCloudFilesByStoragePath(storagePath) {
+    const { count, error } = await supabase
+      .from('cloud_files')
+      .select('*', { count: 'exact', head: true })
+      .eq('storage_path', storagePath);
+
+    if (error) throw error;
+    return count || 0;
+  }
+
+  // Tìm một document đã trích xuất xong (cùng nội dung) để sao chép text + chunks
+  static async findReadySourceByHash(contentHash, excludeDocId = null) {
+    if (!contentHash) return null;
+
+    let query = supabase
+      .from('documents')
+      .select('id, extracted_text, extraction_status, extraction_metadata, cloud_files!inner (content_hash)')
+      .eq('cloud_files.content_hash', contentHash)
+      .eq('extraction_status', 'ready')
+      .limit(1);
+
+    if (excludeDocId != null) {
+      query = query.neq('id', excludeDocId);
+    }
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
   static async create(docData) {
     const { data, error } = await supabase
       .from('documents')
