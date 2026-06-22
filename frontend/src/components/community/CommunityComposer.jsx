@@ -199,7 +199,7 @@ function PickerCard({ icon, title, subtitle, actionLabel, selectedLabel, isOpen,
           {actionLabel}
         </button>
       </div>
-      {isOpen ? <div className="mt-4 grid gap-2">{children}</div> : null}
+      {isOpen ? <div className="mt-4 grid gap-2 max-h-[260px] overflow-y-auto pr-1">{children}</div> : null}
     </div>
   );
 }

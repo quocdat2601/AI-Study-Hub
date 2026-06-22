@@ -374,8 +374,8 @@ class CommunityModel {
       .from('community_reports')
       .select(`
         *,
-        community_posts (id, title, post_type, status, subject_id),
-        community_replies (id, post_id, body, status),
+        community_posts (id, title, post_type, status, subject_id, body),
+        community_replies (id, post_id, body, status, community_posts!community_replies_post_id_fkey (id, title)),
         reporters:users!community_reports_reported_by_fkey (id, email, role, status),
         resolvers:users!community_reports_resolved_by_fkey (id, email, role, status)
       `)
@@ -393,13 +393,45 @@ class CommunityModel {
       .eq('id', id)
       .select(`
         *,
-        community_posts (id, title, post_type, status),
-        community_replies (id, post_id, body, status)
+        community_posts (id, title, post_type, status, body),
+        community_replies (id, post_id, body, status, community_posts!community_replies_post_id_fkey (id, title))
       `)
       .maybeSingle();
 
     if (error) throw error;
     return data;
+  }
+
+  static async resolveOpenReportsForPost(postId, adminUserId) {
+    const { data, error } = await supabase
+      .from('community_reports')
+      .update({
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        resolved_by: adminUserId,
+      })
+      .eq('post_id', postId)
+      .eq('status', 'open')
+      .select();
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async resolveOpenReportsForReply(replyId, adminUserId) {
+    const { data, error } = await supabase
+      .from('community_reports')
+      .update({
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        resolved_by: adminUserId,
+      })
+      .eq('reply_id', replyId)
+      .eq('status', 'open')
+      .select();
+
+    if (error) throw error;
+    return data || [];
   }
 }
 

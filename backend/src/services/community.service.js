@@ -1010,6 +1010,7 @@ async function listReports({ status, limit }) {
     post: report.community_posts ? {
       id: report.community_posts.id,
       title: report.community_posts.title,
+      body: report.community_posts.body,
       postType: report.community_posts.post_type,
       status: report.community_posts.status,
     } : null,
@@ -1018,6 +1019,7 @@ async function listReports({ status, limit }) {
       postId: report.community_replies.post_id,
       body: summarizeText(report.community_replies.body, 160),
       status: report.community_replies.status,
+      postTitle: report.community_replies.community_posts?.title || report.community_replies['community_posts!community_replies_post_id_fkey']?.title,
     } : null,
   }));
 }
@@ -1035,6 +1037,14 @@ async function updatePostModeration({ postId, adminUserId, status }) {
   }
 
   const updated = await CommunityModel.updatePost(normalizedPostId, { status: normalizedStatus });
+  
+  const resolvedReports = await CommunityModel.resolveOpenReportsForPost(normalizedPostId, adminUserId);
+  for (const r of resolvedReports) {
+    if (r.reported_by) {
+      await notify(r.reported_by, 'system', 'Your community report has been reviewed');
+    }
+  }
+
   activityService.log({
     userId: adminUserId,
     action: 'community.post.moderate',
@@ -1067,6 +1077,13 @@ async function updateReplyModeration({ replyId, adminUserId, status }) {
     status: normalizedStatus,
     is_accepted: false,
   });
+
+  const resolvedReports = await CommunityModel.resolveOpenReportsForReply(normalizedReplyId, adminUserId);
+  for (const r of resolvedReports) {
+    if (r.reported_by) {
+      await notify(r.reported_by, 'system', 'Your community report has been reviewed');
+    }
+  }
 
   const post = await CommunityModel.findPostById(reply.post_id);
   if (post && Number(post.solved_reply_id) === normalizedReplyId) {
@@ -1117,7 +1134,7 @@ async function resolveReport({ reportId, adminUserId, status }) {
   });
 
   if (report.reported_by) {
-    notifyUser(report.reported_by, 'Your community report has been reviewed');
+    await notify(report.reported_by, 'system', 'Your community report has been reviewed');
   }
 
   return {

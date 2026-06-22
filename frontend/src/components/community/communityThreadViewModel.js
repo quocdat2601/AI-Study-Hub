@@ -288,6 +288,7 @@ export function normalizeThreadPost(rawRecord = {}, index = 1) {
 
   return {
     id: rawRecord.id || rawRecord.reply_id || rawRecord.post_id || `community-item-${index}`,
+    postId: rawRecord.postId || rawRecord.post_id || null,
     index,
     href: rawRecord.id || rawRecord.post_id ? `/community/posts/${rawRecord.id || rawRecord.post_id}` : "",
     title: getSafeText(rawRecord.title || rawRecord.post_title || rawRecord.subject),

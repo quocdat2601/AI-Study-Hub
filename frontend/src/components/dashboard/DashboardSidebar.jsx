@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import useTranslation from "../../hooks/useTranslation.js";
+import { useAuth } from "../../contexts/AuthContext.jsx";
 
 export const dashboardSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard", labelKey: "nav.dashboard", to: "/dashboard" },
@@ -139,6 +140,7 @@ function DefaultSidebar({
 }) {
   const { t } = useTranslation();
   const pathname = useLocation().pathname;
+  const { user } = useAuth();
 
   return (
     <aside
@@ -178,6 +180,17 @@ function DefaultSidebar({
             <span className="truncate">{t(item.labelKey || item.id)}</span>
           </Link>
         ))}
+        {user?.role === "admin" ? (
+          <Link
+            className="no-caret flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-bold text-indigo-600 no-underline transition hover:bg-slate-50 hover:text-indigo-700 dark:text-indigo-400 dark:hover:bg-slate-800"
+            to="/admin"
+          >
+            <span className="flex h-5 w-5 flex-none items-center justify-center">
+              <SidebarIcon name="users" />
+            </span>
+            <span className="truncate">Admin Panel</span>
+          </Link>
+        ) : null}
       </nav>
 
       <div className="mt-auto grid gap-1 border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -236,6 +249,7 @@ function ControlledSidebar({
   const pathname = useLocation().pathname;
   const initials = getInitials(userName);
   const activeId = activeSection || "";
+  const { user } = useAuth();
 
   return (
     <aside
@@ -321,6 +335,18 @@ function ControlledSidebar({
       </nav>
 
       <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
+        {user?.role === "admin" && (pathname.startsWith("/admin") || activeSection) ? (
+          <Link
+            className={navItemClass(isCollapsed, false)}
+            to="/dashboard"
+          >
+            <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
+              <SidebarIcon name="dashboard" />
+            </span>
+            {!isCollapsed ? <b className="truncate text-[#4648d4]">Student View</b> : null}
+          </Link>
+        ) : null}
+
         <div className={isCollapsed ? "flex justify-center" : "flex items-center gap-2 px-1"}>
           <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
             {initials}

@@ -14,6 +14,7 @@ import {
 } from "../components/community/communityThreadViewModel.js";
 import { formatForumDate, getSafeText } from "../components/community/communityUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { useToast } from "../contexts/ToastContext.jsx";
 import useCommunityRealtime from "../hooks/useCommunityRealtime.js";
 import { getDocumentSignedUrl } from "../services/documentApi.js";
 import {
@@ -127,7 +128,7 @@ export default function CommunityPostDetailPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const composerRef = useRef(null);
-  const noticeTimeoutRef = useRef(null);
+  const { addToast } = useToast();
   const highlightTimeoutRef = useRef(null);
   const handledReplyHashRef = useRef("");
   const isMountedRef = useRef(true);
@@ -146,7 +147,6 @@ export default function CommunityPostDetailPage() {
   const [isPostVotePending, setIsPostVotePending] = useState(false);
   const [replyTarget, setReplyTarget] = useState(null);
   const [pendingScrollReplyId, setPendingScrollReplyId] = useState(null);
-  const [notice, setNotice] = useState(null);
   const [reportTarget, setReportTarget] = useState(null);
   const [reportReason, setReportReason] = useState("");
   const [reportError, setReportError] = useState("");
@@ -306,15 +306,11 @@ export default function CommunityPostDetailPage() {
   );
 
   function showNotice(message, tone = "success") {
-    if (noticeTimeoutRef.current) {
-      clearTimeout(noticeTimeoutRef.current);
-    }
-
-    setNotice({ message, tone });
-    noticeTimeoutRef.current = setTimeout(() => {
-      setNotice(null);
-      noticeTimeoutRef.current = null;
-    }, 2600);
+    addToast({
+      type: tone === "info" ? "info" : tone === "error" ? "error" : "success",
+      title: tone === "error" ? "Error" : tone === "info" ? "Info" : "Success",
+      message: message,
+    });
   }
 
   function getReplyAnchorId(replyId) {
@@ -588,8 +584,11 @@ export default function CommunityPostDetailPage() {
     }
   }
 
-  async function handleShare(post) {
-    const shareUrl = `${window.location.origin}/community/posts/${post?.id || activePostId}`;
+  async function handleShare(item) {
+    const isReply = Boolean(item && item.postId);
+    const targetPostId = isReply ? item.postId : (item?.id || activePostId);
+    const hash = isReply ? `#community-reply-${item.id}` : "";
+    const shareUrl = `${window.location.origin}/community/posts/${targetPostId}${hash}`;
 
     try {
       if (navigator.clipboard?.writeText) {
@@ -876,13 +875,6 @@ export default function CommunityPostDetailPage() {
         isDanger
       />
 
-      {notice ? (
-        <div className={notice.tone === "success"
-          ? "fixed bottom-5 right-5 z-40 rounded-2xl border border-[#bfe5d3] bg-[#ecfff5] px-4 py-3 text-sm font-black text-[#166534] shadow-[0_18px_40px_rgba(20,31,48,0.16)]"
-          : "fixed bottom-5 right-5 z-40 rounded-2xl border border-[#dbe3ed] bg-white px-4 py-3 text-sm font-black text-[#172033] shadow-[0_18px_40px_rgba(20,31,48,0.16)]"}>
-          {notice.message}
-        </div>
-      ) : null}
 
       <CommunityBanner
         title={normalizedDetail.rootPost.title || "Untitled thread"}
