@@ -244,8 +244,6 @@ body,
   }
 }
 
-}
-
 .composer-editor[contenteditable="true"]:empty::before {
   content: attr(placeholder);
   color: #8c857e;
