@@ -1,4 +1,4 @@
-﻿const supabase = require('../config/supabase');
+const supabase = require('../config/supabase');
 const TagModel = require('./tag.model');
 
 const DOCUMENT_SELECT = `
@@ -79,6 +79,7 @@ class DocumentModel {
     const doc = await this.findById(id);
     if (!doc) return null;
     if (doc.user_id === userId) return doc;
+    if (doc.is_public) return doc;
 
     const { data: share, error } = await supabase
       .from('doc_shares')
