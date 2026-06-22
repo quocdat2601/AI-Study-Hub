@@ -154,6 +154,35 @@ export function PlusIcon(props) {
   );
 }
 
+export function XIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </Icon>
+  );
+}
+
+export function UploadIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M12 16V4" />
+      <path d="m7 9 5-5 5 5" />
+      <path d="M5 20h14" />
+    </Icon>
+  );
+}
+
+export function RefreshIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M20 7v5h-5" />
+      <path d="M4 17v-5h5" />
+      <path d="M6.1 8.2A7 7 0 0 1 18.5 6L20 7" />
+      <path d="M17.9 15.8A7 7 0 0 1 5.5 18L4 17" />
+    </Icon>
+  );
+}
+
 export function ChevronLeftIcon(props) {
   return (
     <Icon {...props}>

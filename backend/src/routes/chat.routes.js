@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const chatController = require('../controllers/chat.controller');
 const verifyToken = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 /**
  * @swagger
@@ -29,6 +30,16 @@ router.use(verifyToken);
 
 router.get('/sessions', chatController.listSessions);
 router.get('/session/:docId', chatController.getOrCreateSession);
+
+router.post('/sessions/:sessionId/documents', chatController.attachExistingDocument);
+router.post(
+  '/sessions/:sessionId/documents/upload',
+  upload.single('file'),
+  chatController.uploadSessionDocument
+);
+router.delete('/sessions/:sessionId/documents/:documentId', chatController.softDetachDocument);
+router.post('/sessions/:sessionId/documents/:documentId/restore', chatController.restoreDocument);
+router.post('/sessions/:sessionId/documents/:documentId/save-to-library', chatController.saveDocumentToLibrary);
 
 /**
  * @swagger

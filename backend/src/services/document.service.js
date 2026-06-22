@@ -110,6 +110,15 @@ async function canUseDocumentInChat(userId, id) {
   return canReadDocument(userId, id);
 }
 
+async function canAttachDocumentToSession(userId, id) {
+  const doc = await documentModel.findById(id);
+  if (!doc) return null;
+  if (String(doc.user_id) === String(userId) || doc.is_public) return doc;
+
+  const share = await documentModel.findShareByDocAndRecipient(doc.id, userId);
+  return share?.status === 'active' ? doc : null;
+}
+
 async function canEditDocument(userId, id) {
   return documentModel.findOwnedById(id, userId);
 }
@@ -272,14 +281,6 @@ async function deleteDocument({ document, userId }) {
 
 
 
-  if (storagePath) {
-
-    await supabaseService.deleteFile(storagePath);
-
-  }
-
-
-
   await documentModel.delete(document.id);
 
 
@@ -287,6 +288,22 @@ async function deleteDocument({ document, userId }) {
   if (fileId) {
 
     await documentModel.deleteCloudFile(fileId);
+
+  }
+
+
+
+  // Chỉ xóa object vật lý khi không còn cloud_file nào khác trỏ tới (dedup-safe)
+
+  if (storagePath) {
+
+    const stillReferenced = await documentModel.countCloudFilesByStoragePath(storagePath);
+
+    if (stillReferenced === 0) {
+
+      await supabaseService.deleteFile(storagePath);
+
+    }
 
   }
 
@@ -671,6 +688,7 @@ module.exports = {
   buildPublicDocumentPreview,
   canReadDocument,
   canUseDocumentInChat,
+  canAttachDocumentToSession,
   canEditDocument,
   updateVisibility,
   updateDocument,

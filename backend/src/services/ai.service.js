@@ -74,17 +74,29 @@ async function extractTextFromStorage(doc) {
   return documentTextService.extractTextFromBuffer(buffer, mimeType);
 }
 
-async function getProcessableDocument({ id, userId }) {
+async function getProcessableDocument({ id, userId, allowSessionScoped = false, sessionId }) {
   const docId = normalizeNumericId(id, 'documentId');
-  const doc = await documentService.canUseDocumentInChat(userId, docId);
+  const doc = allowSessionScoped
+    ? await documentModel.findActiveSessionScopedById(docId, sessionId)
+    : await documentService.canUseDocumentInChat(userId, docId);
   if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+  if (allowSessionScoped && String(doc.user_id) !== String(userId)) {
     throw createError(404, 'Document not found');
   }
   return doc;
 }
 
-async function processDocument({ id, userId, sendEvent, force = false }) {
-  const doc = await getProcessableDocument({ id, userId });
+async function processDocument({
+  id,
+  userId,
+  sendEvent,
+  force = false,
+  allowSessionScoped = false,
+  sessionId,
+}) {
+  const doc = await getProcessableDocument({ id, userId, allowSessionScoped, sessionId });
   const existingText = String(doc.extracted_text || '').trim();
   let text = existingText;
   let extractionStatus = doc.extraction_status;

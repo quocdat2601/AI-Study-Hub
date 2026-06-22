@@ -50,6 +50,11 @@ function buildChatDocumentPreview(doc) {
     thumbnailUrl: doc.thumbnailUrl || null,
     isPublic: Boolean(doc.is_public),
     fileType: preview.fileType,
+    extractionStatus: doc.extraction_status,
+    documentScope: doc.document_scope || 'library',
+    lifecycleStatus: doc.lifecycle_status || 'active',
+    originSessionId: doc.origin_session_id || null,
+    expiresAt: doc.expires_at || null,
   };
 }
 
