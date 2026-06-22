@@ -8,7 +8,9 @@ async function getHome(req, res, next) {
       tab: req.query.tab,
       postType: req.query.postType,
       subjectCode: req.query.subject,
-      limit: req.query.limit,
+      search: req.query.search,
+      page: req.query.page,
+      pageSize: req.query.pageSize,
       viewerContext,
     }));
   } catch (err) {
@@ -45,6 +47,14 @@ async function getPostById(req, res, next) {
 async function getSubjects(req, res, next) {
   try {
     res.json(await communityService.listPublicSubjects());
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getUserProfile(req, res, next) {
+  try {
+    res.json(await communityService.getUserCommunityProfile(req.params.userId));
   } catch (err) {
     next(err);
   }
@@ -178,6 +188,7 @@ module.exports = {
   getFeed,
   getPostById,
   getSubjects,
+  getUserProfile,
   createPost,
   updatePost,
   deletePost,

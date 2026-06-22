@@ -7,6 +7,7 @@ class NotificationModel {
       type: notificationData.type || 'share',
       message: notificationData.message,
       ref_doc_id: notificationData.ref_doc_id || notificationData.refDocId || null,
+      ref_post_id: notificationData.ref_post_id || notificationData.refPostId || null,
     };
     const { data, error } = await supabase
       .from('notifications')

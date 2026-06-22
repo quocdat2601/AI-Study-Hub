@@ -151,14 +151,15 @@ function buildSentencePreview(text, maxSentences = 3, maxChars = 320) {
   return `${preview.slice(0, maxChars)}...`;
 }
 
-async function notifyUser(userId, message) {
+async function notify(userId, type, message, refPostId = null) {
   if (!userId || !message) return;
 
   try {
     await NotificationModel.create({
       user_id: userId,
-      type: 'system',
+      type,
       message,
+      ref_post_id: refPostId,
     });
   } catch (err) {
     console.error('Notification create failed:', err.message);
@@ -467,11 +468,13 @@ function sortFeed(posts, tab) {
   });
 }
 
-async function listPublicFeed({ tab, postType, subjectCode, limit, viewerContext = {} }) {
+async function listPublicFeed({ tab, postType, subjectCode, search, page, pageSize, viewerContext = {} }) {
   const normalizedTab = normalizeTab(tab);
   const normalizedPostType = normalizePostType(postType);
   const normalizedSubjectCode = String(subjectCode || '').trim().toUpperCase();
-  const normalizedLimit = normalizeLimit(limit);
+  const normalizedPage = Math.max(1, Number.isInteger(Number(page)) ? Number(page) : 1);
+  const normalizedPageSize = Math.min(50, Math.max(1, Number.isInteger(Number(pageSize)) ? Number(pageSize) : 15));
+  const normalizedSearch = String(search || '').trim().toLowerCase();
   const posts = await CommunityModel.listPosts();
   const activePosts = posts.filter((post) => post.status === 'active');
   let filtered = activePosts;
@@ -485,11 +488,31 @@ async function listPublicFeed({ tab, postType, subjectCode, limit, viewerContext
     includeFullAttachments: false,
     viewerUserId: viewerContext.userId || null,
   });
+
   if (normalizedSubjectCode) {
     hydrated = hydrated.filter((post) => (post.subjects || []).some((subject) => subject.code === normalizedSubjectCode));
   }
 
-  return sortFeed(hydrated, normalizedTab).slice(0, normalizedLimit);
+  if (normalizedSearch) {
+    hydrated = hydrated.filter((post) => {
+      const haystack = [
+        post.title,
+        post.body,
+        post.excerpt,
+        ...(post.subjects || []).flatMap((s) => [s.code, s.name]),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }
+
+  const sorted = sortFeed(hydrated, normalizedTab);
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize));
+  const safePage = Math.min(normalizedPage, totalPages);
+  const start = (safePage - 1) * normalizedPageSize;
+  const posts_page = sorted.slice(start, start + normalizedPageSize);
+
+  return { posts: posts_page, total, page: safePage, pageSize: normalizedPageSize, totalPages };
 }
 
 async function getPublicPostById(id, viewerContext = {}) {
@@ -773,11 +796,11 @@ async function addReply({ postId, userId, body, parentReplyId }) {
   });
 
   if (String(post.user_id) !== String(userId)) {
-    notifyUser(post.user_id, `New reply on your community post "${post.title}"`);
+    notify(post.user_id, 'community_reply', `Someone replied to your post "${post.title}"`, normalizedPostId);
   }
 
   if (parentReply && String(parentReply.user_id) !== String(userId)) {
-    notifyUser(parentReply.user_id, `New reply to your comment on "${post.title}"`);
+    notify(parentReply.user_id, 'community_reply', `Someone replied to your comment on "${post.title}"`, normalizedPostId);
   }
 
   return getPublicPostById(normalizedPostId);
@@ -812,6 +835,10 @@ async function togglePostVote({ postId, userId }) {
     targetType: 'community_post',
     targetId: normalizedPostId,
   });
+
+  if (voted && String(post.user_id) !== String(userId)) {
+    notify(post.user_id, 'community_upvote', `Someone upvoted your post "${post.title}"`, normalizedPostId);
+  }
 
   const [hydrated] = await hydratePosts([post], {
     includeReplies: false,
@@ -854,6 +881,13 @@ async function toggleReplyVote({ replyId, userId }) {
     targetId: normalizedReplyId,
   });
 
+  if (voted && String(reply.user_id) !== String(userId)) {
+    const post = await CommunityModel.findPostById(reply.post_id);
+    if (post) {
+      notify(reply.user_id, 'community_upvote', `Someone upvoted your reply on "${post.title}"`, reply.post_id);
+    }
+  }
+
   const votes = await CommunityModel.listVotesForReplies([normalizedReplyId]);
   return {
     replyId: normalizedReplyId,
@@ -894,7 +928,7 @@ async function acceptReply({ postId, replyId, userId }) {
   });
 
   if (String(reply.user_id) !== String(userId)) {
-    notifyUser(reply.user_id, `Your reply was accepted on "${post.title}"`);
+    notify(reply.user_id, 'community_accepted', `Your reply was accepted as the answer on "${post.title}"`, normalizedPostId);
   }
 
   return getPublicPostById(normalizedPostId);
@@ -1126,15 +1160,52 @@ async function listTopContributors(limit = 5) {
     .slice(0, Math.max(1, Number(limit) || 5));
 }
 
-async function getCommunityHome({ tab, postType, subjectCode, limit, viewerContext = {} }) {
-  const [feed, subjects, topContributors] = await Promise.all([
-    listPublicFeed({ tab, postType, subjectCode, limit, viewerContext }),
+async function getUserCommunityProfile(userId) {
+  const normalizedUserId = normalizeNumericId(userId, 'userId');
+  const allPosts = await CommunityModel.listPosts();
+  const userPosts = allPosts.filter((p) => Number(p.user_id) === normalizedUserId && p.status === 'active');
+
+  const hydratedPosts = await hydratePosts(userPosts, {
+    includeReplies: false,
+    includeFullAttachments: false,
+  });
+
+  const author = hydratedPosts[0]?.author || null;
+
+  if (!author && userPosts.length === 0) {
+    throw createError(404, 'User not found or has no community activity');
+  }
+
+  const totalVotesReceived = hydratedPosts.reduce((sum, p) => sum + Math.max(0, p.voteCount || 0), 0);
+
+  const recentPosts = hydratedPosts
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 10);
+
+  return {
+    user: author,
+    stats: {
+      postCount: hydratedPosts.length,
+      totalVotesReceived,
+      utilityPoints: author?.utilityPoints || totalVotesReceived,
+    },
+    recentPosts,
+  };
+}
+
+async function getCommunityHome({ tab, postType, subjectCode, search, page, pageSize, viewerContext = {} }) {
+  const [feedResult, subjects, topContributors] = await Promise.all([
+    listPublicFeed({ tab, postType, subjectCode, search, page, pageSize, viewerContext }),
     listPublicSubjects(),
     listTopContributors(5),
   ]);
 
   return {
-    feed,
+    feed: feedResult.posts,
+    total: feedResult.total,
+    page: feedResult.page,
+    pageSize: feedResult.pageSize,
+    totalPages: feedResult.totalPages,
     subjects,
     topContributors,
   };
@@ -1143,6 +1214,7 @@ async function getCommunityHome({ tab, postType, subjectCode, limit, viewerConte
 module.exports = {
   getCommunityHome,
   listPublicFeed,
+  getUserCommunityProfile,
   getPublicPostById,
   listPublicSubjects,
   createPost,

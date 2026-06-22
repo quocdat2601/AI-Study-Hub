@@ -28,5 +28,6 @@ router.get('/community', communityController.getHome);
 router.get('/community/feed', communityController.getFeed);
 router.get('/community/posts/:id', communityController.getPostById);
 router.get('/community/subjects', communityController.getSubjects);
+router.get('/community/users/:userId', communityController.getUserProfile);
 
 module.exports = router;

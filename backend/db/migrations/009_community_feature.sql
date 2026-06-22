@@ -127,3 +127,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_community_reports_unique_open_reply
   WHERE reply_id IS NOT NULL
     AND post_id IS NULL
     AND status = 'open';
+
+-- Notification updates for community
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS ref_post_id INT REFERENCES community_posts(id) ON DELETE CASCADE;
+
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN ('share', 'system', 'community_reply', 'community_upvote', 'community_accepted'));
+
