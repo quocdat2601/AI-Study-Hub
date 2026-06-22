@@ -1,4 +1,5 @@
 const SELECTED_MODEL_STORAGE_KEY = "aiStudyHub.workspace.selectedModel";
+const SELECTED_SESSIONS_STORAGE_KEY = "aiStudyHub.workspace.sessionsByDocument";
 
 function readStoredSelectedModel() {
   if (typeof window === "undefined") return "";
@@ -24,14 +25,32 @@ function writeStoredSelectedModel(model) {
   }
 }
 
+function readStoredSessions() {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(SELECTED_SESSIONS_STORAGE_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredSessions(sessions) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SELECTED_SESSIONS_STORAGE_KEY, JSON.stringify(sessions || {}));
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
+}
+
 const workspaceCache = {
   documents: null,
   selectedId: null,
-  messagesByDocId: {},
+  messagesBySessionId: {},
   processResultsByDocId: {},
   scrollTopByDocId: {},
   selectedModelByDocId: {},
-  sessionsByDocId: {},
+  sessionsByDocId: readStoredSessions(),
   selectedModel: readStoredSelectedModel(),
   availableModels: null,
   modelStatus: null,
@@ -49,12 +68,13 @@ export function getWorkspaceCache() {
 
 export function getCachedDocumentChat(docId) {
   const key = docKey(docId);
+  const sessionId = workspaceCache.sessionsByDocId[key] || null;
   return {
-    messages: workspaceCache.messagesByDocId[key] || [],
+    messages: sessionId ? workspaceCache.messagesBySessionId[String(sessionId)] || [] : [],
     processResult: workspaceCache.processResultsByDocId[key] || null,
     scrollTop: workspaceCache.scrollTopByDocId[key],
     selectedModel: workspaceCache.selectedModelByDocId[key] || "",
-    sessionId: workspaceCache.sessionsByDocId[key] || null,
+    sessionId,
   };
 }
 
@@ -63,7 +83,8 @@ export function cacheDocumentChat(docId, updates) {
   if (!key) return;
 
   if (Object.prototype.hasOwnProperty.call(updates, "messages")) {
-    workspaceCache.messagesByDocId[key] = updates.messages || [];
+    const sessionId = updates.sessionId || workspaceCache.sessionsByDocId[key];
+    if (sessionId) workspaceCache.messagesBySessionId[String(sessionId)] = updates.messages || [];
   }
   if (Object.prototype.hasOwnProperty.call(updates, "processResult")) {
     workspaceCache.processResultsByDocId[key] = updates.processResult || null;
@@ -76,7 +97,26 @@ export function cacheDocumentChat(docId, updates) {
   }
   if (Object.prototype.hasOwnProperty.call(updates, "sessionId")) {
     workspaceCache.sessionsByDocId[key] = updates.sessionId || null;
+    writeStoredSessions(workspaceCache.sessionsByDocId);
   }
+}
+
+export function removeCachedSession(sessionId) {
+  const normalizedId = Number(sessionId);
+  for (const [key, value] of Object.entries(workspaceCache.sessionsByDocId)) {
+    if (Number(value) === normalizedId) workspaceCache.sessionsByDocId[key] = null;
+  }
+  writeStoredSessions(workspaceCache.sessionsByDocId);
+  delete workspaceCache.messagesBySessionId[String(sessionId)];
+}
+
+export function getCachedSessionMessages(sessionId) {
+  return workspaceCache.messagesBySessionId[String(sessionId || "")] || [];
+}
+
+export function cacheSessionMessages(sessionId, messages) {
+  if (!sessionId) return;
+  workspaceCache.messagesBySessionId[String(sessionId)] = messages || [];
 }
 
 export function cacheWorkspaceState(updates) {

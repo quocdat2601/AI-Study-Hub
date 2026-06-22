@@ -28,7 +28,21 @@ async function askDocument(req, res, next) {
   }
 }
 
-async function askDocumentStream(req, res, next) {
+async function askSession(req, res, next) {
+  try {
+    res.json(await aiService.askSession({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      question: req.body.question,
+      mode: req.body.mode,
+      model: req.body.model,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function askDocumentStream(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
@@ -42,6 +56,35 @@ async function askDocumentStream(req, res, next) {
   try {
     await aiService.askDocumentStream({
       id: req.params.id,
+      userId: req.user.id,
+      question: req.body.question,
+      mode: req.body.mode,
+      model: req.body.model,
+      sendEvent,
+    });
+    res.end();
+  } catch (err) {
+    sendEvent('error', {
+      error: err.publicMessage || err.message || 'AI service is temporarily unavailable. Please try again',
+    });
+    res.end();
+  }
+}
+
+async function askSessionStream(req, res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  function sendEvent(event, data) {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  }
+
+  try {
+    await aiService.askSessionStream({
+      sessionId: req.params.sessionId,
       userId: req.user.id,
       question: req.body.question,
       mode: req.body.mode,
@@ -80,6 +123,8 @@ module.exports = {
   processDocument,
   askDocument,
   askDocumentStream,
+  askSession,
+  askSessionStream,
   getUsage,
   getModelStatus,
 };

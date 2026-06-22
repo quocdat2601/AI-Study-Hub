@@ -9,6 +9,7 @@ const createError = require('../utils/createError');
 const MAX_MESSAGE_CHARS = 4000;
 const PUBLIC_CHAT_TOKEN_BYTES = 24;
 const MAX_CONTEXT_CHARS = 16000;
+const MAX_SESSION_TITLE_CHARS = 120;
 
 function cleanMessage(content) {
   const cleaned = String(content || '').trim();
@@ -57,6 +58,14 @@ function buildChatDocumentPreview(doc) {
   };
 }
 
+function cleanSessionTitle(title, fallback = 'New chat') {
+  const cleaned = String(title || '').replace(/\s+/g, ' ').trim() || fallback;
+  if (cleaned.length > MAX_SESSION_TITLE_CHARS) {
+    throw createError(400, `Session title is too long. Maximum is ${MAX_SESSION_TITLE_CHARS} characters`);
+  }
+  return cleaned;
+}
+
 function buildSessionPayload(session, documents, messages, canWrite) {
   return {
     session: {
@@ -65,6 +74,7 @@ function buildSessionPayload(session, documents, messages, canWrite) {
       createdAt: session.created_at,
       updatedAt: session.updated_at,
       lastActivityAt: session.last_activity_at,
+      primaryDocumentId: session.primary_document_id,
     },
     documents: documents.map(buildChatDocumentPreview),
     messages,
@@ -156,6 +166,103 @@ async function buildChatContext(documents) {
   return context.trim() || 'No attached document text is available yet.';
 }
 
+function mapSessionSummary(session) {
+  const now = Date.now();
+  const activeAttachments = (session.chat_session_documents || []).filter((link) => {
+    const document = link.documents;
+    if (link.removed_at || !document || document.deleted_at) return false;
+    if (document.lifecycle_status !== 'active') return false;
+    return !document.expires_at || new Date(document.expires_at).getTime() > now;
+  });
+  return {
+    id: session.id,
+    title: session.title || 'New chat',
+    createdAt: session.created_at,
+    updatedAt: session.updated_at,
+    lastActivityAt: session.last_activity_at,
+    primaryDocumentId: session.primary_document_id,
+    attachmentCount: activeAttachments.length,
+    documentIds: activeAttachments.map((link) => Number(link.doc_id)),
+  };
+}
+
+async function listSessions({ userId, documentId }) {
+  const primaryDocumentId = normalizeNumericId(documentId, 'documentId');
+  const sessions = await chatModel.listOwnedSessions(userId, primaryDocumentId);
+  return { sessions: sessions.map(mapSessionSummary) };
+}
+
+async function createSession({ userId, title, documentId }) {
+  const primaryDocumentId = normalizeNumericId(documentId, 'documentId');
+  const document = await documentService.canAttachDocumentToSession(userId, primaryDocumentId);
+  if (!document) throw createError(404, 'Document not found');
+
+  const session = await chatModel.createSession(
+    userId,
+    cleanSessionTitle(title),
+    primaryDocumentId
+  );
+  try {
+    await chatModel.attachDocuments(session.id, [primaryDocumentId]);
+  } catch (error) {
+    await chatModel.softDeleteOwnedSession(session.id, userId).catch(() => null);
+    throw error;
+  }
+
+  activityService.log({
+    userId,
+    action: 'chat.session.create',
+    targetType: 'chat_session',
+    targetId: session.id,
+  });
+  return getMessages({ sessionId: session.id, userId });
+}
+
+async function renameSession({ sessionId, userId, title }) {
+  const normalizedSessionId = normalizeNumericId(sessionId, 'sessionId');
+  const updated = await chatModel.updateOwnedSessionTitle(
+    normalizedSessionId,
+    userId,
+    cleanSessionTitle(title)
+  );
+  if (!updated) throw createError(404, 'Chat session not found');
+
+  activityService.log({
+    userId,
+    action: 'chat.session.rename',
+    targetType: 'chat_session',
+    targetId: normalizedSessionId,
+  });
+  return getMessages({ sessionId: normalizedSessionId, userId });
+}
+
+async function deleteSession({ sessionId, userId }) {
+  const normalizedSessionId = normalizeNumericId(sessionId, 'sessionId');
+  const deleted = await chatModel.softDeleteOwnedSession(normalizedSessionId, userId);
+  if (!deleted) throw createError(404, 'Chat session not found');
+
+  activityService.log({
+    userId,
+    action: 'chat.session.delete',
+    targetType: 'chat_session',
+    targetId: normalizedSessionId,
+  });
+  return {
+    session: {
+      id: deleted.id,
+      title: deleted.title || 'New chat',
+      createdAt: deleted.created_at,
+      updatedAt: deleted.updated_at,
+      lastActivityAt: deleted.last_activity_at,
+      primaryDocumentId: deleted.primary_document_id,
+      deletedAt: deleted.deleted_at,
+    },
+    documents: [],
+    messages: [],
+    canWrite: false,
+  };
+}
+
 async function getOrCreateSession({ userId, docId }) {
   const normalizedDocId = normalizeNumericId(docId, 'docId');
   const document = await documentService.canUseDocumentInChat(userId, normalizedDocId);
@@ -168,7 +275,11 @@ async function getOrCreateSession({ userId, docId }) {
     return chatModel.findSessionById(existingSession.id);
   }
 
-  const session = await chatModel.createSession(userId, document.title || 'New chat');
+  const session = await chatModel.createSession(
+    userId,
+    document.title || 'New chat',
+    normalizedDocId
+  );
   await chatModel.attachDocuments(session.id, [normalizedDocId]);
   return session;
 }
@@ -351,6 +462,10 @@ async function getPublicChatShare(token) {
 }
 
 module.exports = {
+  listSessions,
+  createSession,
+  renameSession,
+  deleteSession,
   getOrCreateSession,
   getMessages,
   sendMessage,

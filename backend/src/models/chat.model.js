@@ -5,7 +5,8 @@ class ChatModel {
     const { count, error } = await supabase
       .from('chat_sessions')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .is('deleted_at', null);
 
     if (error) throw error;
     return count || 0;
@@ -26,6 +27,7 @@ class ChatModel {
       .from('chat_sessions')
       .select('*')
       .eq('id', sessionId)
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (error) throw error;
@@ -38,6 +40,7 @@ class ChatModel {
       .select('*')
       .eq('id', sessionId)
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (error) throw error;
@@ -60,15 +63,10 @@ class ChatModel {
   static async findMostRecentOwnedSessionByDocument(userId, docId) {
     const { data, error } = await supabase
       .from('chat_sessions')
-      .select(`
-        *,
-        chat_session_documents!inner (
-          doc_id
-        )
-      `)
+      .select('*')
       .eq('user_id', userId)
-      .eq('chat_session_documents.doc_id', docId)
-      .is('chat_session_documents.removed_at', null)
+      .eq('primary_document_id', docId)
+      .is('deleted_at', null)
       .order('last_activity_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -77,12 +75,13 @@ class ChatModel {
     return data;
   }
 
-  static async createSession(userId, title = 'New chat') {
+  static async createSession(userId, title = 'New chat', primaryDocumentId) {
     const { data, error } = await supabase
       .from('chat_sessions')
       .insert([{
         user_id: userId,
         title,
+        primary_document_id: primaryDocumentId,
       }])
       .select()
       .single();
@@ -265,6 +264,86 @@ class ChatModel {
     return data || [];
   }
 
+  static async listOwnedSessions(userId, primaryDocumentId) {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select(`
+        id,
+        title,
+        created_at,
+        updated_at,
+        last_activity_at,
+        primary_document_id,
+        chat_session_documents (
+          doc_id,
+          removed_at,
+          documents (
+            id,
+            lifecycle_status,
+            deleted_at,
+            expires_at
+          )
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('primary_document_id', primaryDocumentId)
+      .is('deleted_at', null)
+      .order('last_activity_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async updateOwnedSessionTitle(sessionId, userId, title) {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .update({
+        title,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async softDeleteOwnedSession(sessionId, userId) {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .update({
+        deleted_at: now,
+        updated_at: now,
+      })
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async getRecentMessages(sessionId, limit = 8) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 8);
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('id, session_id, role, content, metadata, created_at')
+      .eq('session_id', sessionId)
+      .in('role', ['user', 'assistant'])
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(safeLimit);
+
+    if (error) throw error;
+    return (data || []).reverse();
+  }
+
   static async addMessage(sessionId, role, content, metadata = {}) {
     const { data, error } = await supabase
       .from('chat_messages')
@@ -283,7 +362,8 @@ class ChatModel {
         last_activity_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', sessionId);
+      .eq('id', sessionId)
+      .is('deleted_at', null);
 
     if (error) throw error;
     return true;
