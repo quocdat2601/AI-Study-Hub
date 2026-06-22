@@ -209,6 +209,7 @@ body,
 .textLayer,
 .textLayer * {
   caret-color: auto;
+  pointer-events: auto;
   user-select: text;
 }
 

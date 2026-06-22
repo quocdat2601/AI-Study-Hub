@@ -1,4 +1,7 @@
 import React from "react";
+import { getHighlightRects } from "../../utils/workspaceNotebookAnchor.js";
+import WorkspaceNotebookHighlightRects from "./WorkspaceNotebookHighlightRects.jsx";
+import { useWorkspaceNotebook } from "./workspaceNotebookContext.js";
 
 function EmptyTextState({ document }) {
   const status = document?.extractionStatus;
@@ -49,6 +52,9 @@ function EmptyTextState({ document }) {
 }
 
 export default function WorkspaceTextView({ document }) {
+  const { notes, draft, onHighlightClick } = useWorkspaceNotebook();
+  const textNotes = notes.filter((note) => note.viewMode === "text");
+  const showDraft = draft?.anchor?.scope === "container";
   const paragraphs = String(document?.extractedText || "")
     .split(/\n+/)
     .map((part) => part.trim())
@@ -65,17 +71,39 @@ export default function WorkspaceTextView({ document }) {
   }
 
   return (
-    <div className="workspace-selectable min-h-full px-4 py-6 sm:px-6">
-      <article className="mx-auto w-full max-w-[620px] select-text rounded-xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
+    <div className="workspace-selectable min-h-full px-4 py-6 pr-8 sm:px-6 sm:pr-12">
+      <article
+        className="relative mx-auto w-full max-w-[620px] select-text rounded-xl border border-slate-200 bg-white px-8 py-10 shadow-sm"
+        data-workspace-note-article="true"
+      >
         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
           Nội dung text
         </p>
         <h1 className="mb-6 text-xl font-bold leading-snug text-slate-900">{document.title}</h1>
         {paragraphs.map((paragraph, index) => (
-          <p className="mb-3 text-[15px] leading-[1.75] text-slate-700" key={index}>
+          <p
+            className="mb-3 text-[15px] leading-[1.75] text-slate-700"
+            data-workspace-note-paragraph={index}
+            key={index}
+          >
             {paragraph}
           </p>
         ))}
+
+        {textNotes.map((note) => (
+          getHighlightRects(note.anchor).length ? (
+            <WorkspaceNotebookHighlightRects
+              anchor={note.anchor}
+              color={note.color}
+              interactive
+              key={note.id}
+              noteId={note.id}
+              onHighlightClick={() => onHighlightClick(note)}
+            />
+          ) : null
+        ))}
+
+        {showDraft ? <WorkspaceNotebookHighlightRects anchor={draft.anchor} color={draft.color} /> : null}
       </article>
     </div>
   );

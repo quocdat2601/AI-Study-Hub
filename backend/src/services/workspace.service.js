@@ -1,6 +1,7 @@
 const bookmarkService = require('./bookmark.service');
 const chatService = require('./chat.service');
 const documentService = require('./document.service');
+const notebookService = require('./notebook.service');
 const subjectService = require('./subject.service');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
@@ -108,6 +109,42 @@ async function removeBookmark({ userId, docId }) {
   return bookmarkService.removeBookmark({ userId, docId: parseDocId(docId) });
 }
 
+async function listNotes({ userId, docId }) {
+  return notebookService.listNotes({ userId, docId: parseDocId(docId) });
+}
+
+async function createNote({ userId, docId, payload }) {
+  return notebookService.createNote({
+    userId,
+    docId: parseDocId(docId),
+    viewMode: payload.viewMode,
+    selectedText: payload.selectedText,
+    content: payload.content,
+    pageNumber: payload.pageNumber,
+    paragraphIndex: payload.paragraphIndex,
+    anchor: payload.anchor,
+    color: payload.color,
+  });
+}
+
+async function deleteNote({ userId, docId, noteId }) {
+  return notebookService.deleteNote({
+    userId,
+    docId: parseDocId(docId),
+    noteId,
+  });
+}
+
+async function updateNote({ userId, docId, noteId, payload }) {
+  return notebookService.updateNote({
+    userId,
+    docId: parseDocId(docId),
+    noteId,
+    content: payload.content,
+    color: payload.color,
+  });
+}
+
 module.exports = {
   getBootstrap,
   getDocumentContext,
@@ -115,4 +152,8 @@ module.exports = {
   sendMessage,
   addBookmark,
   removeBookmark,
+  listNotes,
+  createNote,
+  updateNote,
+  deleteNote,
 };
