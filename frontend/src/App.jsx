@@ -11,6 +11,7 @@ import AccountPage from "./pages/AccountPage.jsx";
 import CommunityPage from "./pages/CommunityPage.jsx";
 import CommunityCreatePostPage from "./pages/CommunityCreatePostPage.jsx";
 import CommunityPostDetailPage from "./pages/CommunityPostDetailPage.jsx";
+import CommunityUserProfilePage from "./pages/CommunityUserProfilePage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
@@ -67,6 +68,10 @@ function AppRoutes() {
         <Route
           path="/community/posts/:id"
           element={<CommunityPostDetailPage />}
+        />
+        <Route
+          path="/community/users/:userId"
+          element={<CommunityUserProfilePage />}
         />
         <Route
           path="/dashboard"
