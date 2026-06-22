@@ -48,7 +48,18 @@ async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
 /**
  * UploadDoc — upload file lên Supabase Storage và lưu metadata vào DB.
  */
-async function upload({ userId, file, title, subjectId, tags, isPublic = false }) {
+async function upload({
+  userId,
+  file,
+  title,
+  subjectId,
+  tags,
+  isPublic = false,
+  documentScope = 'library',
+  originSessionId = null,
+  expiresAt = null,
+  afterDocumentCreated,
+}) {
   if (!file) {
     throw createError(400, 'No file uploaded');
   }
@@ -56,6 +67,13 @@ async function upload({ userId, file, title, subjectId, tags, isPublic = false }
   const user = await userModel.findById(userId);
   if (!user) {
     throw createError(404, 'User not found');
+  }
+
+  if (!['library', 'session'].includes(documentScope)) {
+    throw createError(400, 'Document scope is invalid');
+  }
+  if (documentScope === 'session' && !originSessionId) {
+    throw createError(400, 'Session documents require an origin session');
   }
 
   const usedBytes = await documentModel.sumStorageByUserId(userId);
@@ -88,8 +106,19 @@ async function upload({ userId, file, title, subjectId, tags, isPublic = false }
       file_id: cloudFile.id,
       status: 'uploaded',
       extraction_status: 'pending',
-      is_public: parseBoolean(isPublic),
+      is_public: documentScope === 'library' && parseBoolean(isPublic),
+      document_scope: documentScope,
+      origin_session_id: documentScope === 'session' ? Number(originSessionId) : null,
+      lifecycle_status: 'active',
+      last_accessed_at: documentScope === 'session' ? new Date().toISOString() : null,
+      expires_at: documentScope === 'session' ? expiresAt : null,
+      expired_at: null,
+      purge_after: null,
     });
+
+    if (afterDocumentCreated) {
+      await afterDocumentCreated(document);
+    }
 
     await documentThumbnailService.generateAndSaveThumbnail({
       document,
@@ -110,8 +139,11 @@ async function upload({ userId, file, title, subjectId, tags, isPublic = false }
       await tagModel.setForDocument(savedDocument.id, tags);
     }
 
+    const savedDocumentWithRelations = documentScope === 'session'
+      ? await documentModel.findActiveSessionScopedById(savedDocument.id, originSessionId)
+      : await documentModel.findById(savedDocument.id);
     const [documentWithThumbnail] = await documentService.addThumbnailUrls([
-      await documentModel.findById(savedDocument.id),
+      savedDocumentWithRelations,
     ]);
     const documentWithTags = documentService.mapDocument(documentWithThumbnail);
 

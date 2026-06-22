@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import ChatAttachmentBar from "./ChatAttachmentBar.jsx";
 import { MODEL_LABELS } from "./workspaceDisplay.js";
 import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CopyIcon, SparklesIcon } from "./WorkspaceIcons.jsx";
 
@@ -340,6 +341,11 @@ function CompactInput({
 }
 
 export default function AIChatPanel({
+  attachmentAction,
+  attachmentError,
+  attachmentUploadProgress,
+  attachments,
+  availableDocuments,
   answerMode,
   chatScrollRef,
   className = "",
@@ -352,11 +358,18 @@ export default function AIChatPanel({
   messages,
   ollamaModels,
   onAnswerModeChange,
+  onAttachDocument,
+  onCancelAttachmentUpload,
   onAsk,
   onChatScroll,
   onQuestionChange,
+  onRemoveAttachment,
+  onRestoreAttachment,
+  onSaveAttachment,
   onSelectedModelChange,
+  onUploadAttachment,
   question,
+  removedAttachments,
   selectedDocument,
   selectedModel,
   sessionId,
@@ -391,6 +404,24 @@ export default function AIChatPanel({
           />
         </div>
       </div>
+
+      <ChatAttachmentBar
+        action={attachmentAction}
+        activeAttachments={attachments}
+        availableDocuments={availableDocuments}
+        error={attachmentError}
+        isLoading={isLoadingMessages}
+        onAttach={onAttachDocument}
+        onCancelUpload={onCancelAttachmentUpload}
+        onRemove={onRemoveAttachment}
+        onRestore={onRestoreAttachment}
+        onSave={onSaveAttachment}
+        onUpload={onUploadAttachment}
+        primaryDocumentId={selectedDocument?.id}
+        removedAttachments={removedAttachments}
+        sessionId={sessionId}
+        uploadProgress={attachmentUploadProgress}
+      />
 
       <div className="workspace-scrollbar workspace-selectable min-h-0 flex-1 space-y-3 overflow-y-auto bg-white p-3" onScroll={onChatScroll} ref={chatScrollRef}>
         {isLoadingMessages ? (

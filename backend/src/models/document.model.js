@@ -126,6 +126,33 @@ class DocumentModel {
     return data;
   }
 
+  static async convertSessionDocumentToLibrary({ id, userId, sessionId }) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        document_scope: 'library',
+        origin_session_id: null,
+        lifecycle_status: 'active',
+        last_accessed_at: new Date().toISOString(),
+        expires_at: null,
+        expired_at: null,
+        purge_after: null,
+        is_public: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .eq('origin_session_id', sessionId)
+      .eq('document_scope', 'session')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .select(DOCUMENT_SELECT)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
   // ─── Soft delete / trash / restore ──────────────────────────────────────────
 
   // Tìm doc theo id BẤT KỂ đã xóa mềm hay chưa (cho restore/purge)

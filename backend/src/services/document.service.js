@@ -110,6 +110,15 @@ async function canUseDocumentInChat(userId, id) {
   return canReadDocument(userId, id);
 }
 
+async function canAttachDocumentToSession(userId, id) {
+  const doc = await documentModel.findById(id);
+  if (!doc) return null;
+  if (String(doc.user_id) === String(userId) || doc.is_public) return doc;
+
+  const share = await documentModel.findShareByDocAndRecipient(doc.id, userId);
+  return share?.status === 'active' ? doc : null;
+}
+
 async function canEditDocument(userId, id) {
   return documentModel.findOwnedById(id, userId);
 }
@@ -671,6 +680,7 @@ module.exports = {
   buildPublicDocumentPreview,
   canReadDocument,
   canUseDocumentInChat,
+  canAttachDocumentToSession,
   canEditDocument,
   updateVisibility,
   updateDocument,

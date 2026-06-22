@@ -5,8 +5,17 @@ import DocumentSidebar from "../components/workspace/DocumentSidebar.jsx";
 import DocumentViewer from "../components/workspace/DocumentViewer.jsx";
 import WorkspaceResizeHandle from "../components/workspace/WorkspaceResizeHandle.jsx";
 import useWorkspaceLayout from "../hooks/useWorkspaceLayout.js";
-import { getChatSessionMessages, getOrCreateDocumentChatSession } from "../services/chatApi.js";
+import {
+  attachChatDocument,
+  detachChatDocument,
+  getChatSessionMessages,
+  getOrCreateDocumentChatSession,
+  restoreChatDocument,
+  saveChatDocumentToLibrary,
+  uploadChatDocument,
+} from "../services/chatApi.js";
 import { listDocuments } from "../services/documentApi.js";
+import { isUploadDocTimeoutError, validateUploadDocFile } from "../services/uploadDocApi.js";
 import { fetchWorkspacePdf } from "../services/workspaceApi.js";
 import { cacheDocumentChat, cacheWorkspaceState, getCachedDocumentChat, getWorkspaceCache } from "../utils/workspaceCache.js";
 
@@ -21,6 +30,7 @@ const DEFAULT_OLLAMA_MODELS = [
   "qwen2.5:3b",
 ];
 const DEFAULT_MODELS = [...DEFAULT_GEMINI_MODELS, ...DEFAULT_OLLAMA_MODELS];
+const MAX_CHAT_ATTACHMENTS = 10;
 
 function buildUserMessage(content) {
   return {
@@ -81,6 +91,8 @@ export default function WorkspacePage() {
   const lastSelectedIdRef = useRef(initialSelectedId);
   const previousMessageCountRef = useRef(initialChat.messages.length);
   const pdfBlobUrlRef = useRef(null);
+  const sessionIdRef = useRef(initialChat.sessionId);
+  const attachmentUploadAbortRef = useRef(null);
   const {
     sidebarWidth,
     chatWidth,
@@ -106,6 +118,11 @@ export default function WorkspacePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [removedAttachmentsBySession, setRemovedAttachmentsBySession] = useState({});
+  const [attachmentAction, setAttachmentAction] = useState(null);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(0);
   const [processResult, setProcessResult] = useState(() => initialChat.processResult);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -122,6 +139,11 @@ export default function WorkspacePage() {
   const geminiModels = modelStatus?.gemini?.models || availableModels.filter((model) => model.startsWith("gemini-"));
   const ollamaModels = modelStatus?.ollama?.allowedModels || availableModels.filter((model) => model.startsWith("qwen"));
   const isOllamaModel = (selectedModel || usage?.model || "").startsWith("qwen") || usage?.provider === "ollama";
+  const removedAttachments = removedAttachmentsBySession[String(sessionId || "")] || [];
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   function clearPdfBlob() {
     if (pdfBlobUrlRef.current) {
@@ -313,13 +335,22 @@ export default function WorkspacePage() {
       const session = await getOrCreateDocumentChatSession(docId);
       const payload = await getChatSessionMessages(session.id);
       const nextMessages = (payload.messages || []).map(mapStoredMessage);
+      const nextAttachments = payload.documents || [];
       const restoredModel = findLatestMessageModel(nextMessages);
       cacheDocumentChat(docId, { sessionId: session.id, messages: nextMessages, selectedModel: restoredModel || getCachedDocumentChat(docId).selectedModel });
       if (String(getWorkspaceCache().selectedId || "") !== String(docId || "")) {
         return;
       }
+      sessionIdRef.current = session.id;
       setSessionId(session.id);
       setMessages(nextMessages);
+      setAttachments(nextAttachments);
+      setRemovedAttachmentsBySession((current) => ({
+        ...current,
+        [String(session.id)]: (current[String(session.id)] || []).filter((removed) => (
+          !nextAttachments.some((active) => Number(active.id) === Number(removed.id))
+        )),
+      }));
       if (restoredModel) {
         setSelectedModel(restoredModel);
         cacheWorkspaceState({ selectedModel: restoredModel });
@@ -329,6 +360,7 @@ export default function WorkspacePage() {
         return;
       }
       setSessionId(null);
+      setAttachments([]);
       cacheDocumentChat(docId, { sessionId: null });
       if (showLoader) setMessages([]);
       setError(err.response?.data?.error || "Could not load chat history");
@@ -383,16 +415,176 @@ export default function WorkspacePage() {
 
   function selectDocument(docId) {
     const cachedChat = getCachedDocumentChat(docId);
+    attachmentUploadAbortRef.current?.abort();
     cacheWorkspaceState({ selectedId: docId });
     setSelectedId(docId);
+    sessionIdRef.current = cachedChat.sessionId;
     setMessages(cachedChat.messages);
     setSessionId(cachedChat.sessionId);
+    setAttachments([]);
+    setAttachmentAction(null);
+    setAttachmentError("");
+    setAttachmentUploadProgress(0);
     if (cachedChat.selectedModel) {
       setSelectedModel(cachedChat.selectedModel);
     }
     setQuestion("");
     setProcessResult(cachedChat.processResult);
     setError("");
+  }
+
+  function applyAttachmentPayload(payload, targetSessionId) {
+    const payloadSessionId = payload?.session?.id;
+    if (Number(payloadSessionId) !== Number(targetSessionId)) return false;
+    if (Number(sessionIdRef.current) !== Number(targetSessionId)) return false;
+
+    const nextAttachments = payload.documents || [];
+    setAttachments(nextAttachments);
+    setRemovedAttachmentsBySession((current) => ({
+      ...current,
+      [String(targetSessionId)]: (current[String(targetSessionId)] || []).filter((removed) => (
+        !nextAttachments.some((active) => Number(active.id) === Number(removed.id))
+      )),
+    }));
+    return true;
+  }
+
+  function attachmentFailureMessage(err, fallback) {
+    return err.response?.data?.message || err.response?.data?.error || fallback;
+  }
+
+  async function handleAttachExisting(document) {
+    const targetSessionId = sessionId;
+    if (!targetSessionId || attachmentAction) return false;
+    if (attachments.length >= MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError("This chat already has 10 active files.");
+      return false;
+    }
+
+    try {
+      setAttachmentAction({ type: "attach", documentId: document.id });
+      setAttachmentError("");
+      const payload = await attachChatDocument(targetSessionId, document.id);
+      return applyAttachmentPayload(payload, targetSessionId);
+    } catch (err) {
+      setAttachmentError(attachmentFailureMessage(err, "Could not attach this document."));
+      return false;
+    } finally {
+      setAttachmentAction(null);
+    }
+  }
+
+  async function handleUploadAttachment(file) {
+    const targetSessionId = sessionId;
+    if (!targetSessionId || attachmentAction) return false;
+    const validationError = validateUploadDocFile(file);
+    if (validationError) {
+      setAttachmentError(validationError);
+      return false;
+    }
+    if (attachments.length >= MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError("This chat already has 10 active files.");
+      return false;
+    }
+
+    const controller = new AbortController();
+    attachmentUploadAbortRef.current = controller;
+    try {
+      setAttachmentAction({ type: "upload" });
+      setAttachmentUploadProgress(0);
+      setAttachmentError("");
+      const payload = await uploadChatDocument(targetSessionId, file, {
+        signal: controller.signal,
+        onProgress: setAttachmentUploadProgress,
+      });
+      return applyAttachmentPayload(payload, targetSessionId);
+    } catch (err) {
+      if (err.code === "ERR_CANCELED") {
+        setAttachmentError("Upload cancelled.");
+      } else if (isUploadDocTimeoutError(err)) {
+        setAttachmentError("Upload timed out while the server was processing the file. Reload this chat before trying again.");
+      } else {
+        setAttachmentError(attachmentFailureMessage(err, "Could not upload this file."));
+      }
+      return false;
+    } finally {
+      attachmentUploadAbortRef.current = null;
+      setAttachmentAction(null);
+      setAttachmentUploadProgress(0);
+    }
+  }
+
+  function handleCancelAttachmentUpload() {
+    attachmentUploadAbortRef.current?.abort();
+  }
+
+  async function handleRemoveAttachment(attachment) {
+    const targetSessionId = sessionId;
+    if (!targetSessionId || attachmentAction) return false;
+    try {
+      setAttachmentAction({ type: "remove", documentId: attachment.id });
+      setAttachmentError("");
+      const payload = await detachChatDocument(targetSessionId, attachment.id);
+      if (!applyAttachmentPayload(payload, targetSessionId)) return false;
+      setRemovedAttachmentsBySession((current) => ({
+        ...current,
+        [String(targetSessionId)]: [
+          ...(current[String(targetSessionId)] || []).filter((item) => Number(item.id) !== Number(attachment.id)),
+          { ...attachment, removed: true },
+        ],
+      }));
+      return true;
+    } catch (err) {
+      setAttachmentError(attachmentFailureMessage(err, "Could not remove this file."));
+      return false;
+    } finally {
+      setAttachmentAction(null);
+    }
+  }
+
+  async function handleRestoreAttachment(attachment) {
+    const targetSessionId = sessionId;
+    if (!targetSessionId || attachmentAction) return false;
+    try {
+      setAttachmentAction({ type: "restore", documentId: attachment.id });
+      setAttachmentError("");
+      const payload = await restoreChatDocument(targetSessionId, attachment.id);
+      return applyAttachmentPayload(payload, targetSessionId);
+    } catch (err) {
+      if (err.response?.status === 410) {
+        setRemovedAttachmentsBySession((current) => ({
+          ...current,
+          [String(targetSessionId)]: (current[String(targetSessionId)] || []).map((item) => (
+            Number(item.id) === Number(attachment.id) ? { ...item, lifecycleStatus: "expired" } : item
+          )),
+        }));
+      }
+      setAttachmentError(attachmentFailureMessage(err, "Could not restore this file."));
+      return false;
+    } finally {
+      setAttachmentAction(null);
+    }
+  }
+
+  async function handleSaveAttachment(attachment) {
+    const targetSessionId = sessionId;
+    if (!targetSessionId || attachmentAction) return false;
+    try {
+      setAttachmentAction({ type: "save", documentId: attachment.id });
+      setAttachmentError("");
+      const payload = await saveChatDocumentToLibrary(targetSessionId, attachment.id);
+      if (!applyAttachmentPayload(payload, targetSessionId)) return false;
+
+      const nextDocuments = await listDocuments();
+      setDocuments(nextDocuments || []);
+      cacheWorkspaceState({ documents: nextDocuments || [] });
+      return true;
+    } catch (err) {
+      setAttachmentError(attachmentFailureMessage(err, "Could not save this file to My Documents."));
+      return false;
+    } finally {
+      setAttachmentAction(null);
+    }
   }
 
   function handleChatScroll(event) {
@@ -617,6 +809,11 @@ export default function WorkspacePage() {
       <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} />
 
       <AIChatPanel
+        attachmentAction={attachmentAction}
+        attachmentError={attachmentError}
+        attachmentUploadProgress={attachmentUploadProgress}
+        attachments={attachments}
+        availableDocuments={documents}
         answerMode={answerMode}
         chatScrollRef={chatScrollRef}
         className="shrink-0"
@@ -629,11 +826,18 @@ export default function WorkspacePage() {
         messages={messages}
         ollamaModels={ollamaModels}
         onAnswerModeChange={setAnswerMode}
+        onAttachDocument={handleAttachExisting}
+        onCancelAttachmentUpload={handleCancelAttachmentUpload}
         onAsk={handleAsk}
         onChatScroll={handleChatScroll}
         onQuestionChange={setQuestion}
+        onRemoveAttachment={handleRemoveAttachment}
+        onRestoreAttachment={handleRestoreAttachment}
+        onSaveAttachment={handleSaveAttachment}
         onSelectedModelChange={setSelectedModel}
+        onUploadAttachment={handleUploadAttachment}
         question={question}
+        removedAttachments={removedAttachments}
         selectedDocument={selectedDocument}
         selectedModel={selectedModel}
         sessionId={sessionId}
