@@ -281,14 +281,6 @@ async function deleteDocument({ document, userId }) {
 
 
 
-  if (storagePath) {
-
-    await supabaseService.deleteFile(storagePath);
-
-  }
-
-
-
   await documentModel.delete(document.id);
 
 
@@ -296,6 +288,22 @@ async function deleteDocument({ document, userId }) {
   if (fileId) {
 
     await documentModel.deleteCloudFile(fileId);
+
+  }
+
+
+
+  // Chỉ xóa object vật lý khi không còn cloud_file nào khác trỏ tới (dedup-safe)
+
+  if (storagePath) {
+
+    const stillReferenced = await documentModel.countCloudFilesByStoragePath(storagePath);
+
+    if (stillReferenced === 0) {
+
+      await supabaseService.deleteFile(storagePath);
+
+    }
 
   }
 

@@ -1,4 +1,6 @@
+const crypto = require('crypto');
 const documentModel = require('../models/document.model');
+const documentChunkModel = require('../models/document-chunk.model');
 const tagModel = require('../models/tag.model');
 const userModel = require('../models/user.model');
 const documentService = require('./document.service');
@@ -46,6 +48,38 @@ async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
 }
 
 /**
+ * Lấy nội dung cho document: nếu file trùng và đã có nguồn trích xuất sẵn thì sao chép
+ * lại text + chunks (khỏi gọi lại OCR/Embedding API); nếu không thì trích xuất bình thường.
+ */
+async function applyExtraction({ document, file, contentHash, deduped }) {
+  if (deduped) {
+    const source = await documentModel.findReadySourceByHash(contentHash, document.id);
+    if (source) {
+      const savedDocument = await documentModel.updateExtraction(document.id, {
+        text: source.extracted_text,
+        status: source.extraction_status,
+        error: null,
+        metadata: {
+          ...(source.extraction_metadata || {}),
+          dedupedFromDocumentId: source.id,
+        },
+      });
+      await documentChunkModel.copyFromDocument(source.id, document.id);
+      return savedDocument;
+    }
+    // Chưa có nguồn nào trích xuất xong → tự trích xuất từ buffer (vẫn còn trong RAM)
+  }
+
+  let extraction;
+  try {
+    extraction = await documentTextService.extractTextFromBuffer(file.buffer, file.mimetype);
+  } catch (err) {
+    extraction = { text: '', status: 'failed', error: err.message };
+  }
+  return documentModel.updateExtraction(document.id, extraction);
+}
+
+/**
  * UploadDoc — upload file lên Supabase Storage và lưu metadata vào DB.
  */
 async function upload({
@@ -85,18 +119,27 @@ async function upload({
     );
   }
 
+  // Mã định danh độc nhất từ nội dung tệp — để phát hiện file đã có trên hệ thống
+  const contentHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+  const existingFile = await documentModel.findCloudFileByHash(contentHash);
+  const deduped = Boolean(existingFile);
+
   const fileName = buildSafeStorageFileName(file.originalname);
-  const storagePath = `user-${userId}/${fileName}`;
+  const storagePath = existingFile?.storage_path || `user-${userId}/${fileName}`;
   let cloudFile = null;
   let document = null;
 
   try {
-    await supabaseService.uploadFile(file.buffer, storagePath, file.mimetype);
+    // Chỉ đẩy file thô lên Storage khi đây là nội dung MỚI (chưa từng tồn tại)
+    if (!deduped) {
+      await supabaseService.uploadFile(file.buffer, storagePath, file.mimetype);
+    }
 
     cloudFile = await documentModel.createCloudFile({
       storage_path: storagePath,
       mime_type: file.mimetype,
       size_bytes: file.size,
+      content_hash: contentHash,
     });
 
     document = await documentModel.create({
@@ -126,14 +169,7 @@ async function upload({
       mimeType: file.mimetype,
     });
 
-    let extraction;
-    try {
-      extraction = await documentTextService.extractTextFromBuffer(file.buffer, file.mimetype);
-    } catch (err) {
-      extraction = { text: '', status: 'failed', error: err.message };
-    }
-
-    const savedDocument = await documentModel.updateExtraction(document.id, extraction);
+    const savedDocument = await applyExtraction({ document, file, contentHash, deduped });
 
     if (tags) {
       await tagModel.setForDocument(savedDocument.id, tags);
@@ -141,7 +177,8 @@ async function upload({
 
     const savedDocumentWithRelations = documentScope === 'session'
       ? await documentModel.findActiveSessionScopedById(savedDocument.id, originSessionId)
-      : await documentModel.findById(savedDocument.id);
+      : savedDocument;
+
     const [documentWithThumbnail] = await documentService.addThumbnailUrls([
       savedDocumentWithRelations,
     ]);
@@ -156,15 +193,23 @@ async function upload({
         title: savedDocument.title,
         mimeType: file.mimetype,
         extractionStatus: savedDocument.extraction_status,
+        deduplicated: deduped,
       },
     });
 
     return {
-      message: 'Document uploaded successfully',
+      message: deduped
+        ? 'Document uploaded successfully (reused existing file)'
+        : 'Document uploaded successfully',
       document: documentWithTags,
     };
   } catch (err) {
-    await cleanupFailedUpload({ storagePath, cloudFile, document });
+    // Khi dedup, KHÔNG xóa object vật lý vì nó đang được dùng chung
+    await cleanupFailedUpload({
+      storagePath: deduped ? null : storagePath,
+      cloudFile,
+      document,
+    });
     throw err;
   }
 }

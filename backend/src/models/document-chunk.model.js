@@ -72,6 +72,17 @@ class DocumentChunkModel {
     if (error) throw error;
     return count || 0;
   }
+
+  // Sao chép chunks + vector từ document nguồn sang document đích (dedup, khỏi gọi lại Embedding API)
+  static async copyFromDocument(sourceDocId, targetDocId) {
+    const { data, error } = await supabase.rpc('copy_document_chunks', {
+      p_source_doc_id: Number(sourceDocId),
+      p_target_doc_id: Number(targetDocId),
+    });
+
+    if (error) throw error;
+    return data || 0;
+  }
 }
 
 module.exports = DocumentChunkModel;
