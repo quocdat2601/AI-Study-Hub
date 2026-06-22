@@ -5,10 +5,10 @@ function MiniFeatureItem({ item, LinkComponent }) {
   const isActive = Boolean(item?.isActive);
   const label = item?.label || "";
   const className = cx(
-    "inline-flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-extrabold no-underline transition",
+    "inline-flex items-center justify-center border-b-2 px-4 pb-3 pt-2 text-sm font-semibold transition-colors whitespace-nowrap no-underline",
     isActive
-      ? "border border-[#cfd8e6] bg-white text-[#172033] shadow-[0_6px_16px_rgba(20,31,48,0.08)]"
-      : "border border-transparent bg-transparent text-[#526173] hover:border-[#d5deea] hover:bg-white hover:text-[#172033]"
+      ? "border-[#4648d4] text-[#4648d4]"
+      : "border-transparent text-[#6b6660] hover:border-[#c9c4b8] hover:text-[#1a1a2e]"
   );
 
   if (item?.to) {
@@ -35,12 +35,10 @@ export default function CommunityMiniFeatureBar({
   if (!items.length) return null;
 
   return (
-    <div className={cx("rounded-[22px] border border-[#dbe3ed] bg-[#f3f6fb] p-2", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        {items.map((item) => (
-          <MiniFeatureItem item={item} key={item.id || item.label} LinkComponent={LinkComponent} />
-        ))}
-      </div>
+    <div className={cx("flex items-center gap-1 border-b border-[#e8e4dc]", className)}>
+      {items.map((item) => (
+        <MiniFeatureItem item={item} key={item.id || item.label} LinkComponent={LinkComponent} />
+      ))}
     </div>
   );
 }

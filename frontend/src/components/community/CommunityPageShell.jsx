@@ -19,8 +19,8 @@ export default function CommunityPageShell({
   const displayName = getDisplayName(user);
 
   const shellClass = isAuthenticated
-    ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [grid-template-columns:248px_minmax(0,1fr)] [scrollbar-gutter:stable]"
-    : "min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] [scrollbar-gutter:stable]";
+    ? "grid min-h-[calc(100vh-64px)] bg-[#f5f4f0] text-[#191c1e] [grid-template-columns:248px_minmax(0,1fr)] [scrollbar-gutter:stable]"
+    : "min-h-[calc(100vh-64px)] bg-[#f5f4f0] text-[#191c1e] [scrollbar-gutter:stable]";
   const contentClass = isAuthenticated
     ? "p-5 lg:p-6"
     : "px-4 py-5 md:px-8";

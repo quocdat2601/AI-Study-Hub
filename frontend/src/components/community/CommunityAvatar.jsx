@@ -19,8 +19,8 @@ export default function CommunityAvatar({
       className={cx(
         "flex items-center justify-center rounded-full font-black",
         variant === "light"
-          ? "bg-[radial-gradient(circle_at_top,#4648d4,#2f3a90_60%,#172033)] text-white"
-          : "bg-[radial-gradient(circle_at_top,#3a566f,#1e2f43_60%,#132030)] text-[#eff6ff]",
+          ? "bg-[radial-gradient(circle_at_top,#7c3aed,#4648d4_60%,#1e1b4b)] text-white"
+          : "bg-[radial-gradient(circle_at_top,#6b7280,#4b5563_60%,#1f2937)] text-[#fbfbfb]",
         className
       )}
       aria-hidden="true"

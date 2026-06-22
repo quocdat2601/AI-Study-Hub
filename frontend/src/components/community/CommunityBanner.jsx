@@ -16,22 +16,20 @@ export default function CommunityBanner({
   className = "",
 }) {
   return (
-    <section className={cx("rounded-[26px] border border-[#dbe3ed] bg-white p-3 shadow-[0_16px_34px_rgba(20,31,48,0.07)] md:p-4", className)}>
-      <CommunityMiniFeatureBar items={navItems} LinkComponent={LinkComponent} />
-
-      <div className="px-3 pb-2 pt-4 md:px-4 md:pt-5">
+    <section className={cx("rounded-2xl border border-[#e4e0d8] bg-white shadow-sm overflow-hidden", className)}>
+      <div className="bg-gradient-to-b from-[#faf9f6] to-white p-5 md:p-6 pb-6">
         {helper ? <div className="mb-2">{helper}</div> : null}
-        {eyebrow ? <p className="m-0 text-[11px] font-black uppercase tracking-[0.18em] text-[#66758a]">{eyebrow}</p> : null}
+        {eyebrow ? <p className="m-0 text-[10px] font-bold uppercase tracking-[0.15em] text-[#6b6660]">{eyebrow}</p> : null}
 
         {badges.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {badges.map((badge, index) => {
               const label = typeof badge === "string" ? badge : badge?.label;
               const tone = typeof badge === "string" ? "indigo" : badge?.tone;
               return (
                 <span
                   className={cx(
-                    "inline-flex min-h-7 items-center rounded-full border px-3 text-[11px] font-black uppercase tracking-[0.7px]",
+                    "inline-flex min-h-6 items-center rounded px-2 text-[10px] font-bold uppercase tracking-[0.5px]",
                     getCommunityBadgeToneClasses(tone, "light")
                   )}
                   key={`${label}-${index}`}
@@ -43,15 +41,15 @@ export default function CommunityBanner({
           </div>
         ) : null}
 
-        <h1 className="mt-2 mb-0 text-[26px] font-extrabold leading-[1.05] text-[#172033] md:text-[32px]">{title}</h1>
+        <h1 className="mt-2 mb-0 text-2xl font-extrabold tracking-tight text-[#1a1a2e] md:text-3xl">{title}</h1>
 
-        {description ? <p className="mt-2 mb-0 max-w-3xl text-sm leading-6 text-[#526173]">{description}</p> : null}
+        {description ? <p className="mt-2 mb-0 max-w-3xl text-sm leading-relaxed text-[#6b6660]">{description}</p> : null}
 
         {chips.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-1.5">
             {chips.map((chip, index) => (
               <span
-                className="inline-flex items-center rounded-full bg-[#f2f5f8] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.5px] text-[#42526a]"
+                className="inline-flex items-center rounded bg-[#f0ece4] px-2.5 py-1 text-[11px] font-semibold text-[#6b6660]"
                 key={`${chip}-${index}`}
               >
                 {chip}
@@ -61,10 +59,10 @@ export default function CommunityBanner({
         ) : null}
 
         {metaItems.length ? (
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#66758a]">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[#6b6660]">
             {metaItems.map((item, index) => (
-              <span className="inline-flex items-center gap-2" key={`${item}-${index}`}>
-                {index ? <span className="text-[#c0cbda]">|</span> : null}
+              <span className="inline-flex items-center gap-1.5" key={`${item}-${index}`}>
+                {index ? <span className="text-[#e8e4dc]">|</span> : null}
                 <span>{item}</span>
               </span>
             ))}
@@ -73,6 +71,12 @@ export default function CommunityBanner({
 
         {children ? <div className="mt-4">{children}</div> : null}
       </div>
+
+      {navItems && navItems.length > 0 ? (
+        <div className="px-5 md:px-6 bg-white border-t border-[#e8e4dc]">
+          <CommunityMiniFeatureBar items={navItems} LinkComponent={LinkComponent} className="border-b-0" />
+        </div>
+      ) : null}
     </section>
   );
 }
