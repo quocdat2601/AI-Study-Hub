@@ -1,54 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useToast } from "../contexts/ToastContext.jsx";
+import { useCallback, useEffect } from "react";
+import { useUploadDocModal } from "../contexts/UploadDocContext.jsx";
 
 export default function useUploadDoc({ onUploaded } = {}) {
-  const { addToast } = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [isOpen, setIsOpen] = useState(false);
+  const { openUpload, registerPageRefresh } = useUploadDocModal();
 
   useEffect(() => {
-    if (searchParams.get("upload") !== "true") return;
+    if (!onUploaded) return undefined;
+    return registerPageRefresh(onUploaded);
+  }, [onUploaded, registerPageRefresh]);
 
-    setIsOpen(true);
-    searchParams.delete("upload");
-    setSearchParams(searchParams, { replace: true });
-  }, [searchParams, setSearchParams]);
+  const open = useCallback(() => {
+    openUpload();
+  }, [openUpload]);
 
-  const open = useCallback(() => setIsOpen(true), []);
-  const close = useCallback(() => setIsOpen(false), []);
-
-  const onSuccess = useCallback(
-    (result) => {
-      addToast({
-        type: "success",
-        title: "Document uploaded successfully",
-        message: "Your study set is ready to use.",
-      });
-
-      if (result.document?.extraction_status === "pending") {
-        addToast({
-          type: "info",
-          title: "Processing document",
-          message: `AI is analyzing "${result.document.title}"...`,
-        });
-      }
-
-      onUploaded?.(result);
-    },
-    [addToast, onUploaded]
-  );
-
-  const onError = useCallback(
-    (message) => {
-      addToast({
-        type: "error",
-        title: "Upload failed",
-        message,
-      });
-    },
-    [addToast]
-  );
-
-  return { isOpen, open, close, onSuccess, onError };
+  return { open };
 }

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useUploadDocModal } from "../../contexts/UploadDocContext.jsx";
 import useTranslation from "../../hooks/useTranslation.js";
 
 export const dashboardSidebarItems = [
@@ -139,6 +140,7 @@ function DefaultSidebar({
 }) {
   const { t } = useTranslation();
   const pathname = useLocation().pathname;
+  const { openUpload } = useUploadDocModal();
 
   return (
     <aside
@@ -155,15 +157,16 @@ function DefaultSidebar({
         </span>
       </Link>
 
-      <Link
-        className="no-caret mb-6 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-[13px] font-semibold text-white no-underline shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
-        to="/documents?upload=true"
+      <button
+        className="no-caret mb-6 flex min-h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-indigo-600 px-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
+        onClick={() => openUpload()}
+        type="button"
       >
         <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
           <path d="M12 5v14M5 12h14" strokeLinecap="round" />
         </svg>
         <span>{t("nav.newDocument")}</span>
-      </Link>
+      </button>
 
       <nav className="grid content-start gap-1">
         {dashboardSidebarItems.map((item) => (

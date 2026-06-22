@@ -40,3 +40,23 @@ export async function removeWorkspaceBookmark(docId) {
   const response = await api.delete(`/workspace/documents/${docId}/bookmark`);
   return response.data;
 }
+
+export async function listWorkspaceNotes(docId) {
+  const response = await api.get(`/workspace/documents/${docId}/notes`);
+  return response.data;
+}
+
+export async function createWorkspaceNote(docId, payload) {
+  const response = await api.post(`/workspace/documents/${docId}/notes`, payload);
+  return response.data;
+}
+
+export async function updateWorkspaceNote(docId, noteId, payload) {
+  const response = await api.patch(`/workspace/documents/${docId}/notes/${noteId}`, payload);
+  return response.data;
+}
+
+export async function deleteWorkspaceNote(docId, noteId) {
+  const response = await api.delete(`/workspace/documents/${docId}/notes/${noteId}`);
+  return response.data;
+}

@@ -6,6 +6,7 @@ import LandingFooter from "../components/landing/LandingFooter.jsx";
 import LandingHeader from "../components/landing/LandingHeader.jsx";
 import LandingHero from "../components/landing/LandingHero.jsx";
 import TrendingDocuments from "../components/landing/TrendingDocuments.jsx";
+import LandingChatbot from "../components/landing/LandingChatbot.jsx";
 
 export default function LandingPage() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
@@ -40,6 +41,8 @@ export default function LandingPage() {
       </main>
 
       <LandingFooter />
+
+      <LandingChatbot />
     </div>
   );
 }

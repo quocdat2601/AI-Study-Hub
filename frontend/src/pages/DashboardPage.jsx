@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import {
@@ -17,6 +17,7 @@ import {
   UploadIcon,
 } from "../components/dashboard/DashboardIcons.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import useUploadDoc from "../hooks/useUploadDoc.js";
 import { getDashboardData } from "../services/dashboardApi.js";
 import { listSubjects } from "../services/subjectApi.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
@@ -91,35 +92,28 @@ export default function DashboardPage() {
   const [subjects, setSubjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function load() {
-      setIsLoading(true);
-      try {
-        const [dashboardData, subjectList] = await Promise.all([
-          getDashboardData(),
-          listSubjects(),
-        ]);
-        if (isMounted) {
-          setDashboard(dashboardData);
-          setSubjects(subjectList);
-        }
-      } catch {
-        if (isMounted) {
-          setDashboard(null);
-          setSubjects([]);
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
+  const loadDashboard = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [dashboardData, subjectList] = await Promise.all([
+        getDashboardData(),
+        listSubjects(),
+      ]);
+      setDashboard(dashboardData);
+      setSubjects(subjectList);
+    } catch {
+      setDashboard(null);
+      setSubjects([]);
+    } finally {
+      setIsLoading(false);
     }
-
-    load();
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  const uploadDoc = useUploadDoc({ onUploaded: () => loadDashboard() });
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   const usedBytes = Number(dashboard?.storage?.used || 0);
   const limitBytes = Number(dashboard?.storage?.limit || 0);
@@ -143,13 +137,14 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 no-underline transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-700"
-            to="/documents?upload=true"
+          <button
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-700"
+            onClick={uploadDoc.open}
+            type="button"
           >
             <UploadIcon className="h-4 w-4" />
             Upload Document
-          </Link>
+          </button>
           <Link
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white no-underline transition hover:bg-indigo-700 active:scale-[0.98]"
             to="/workspace"
@@ -251,10 +246,14 @@ export default function DashboardPage() {
                   <DocumentFileIcon className="h-7 w-7" />
                 </span>
                 <p className="m-0 text-sm text-slate-500 dark:text-slate-400">No documents yet.</p>
-                <Link className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 no-underline hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300" to="/documents?upload=true">
+                <button
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  onClick={uploadDoc.open}
+                  type="button"
+                >
                   <UploadIcon className="h-4 w-4" />
                   Upload your first document
-                </Link>
+                </button>
               </div>
             )}
           </div>
