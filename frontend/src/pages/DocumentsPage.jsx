@@ -15,7 +15,6 @@ import {
 import { listSubjects } from "../services/subjectApi.js";
 import EditDocumentModal from "./EditDocumentModal.jsx";
 import ShareDocumentModal from "./ShareDocumentModal.jsx";
-import UploadDocModal from "./UploadDocModal.jsx";
 
 function getMimeLabel(mimeType) {
   if (mimeType === "application/pdf") return "PDF";
@@ -374,14 +373,6 @@ export default function DocumentsPage() {
           </div>
         )}
       </div>
-
-      <UploadDocModal
-        isOpen={uploadDoc.isOpen}
-        subjects={subjects}
-        onClose={uploadDoc.close}
-        onSuccess={uploadDoc.onSuccess}
-        onError={uploadDoc.onError}
-      />
 
       <EditDocumentModal
         document={editingDoc}

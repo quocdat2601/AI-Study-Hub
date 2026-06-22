@@ -96,6 +96,54 @@ async function removeBookmark(req, res, next) {
   }
 }
 
+async function listNotes(req, res, next) {
+  try {
+    res.json(await workspaceService.listNotes({
+      userId: req.user.id,
+      docId: req.params.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function createNote(req, res, next) {
+  try {
+    res.status(201).json(await workspaceService.createNote({
+      userId: req.user.id,
+      docId: req.params.id,
+      payload: req.body,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteNote(req, res, next) {
+  try {
+    res.json(await workspaceService.deleteNote({
+      userId: req.user.id,
+      docId: req.params.id,
+      noteId: req.params.noteId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateNote(req, res, next) {
+  try {
+    res.json(await workspaceService.updateNote({
+      userId: req.user.id,
+      docId: req.params.id,
+      noteId: req.params.noteId,
+      payload: req.body,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getBootstrap,
   getDocumentContext,
@@ -104,4 +152,8 @@ module.exports = {
   sendMessage,
   addBookmark,
   removeBookmark,
+  listNotes,
+  createNote,
+  updateNote,
+  deleteNote,
 };

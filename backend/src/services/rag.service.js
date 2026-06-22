@@ -8,6 +8,35 @@ const STOP_WORDS = new Set([
   'was', 'what', 'when', 'where', 'which', 'who', 'why', 'with', 'you',
 ]);
 
+const REQUIREMENT_ID_PATTERN = /\b(?:REQ|FR|NFR|UC|BR|SR)[-_ ]?\d+(?:\.\d+)*\b/giu;
+
+function extractRequirementIds(text) {
+  return [...new Set((String(text || '').match(REQUIREMENT_ID_PATTERN) || [])
+    .map((value) => value.toUpperCase().replace(/[ _]/g, '-')))];
+}
+
+function looksLikeHeading(line) {
+  const value = String(line || '').trim();
+  if (!value || value.length > 120) return false;
+  if (/^#{1,6}\s+/.test(value)) return true;
+  if (/^\d+(?:\.\d+)*[.)]?\s+\S+/.test(value)) return true;
+  if (/^(?:REQ|FR|NFR|UC|BR|SR)[-_ ]?\d+/iu.test(value)) return true;
+  if (value.endsWith(':') && value.split(/\s+/).length <= 12) return true;
+  return value.length >= 4
+    && value.split(/\s+/).length <= 10
+    && !/[.!?]$/.test(value);
+}
+
+function inferSectionHeading(text, startChar = 0) {
+  const before = String(text || '').slice(0, Math.max(0, startChar));
+  const current = String(text || '').slice(Math.max(0, startChar), Math.max(0, startChar) + 500);
+  const candidates = [
+    ...before.split('\n').slice(-4).reverse(),
+    ...current.split('\n').slice(0, 3),
+  ];
+  return candidates.find(looksLikeHeading)?.replace(/^#{1,6}\s+/, '').trim() || null;
+}
+
 function normalizeText(text) {
   return String(text || '')
     .replace(/\r\n/g, '\n')
@@ -39,13 +68,30 @@ function splitTextIntoChunks(text, metadata = {}) {
 
     const content = normalized.slice(start, end).trim();
     if (content) {
+      const pageBoundaries = Array.isArray(metadata.pageBoundaries)
+        ? metadata.pageBoundaries
+        : [];
+      const chunkPages = pageBoundaries.filter((page) => (
+        Number(page.endChar) > start && Number(page.startChar) < end
+      ));
+      const chunkMetadata = { ...metadata };
+      delete chunkMetadata.pageBoundaries;
+      const sectionHeading = inferSectionHeading(normalized, start);
+
       chunks.push({
         content,
         tokenEstimate: estimateTokens(content),
         metadata: {
-          ...metadata,
+          ...chunkMetadata,
           startChar: start,
           endChar: end,
+          pageNumber: chunkPages.length === 1 ? Number(chunkPages[0].pageNumber) : null,
+          pageStart: chunkPages.length ? Number(chunkPages[0].pageNumber) : null,
+          pageEnd: chunkPages.length
+            ? Number(chunkPages[chunkPages.length - 1].pageNumber)
+            : null,
+          sectionHeading,
+          requirementIds: extractRequirementIds(content),
         },
       });
     }
@@ -79,20 +125,30 @@ function scoreChunk(questionTerms, chunk) {
   return score;
 }
 
-function retrieveRelevantChunks(question, chunks, limit = 4) {
+function rankRelevantChunks(question, chunks, limit = 4) {
   const questionTerms = tokenize(question);
-  const availableChunks = chunks || [];
-  const ranked = availableChunks
+  return (chunks || [])
     .map((chunk) => ({
       ...chunk,
       score: scoreChunk(questionTerms, chunk),
     }))
-    .sort((a, b) => b.score - a.score || a.chunk_index - b.chunk_index);
+    .sort((a, b) => b.score - a.score || Number(a.chunk_index || 0) - Number(b.chunk_index || 0))
+    .slice(0, limit);
+}
+
+function retrieveRelevantChunks(question, chunks, limit = 4) {
+  const availableChunks = chunks || [];
+  const ranked = rankRelevantChunks(question, availableChunks, availableChunks.length);
 
   const matched = ranked.filter((chunk) => chunk.score > 0).slice(0, limit);
-  const firstChunks = availableChunks
+  const firstByDocument = new Map();
+  for (const chunk of availableChunks
     .slice()
-    .sort((a, b) => a.chunk_index - b.chunk_index)
+    .sort((a, b) => Number(a.chunk_index || 0) - Number(b.chunk_index || 0))) {
+    const documentKey = Number(chunk.doc_id || chunk.metadata?.documentId) || 'unknown';
+    if (!firstByDocument.has(documentKey)) firstByDocument.set(documentKey, chunk);
+  }
+  const firstChunks = [...firstByDocument.values()]
     .slice(0, Math.min(FALLBACK_CHUNK_LIMIT, limit));
   const selected = matched.length ? matched : firstChunks;
 
@@ -105,19 +161,99 @@ function retrieveRelevantChunks(question, chunks, limit = 4) {
   });
 }
 
-function buildSourcePayload(chunks) {
-  return (chunks || []).map((chunk) => ({
-    id: chunk.id,
-    chunkIndex: chunk.chunk_index,
-    content: chunk.content,
-    score: Number(chunk.score || 0),
-    similarity: chunk.similarity == null ? null : Number(chunk.similarity),
-    metadata: chunk.metadata || {},
-  }));
+function buildValidatedEvidence(chunks, documentsById = new Map()) {
+  const seen = new Set();
+  const evidence = [];
+  const rejected = [];
+
+  for (const chunk of chunks || []) {
+    const actualDocumentId = Number(chunk.doc_id);
+    const metadataDocumentId = Number(chunk.metadata?.documentId);
+    const document = documentsById.get(actualDocumentId);
+    const canonicalTitle = String(document?.title || '').trim();
+    const declaredTitle = String(chunk.documentTitle || chunk.metadata?.documentTitle || '').trim();
+    const chunkId = chunk.id ?? null;
+    const ownershipKey = `${actualDocumentId}:${chunkId ?? `index-${chunk.chunk_index}`}`;
+    const reason = !Number.isInteger(actualDocumentId)
+      ? 'missing_actual_document_id'
+      : !document
+        ? 'document_not_in_authorized_scope'
+        : Number.isInteger(metadataDocumentId) && metadataDocumentId !== actualDocumentId
+          ? 'metadata_document_id_mismatch'
+          : declaredTitle && canonicalTitle && declaredTitle !== canonicalTitle
+            ? 'document_title_mismatch'
+            : null;
+
+    if (reason || seen.has(ownershipKey)) {
+      if (reason) {
+        rejected.push({
+          reason,
+          chunkId,
+          chunkIndex: chunk.chunk_index,
+          actualDocumentId: Number.isInteger(actualDocumentId) ? actualDocumentId : null,
+          metadataDocumentId: Number.isInteger(metadataDocumentId) ? metadataDocumentId : null,
+          declaredTitle: declaredTitle || null,
+          canonicalTitle: canonicalTitle || null,
+        });
+        console.error('RAG source ownership invariant rejected a chunk:', rejected.at(-1));
+      }
+      continue;
+    }
+
+    seen.add(ownershipKey);
+    const metadata = Object.freeze({
+      ...(chunk.metadata || {}),
+      documentId: actualDocumentId,
+      documentTitle: canonicalTitle,
+    });
+    const canonicalChunk = Object.freeze({
+      ...chunk,
+      doc_id: actualDocumentId,
+      documentId: actualDocumentId,
+      documentTitle: canonicalTitle,
+      metadata,
+    });
+    const source = Object.freeze({
+      id: chunkId,
+      chunkId,
+      documentId: actualDocumentId,
+      chunkDocumentId: actualDocumentId,
+      documentTitle: canonicalTitle,
+      chunkIndex: chunk.chunk_index,
+      pageNumber: metadata.pageNumber ?? null,
+      pageStart: metadata.pageStart ?? metadata.pageNumber ?? null,
+      pageEnd: metadata.pageEnd ?? metadata.pageNumber ?? null,
+      content: chunk.content,
+      score: Number(chunk.score || 0),
+      similarity: chunk.similarity == null ? null : Number(chunk.similarity),
+      metadata,
+    });
+    evidence.push({ chunk: canonicalChunk, source });
+  }
+
+  return {
+    chunks: evidence.map((item) => item.chunk),
+    sources: evidence.map((item) => item.source),
+    validation: {
+      accepted: evidence.length,
+      rejected,
+      valid: rejected.length === 0,
+    },
+  };
+}
+
+function buildSourcePayload(chunks, documentsById = new Map()) {
+  return buildValidatedEvidence(chunks, documentsById).sources;
 }
 
 module.exports = {
+  MAX_CONTEXT_CHARS,
+  extractRequirementIds,
+  inferSectionHeading,
+  rankRelevantChunks,
   splitTextIntoChunks,
+  tokenize,
   retrieveRelevantChunks,
+  buildValidatedEvidence,
   buildSourcePayload,
 };

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "test": "node --test test/*.test.js",
     "seed:demo": "node scripts/seed-demo-data.js",
     "thumbnails:backfill": "node scripts/backfill-thumbnails.js",
     "migrate:account": "node scripts/run-account-migration.js",

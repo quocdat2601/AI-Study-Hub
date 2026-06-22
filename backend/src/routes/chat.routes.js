@@ -28,7 +28,12 @@ const upload = require('../middleware/upload');
  */
 router.use(verifyToken);
 
+// Session lists are owned by their root document; attachments do not affect this filter.
 router.get('/sessions', chatController.listSessions);
+router.post('/sessions', chatController.createSession);
+router.patch('/sessions/:sessionId', chatController.renameSession);
+router.delete('/sessions/:sessionId', chatController.deleteSession);
+
 router.get('/session/:docId', chatController.getOrCreateSession);
 
 router.post('/sessions/:sessionId/documents', chatController.attachExistingDocument);

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-ro
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
 import { PreferencesProvider } from "./contexts/PreferencesContext.jsx";
 import { ToastProvider } from "./contexts/ToastContext.jsx";
+import { UploadDocProvider } from "./contexts/UploadDocContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -134,7 +135,9 @@ export default function App() {
       <PreferencesProvider>
         <ToastProvider>
           <BrowserRouter>
-            <AppRoutes />
+            <UploadDocProvider>
+              <AppRoutes />
+            </UploadDocProvider>
           </BrowserRouter>
         </ToastProvider>
       </PreferencesProvider>
