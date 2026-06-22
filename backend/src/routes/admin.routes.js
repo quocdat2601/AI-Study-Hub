@@ -108,5 +108,9 @@ router.post('/subjects', adminController.createSubject);
  *       200: { description: List of logs }
  */
 router.get('/activity-logs', adminController.getActivityLogs);
+router.get('/community/reports', adminController.getCommunityReports);
+router.patch('/community/reports/:id', adminController.resolveCommunityReport);
+router.patch('/community/posts/:id', adminController.moderateCommunityPost);
+router.patch('/community/replies/:id', adminController.moderateCommunityReply);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const express = require('express');
 const publicController = require('../controllers/public.controller');
+const communityController = require('../controllers/community.controller');
 
 const router = express.Router();
 
@@ -23,5 +24,10 @@ const router = express.Router();
  */
 router.get('/documents/trending', publicController.getTrendingDocuments);
 router.get('/chat-shares/:token', publicController.getPublicChatShare);
+router.get('/community', communityController.getHome);
+router.get('/community/feed', communityController.getFeed);
+router.get('/community/posts/:id', communityController.getPostById);
+router.get('/community/subjects', communityController.getSubjects);
+router.get('/community/users/:userId', communityController.getUserProfile);
 
 module.exports = router;

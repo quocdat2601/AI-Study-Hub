@@ -5,13 +5,17 @@ export async function listDocuments(params = {}) {
   return response.data;
 }
 
-export async function getDocument(id) {
-  const response = await api.get(`/documents/${id}`);
+export async function getDocument(id, options = {}) {
+  const response = await api.get(`/documents/${id}`, {
+    suppressAuthRedirect: Boolean(options.suppressAuthRedirect),
+  });
   return response.data;
 }
 
-export async function getDocumentSignedUrl(id) {
-  const response = await api.get(`/documents/${id}/signed-url`);
+export async function getDocumentSignedUrl(id, options = {}) {
+  const response = await api.get(`/documents/${id}/signed-url`, {
+    suppressAuthRedirect: Boolean(options.suppressAuthRedirect),
+  });
   return response.data;
 }
 
@@ -49,4 +53,3 @@ export async function revokeDocumentShare(id, shareId) {
   const response = await api.delete(`/documents/${id}/shares/${shareId}`);
   return response.data;
 }
-

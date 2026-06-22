@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import {
   BookmarkIcon,
@@ -27,6 +27,14 @@ const CONTINUE_ICON_STYLES = [
   "bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-950 dark:text-violet-300 dark:ring-violet-900",
   "bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-950 dark:text-sky-300 dark:ring-sky-900",
 ];
+
+const DASHBOARD_REDIRECTS = {
+  "study-sets": "/library",
+  documents: "/documents",
+  "ai-workspace": "/workspace",
+  settings: "/account",
+  community: "/community",
+};
 
 function formatDate(value) {
   if (!value) return "-";
@@ -70,13 +78,18 @@ function StatCard({ label, value, tone, icon, children }) {
   );
 }
 
+function getRedirectPath(section) {
+  return DASHBOARD_REDIRECTS[String(section || "").trim()] || "";
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
+  const location = useLocation();
+  const displayName = getDisplayName(user);
+  const redirectPath = getRedirectPath(location.state?.activeSection);
   const [dashboard, setDashboard] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  const displayName = getDisplayName(user);
 
   useEffect(() => {
     let isMounted = true;
@@ -113,6 +126,10 @@ export default function DashboardPage() {
   const usedPercent = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 100)) : 0;
   const docCount = dashboard?.stats?.documents ?? 0;
   const recentDocuments = dashboard?.recentDocuments ?? [];
+
+  if (redirectPath) {
+    return <Navigate replace to={redirectPath} />;
+  }
 
   return (
     <DashboardShell>

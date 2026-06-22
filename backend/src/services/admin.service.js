@@ -3,6 +3,7 @@ const documentModel = require('../models/document.model');
 const chatModel = require('../models/chat.model');
 const subjectService = require('./subject.service');
 const activityService = require('./activity.service');
+const communityService = require('./community.service');
 const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
 
@@ -178,4 +179,8 @@ module.exports = {
   listSubjects: subjectService.listSubjects,
   createSubject: subjectService.createSubject,
   listActivityLogs: activityService.listLatest,
+  listCommunityReports: communityService.listReports,
+  resolveCommunityReport: communityService.resolveReport,
+  moderateCommunityPost: communityService.updatePostModeration,
+  moderateCommunityReply: communityService.updateReplyModeration,
 };

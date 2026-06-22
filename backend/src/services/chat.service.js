@@ -44,6 +44,7 @@ function buildChatDocumentPreview(doc) {
   return {
     id: doc.id,
     title: doc.title,
+    subjectId: doc.subject_id || doc.subjects?.id || null,
     subject: doc.subjects?.name || null,
     subjectCode: doc.subjects?.code || null,
     previewText: preview.previewText,

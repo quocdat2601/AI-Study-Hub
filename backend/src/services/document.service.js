@@ -707,4 +707,3 @@ module.exports = {
   revokeDocumentShare,
   saveOcrText,
 };
-

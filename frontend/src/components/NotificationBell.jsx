@@ -27,6 +27,9 @@ function formatNotificationTime(value) {
 
 function getNotificationLabel(type) {
   if (type === "share") return "Document shared";
+  if (type === "community_reply") return "New reply";
+  if (type === "community_upvote") return "Post upvoted";
+  if (type === "community_accepted") return "Answer accepted";
   return "Notification";
 }
 
@@ -110,7 +113,19 @@ export default function NotificationBell() {
     }
 
     setIsOpen(false);
-    navigate("/documents");
+    if (notification.ref_post_id) {
+      navigate(`/community/posts/${notification.ref_post_id}`);
+    } else if (
+      notification.type === "community_reply" ||
+      notification.type === "community_upvote" ||
+      notification.type === "community_accepted" ||
+      notification.message?.toLowerCase().includes("reply") ||
+      notification.message?.toLowerCase().includes("post")
+    ) {
+      navigate("/community");
+    } else {
+      navigate("/documents");
+    }
   }
 
   return (
@@ -167,7 +182,11 @@ export default function NotificationBell() {
                       type="button"
                     >
                       <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-indigo-100 text-xs font-black text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300">
-                        {notification.type === "share" ? "S" : "N"}
+                        {notification.type === "share" ? "S"
+                          : notification.type === "community_reply" ? "R"
+                          : notification.type === "community_upvote" ? "▲"
+                          : notification.type === "community_accepted" ? "✓"
+                          : "N"}
                       </span>
                       <span className="min-w-0 flex-1">
                         <strong className="block text-sm text-slate-900 dark:text-slate-100">

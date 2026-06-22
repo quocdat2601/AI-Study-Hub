@@ -71,11 +71,62 @@ async function getActivityLogs(req, res, next) {
   }
 }
 
+async function getCommunityReports(req, res, next) {
+  try {
+    res.json(await adminService.listCommunityReports({
+      status: req.query.status,
+      limit: req.query.limit,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function resolveCommunityReport(req, res, next) {
+  try {
+    res.json(await adminService.resolveCommunityReport({
+      reportId: req.params.id,
+      adminUserId: req.user.id,
+      status: req.body.status,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function moderateCommunityPost(req, res, next) {
+  try {
+    res.json(await adminService.moderateCommunityPost({
+      postId: req.params.id,
+      adminUserId: req.user.id,
+      status: req.body.status,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function moderateCommunityReply(req, res, next) {
+  try {
+    res.json(await adminService.moderateCommunityReply({
+      replyId: req.params.id,
+      adminUserId: req.user.id,
+      status: req.body.status,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getOverview,
   updateUser,
   getAllSubjects,
   createSubject,
-  getActivityLogs
+  getActivityLogs,
+  getCommunityReports,
+  resolveCommunityReport,
+  moderateCommunityPost,
+  moderateCommunityReply,
 };

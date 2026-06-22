@@ -43,6 +43,9 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
           <NavLink isActive={location.pathname === libraryPath} to={libraryPath}>
             {libraryLabel}
           </NavLink>
+          <NavLink isActive={location.pathname === "/community" || location.pathname.startsWith("/community/")} to="/community">
+            Community
+          </NavLink>
           <NavLink
             isActive={location.pathname === "/documents"}
             to={isAuthenticated ? "/documents" : workspacePath || "/dashboard"}
@@ -50,7 +53,7 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
             My documents
           </NavLink>
           <NavLink href="#universities">Universities</NavLink>
-          <NavLink href="#courses" isActive={location.pathname === "/" && location.hash === "#courses"}>
+          <NavLink isActive={location.pathname === "/" && location.hash === "#courses"} href="#courses">
             Courses
           </NavLink>
         </nav>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import api from "../services/api.js";
 import {
   clearRecoveryMode,
@@ -240,23 +240,20 @@ export function AuthProvider({ children }) {
     return currentUser;
   }
 
-  const value = useMemo(
-    () => ({
-      user,
-      hasSession,
-      isLoading,
-      isRecoveryMode,
-      isAuthenticated: Boolean(user),
-      login,
-      loginWithGoogle: loginWithGoogleOAuth,
-      register,
-      requestPasswordReset,
-      updatePassword,
-      logout,
-      refreshUser,
-    }),
-    [user, hasSession, isLoading, isRecoveryMode]
-  );
+  const value = {
+    user,
+    hasSession,
+    isLoading,
+    isRecoveryMode,
+    isAuthenticated: Boolean(user),
+    login,
+    loginWithGoogle: loginWithGoogleOAuth,
+    register,
+    requestPasswordReset,
+    updatePassword,
+    logout,
+    refreshUser,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
