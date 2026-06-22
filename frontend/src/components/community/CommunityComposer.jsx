@@ -86,7 +86,7 @@ function SubjectMultiSelect({
   return (
     <div className="relative" ref={containerRef}>
       <div
-        className={`rounded-2xl border bg-white px-4 py-3 text-[#172033] transition ${error ? "border-[#ff8c8c]" : "border-[#43526a]"} ${isOpen ? "shadow-[0_0_0_4px_rgba(255,255,255,0.08)]" : ""}`}
+        className={`rounded-xl border bg-white px-4 py-2.5 text-[#1a1a2e] transition ${error ? "border-[#ff8c8c]" : "border-[#e4e0d8]"} ${isOpen ? "shadow-[0_0_0_3px_rgba(70,72,212,0.12)] border-[#4648d4]" : ""}`}
         onClick={() => {
           if (!disabled) {
             setIsOpen(true);
@@ -100,13 +100,13 @@ function SubjectMultiSelect({
         <div className="flex flex-wrap items-center gap-2">
           {selectedSubjects.map((subject) => (
             <span
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#172033] px-3 py-1.5 text-xs font-extrabold text-white"
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#ede9fe] px-2.5 py-1 text-xs font-bold text-[#4648d4]"
               key={subject.id}
             >
               <span>{subject.code}</span>
               <button
                 aria-label={`Remove ${subject.code}`}
-                className="inline-flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-transparent p-0 text-[10px] leading-none text-white transition hover:bg-white/15"
+                className="inline-flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-transparent p-0 text-[10px] leading-none text-[#4648d4] transition hover:bg-[#4648d4]/10"
                 disabled={disabled}
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -126,7 +126,7 @@ function SubjectMultiSelect({
 
           <input
             ref={inputRef}
-            className="min-w-[180px] flex-1 border-0 bg-transparent p-0 text-sm font-medium text-[#172033] outline-none placeholder:text-[#7a8798]"
+            className="min-w-[180px] flex-1 border-0 bg-transparent p-0 text-sm font-medium text-[#1a1a2e] outline-none placeholder:text-[#8c857e]"
             disabled={disabled || hasReachedLimit}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -149,24 +149,24 @@ function SubjectMultiSelect({
       </div>
 
       {showDropdown ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-2xl border border-[#334154] bg-[#101722] shadow-[0_24px_45px_rgba(8,13,22,0.45)]">
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-xl border border-[#e8e4dc] bg-white shadow-md">
           {availableSubjects.length ? (
-            <div className="max-h-56 overflow-y-auto py-2">
+            <div className="max-h-56 overflow-y-auto py-1">
               {availableSubjects.map((subject) => (
                 <button
-                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-white transition hover:bg-[rgba(255,255,255,0.08)]"
+                  className="flex w-full items-start justify-between gap-3 px-4 py-2.5 text-left text-sm font-bold text-[#1a1a2e] transition hover:bg-[#faf8f5]"
                   disabled={disabled || hasReachedLimit}
                   key={subject.id}
                   onClick={() => addSubject(subject.id)}
                   type="button"
                 >
                   <span className="truncate">{subject.code}</span>
-                  <span className="truncate text-right text-xs font-medium text-[#9fb0c3]">{subject.name}</span>
+                  <span className="truncate text-right text-xs font-medium text-[#8c857e]">{subject.name}</span>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="px-4 py-3 text-sm text-[#9fb0c3]">
+            <div className="px-4 py-2.5 text-sm text-[#8c857e]">
               {hasReachedLimit ? `Maximum ${MAX_POST_SUBJECTS} subjects selected.` : "No matching subjects."}
             </div>
           )}
@@ -184,24 +184,82 @@ function SubjectMultiSelect({
 
 function PickerCard({ icon, title, subtitle, actionLabel, selectedLabel, isOpen, onToggle, children }) {
   return (
-    <div className="rounded-[22px] border border-[#43526a] bg-[rgba(255,255,255,0.08)] p-4">
+    <div className="rounded-xl border border-[#e4e0d8] bg-[#faf8f5] p-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.12)] text-white">
+          <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-[#f0ece4] text-[#6b6660]">
             {icon}
           </span>
           <div>
-            <strong className="block text-sm uppercase tracking-[0.08em] text-white">{title}</strong>
-            <p className="mt-1 mb-0 text-sm leading-6 text-[#d5deea]">{selectedLabel || subtitle}</p>
+            <strong className="block text-xs uppercase tracking-wider text-[#1a1a2e]">{title}</strong>
+            <p className="mt-1 mb-0 text-sm leading-relaxed text-[#6b6660]">{selectedLabel || subtitle}</p>
           </div>
         </div>
-        <button className="rounded-full bg-white px-4 py-2 text-sm font-extrabold text-[#172033]" onClick={onToggle} type="button">
+        <button className="rounded-full border border-[#e8e4dc] bg-white px-4 py-1 text-xs font-bold text-[#6b6660] hover:border-[#4648d4] hover:text-[#4648d4] hover:bg-[#ede9fe] transition" onClick={onToggle} type="button">
           {actionLabel}
         </button>
       </div>
       {isOpen ? <div className="mt-4 grid gap-2">{children}</div> : null}
     </div>
   );
+}
+
+function convertMarkdownToHtml(md) {
+  if (!md) return "";
+  let html = md;
+  html = html.replace(/!\[\]\((.*?)\)/g, '<img src="$1" style="max-width:100%; height:auto; display:block; margin:8px 0;" />');
+  html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+  html = html.split("\n").map(line => {
+    if (!line) return "<div><br></div>";
+    return `<div>${line}</div>`;
+  }).join("");
+  return html;
+}
+
+function convertHtmlToMarkdown(html) {
+  if (!html) return "";
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+
+  const imgs = temp.querySelectorAll("img");
+  imgs.forEach(img => {
+    const md = `![](${img.src})`;
+    img.replaceWith(document.createTextNode(md));
+  });
+
+  const bolds = temp.querySelectorAll("strong, b");
+  bolds.forEach(b => {
+    const md = `**${b.textContent}**`;
+    b.replaceWith(document.createTextNode(md));
+  });
+
+  const italics = temp.querySelectorAll("em, i");
+  italics.forEach(i => {
+    const md = `*${i.textContent}*`;
+    i.replaceWith(document.createTextNode(md));
+  });
+
+  let markdown = "";
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      markdown += node.nodeValue;
+    } else if (node.nodeName === "BR") {
+      markdown += "\n";
+    } else if (node.nodeName === "DIV" || node.nodeName === "P") {
+      if (markdown && !markdown.endsWith("\n")) {
+        markdown += "\n";
+      }
+      node.childNodes.forEach(walk);
+      if (!markdown.endsWith("\n")) {
+        markdown += "\n";
+      }
+    } else {
+      node.childNodes.forEach(walk);
+    }
+  };
+  temp.childNodes.forEach(walk);
+  return markdown.replace(/\n\n+/g, "\n\n").trim();
 }
 
 export default function CommunityComposer({
@@ -226,20 +284,53 @@ export default function CommunityComposer({
   const bodyRef = useRef(null);
   const imageInputRef = useRef(null);
 
-  const wrapSelection = useCallback((before, after) => {
-    const textarea = bodyRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = textarea.value.slice(start, end);
-    const replacement = `${before}${selected || "text"}${after}`;
-    const next = textarea.value.slice(0, start) + replacement + textarea.value.slice(end);
-    updateField("body", next);
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + before.length, start + before.length + (selected || "text").length);
-    });
+  const [isBoldActive, setIsBoldActive] = useState(false);
+  const [isItalicActive, setIsItalicActive] = useState(false);
+
+  const updateField = useCallback((field, value) => {
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }, [setDraft]);
+
+  const updateActiveStates = useCallback(() => {
+    if (!bodyRef.current) return;
+    setIsBoldActive(document.queryCommandState("bold"));
+    setIsItalicActive(document.queryCommandState("italic"));
   }, []);
+
+  const isInternalChange = useRef(false);
+
+  useEffect(() => {
+    if (isInternalChange.current) {
+      isInternalChange.current = false;
+      return;
+    }
+    if (bodyRef.current) {
+      bodyRef.current.innerHTML = convertMarkdownToHtml(draft.body || "");
+    }
+  }, [draft.body]);
+
+  const handleContentChange = useCallback(() => {
+    if (!bodyRef.current) return;
+    const html = bodyRef.current.innerHTML;
+    const md = convertHtmlToMarkdown(html);
+    isInternalChange.current = true;
+    updateField("body", md);
+  }, [updateField]);
+
+  const wrapSelection = useCallback((before) => {
+    if (!bodyRef.current) return;
+    bodyRef.current.focus();
+    if (before === "**") {
+      document.execCommand("bold", false, null);
+    } else if (before === "*") {
+      document.execCommand("italic", false, null);
+    }
+    updateActiveStates();
+    handleContentChange();
+  }, [updateActiveStates, handleContentChange]);
 
   async function handleImageUpload(event) {
     const file = event.target.files?.[0];
@@ -249,11 +340,18 @@ export default function CommunityComposer({
     setIsUploadingImage(true);
     try {
       const result = await uploadCommunityImage(file);
-      const textarea = bodyRef.current;
-      const cursorPos = textarea ? textarea.selectionStart : (draft.body?.length ?? 0);
-      const insert = `\n![](${result.url})\n`;
-      const next = (draft.body || "").slice(0, cursorPos) + insert + (draft.body || "").slice(cursorPos);
-      updateField("body", next);
+      if (bodyRef.current) {
+        bodyRef.current.focus();
+        document.execCommand("insertImage", false, result.url);
+        const imgs = bodyRef.current.querySelectorAll(`img[src="${result.url}"]`);
+        imgs.forEach(img => {
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+          img.style.display = "block";
+          img.style.margin = "8px 0";
+        });
+        handleContentChange();
+      }
     } catch (err) {
       setImageUploadError(err.response?.data?.error || "Image upload failed. Try again.");
     } finally {
@@ -278,12 +376,7 @@ export default function CommunityComposer({
     getPostTypeLabel(draft.postType),
   ];
 
-  function updateField(field, value) {
-    setDraft((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
+
 
   const postTypeButtons = [
     { value: "discussion", label: "Discussion" },
@@ -304,12 +397,12 @@ export default function CommunityComposer({
   }
 
   return (
-    <div className="rounded-[24px] border border-[#c7c4d7] bg-[#172033] p-5 text-white shadow-[0_24px_45px_rgba(20,31,48,0.18)]">
+    <div className="rounded-2xl border border-[#e4e0d8] bg-white p-5 text-[#1a1a2e] shadow-sm">
       <div className="relative">
         {!isAuthenticated ? (
           <button
             aria-label="Log in to create a community post"
-            className="absolute inset-0 z-10 cursor-pointer rounded-[24px] bg-transparent"
+            className="absolute inset-0 z-10 cursor-pointer rounded-2xl bg-transparent"
             onClick={onRequireAuth}
             type="button"
           />
@@ -317,19 +410,19 @@ export default function CommunityComposer({
 
         <form className="grid gap-4" onSubmit={onSubmit}>
           {!isAuthenticated ? (
-            <div className="rounded-[24px] border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.06)] px-4 py-4 text-sm text-[#dce5f0]">
+            <div className="rounded-xl border border-[#e8e4dc] bg-[#faf8f5] px-4 py-3.5 text-sm text-[#6b6660]">
               Browse the composer first, then sign in when you are ready to publish.
             </div>
           ) : null}
 
-          <div className="grid gap-3 rounded-[22px] border border-[#334154] bg-[rgba(11,18,29,0.38)] p-4 md:p-5">
+          <div className="grid gap-4 rounded-xl border border-[#e8e4dc] bg-[#faf8f5] p-4 md:p-5">
             <div className="flex flex-wrap gap-2">
               {postTypeButtons.map((option) => (
                 <button
                   key={option.value}
                   className={draft.postType === option.value
-                    ? "rounded-full border border-white bg-white px-4 py-2 text-sm font-extrabold text-[#172033]"
-                    : "rounded-full border border-[rgba(255,255,255,0.16)] bg-transparent px-4 py-2 text-sm font-bold text-[#d5deea]"}
+                    ? "rounded-full bg-[#4648d4] px-4 py-1.5 text-xs font-bold text-white transition-colors"
+                    : "rounded-full bg-[#f0ece4] px-4 py-1.5 text-xs font-semibold text-[#6b6660] transition-all hover:bg-[#e8e4dc] hover:text-[#1a1a2e]"}
                   disabled={!isAuthenticated}
                   onClick={() => updatePostType(option.value)}
                   type="button"
@@ -339,10 +432,10 @@ export default function CommunityComposer({
               ))}
             </div>
 
-            <label className="grid gap-2 text-sm font-bold">
+            <label className="grid gap-2 text-sm font-bold text-[#1a1a2e]">
               <div className="flex items-center justify-between gap-3">
-                <span>Subjects (optional)</span>
-                <span className="text-xs font-black text-[#9fb0c3]">{selectedSubjects.length}/{MAX_POST_SUBJECTS}</span>
+                <span>Subjects</span>
+                <span className="text-xs font-bold text-[#8c857e]">{selectedSubjects.length}/{MAX_POST_SUBJECTS}</span>
               </div>
               <SubjectMultiSelect
                 disabled={!isAuthenticated}
@@ -351,36 +444,34 @@ export default function CommunityComposer({
                 selectedIds={draft.subjectIds}
                 subjects={subjects}
               />
-              <p className="m-0 text-xs leading-5 text-[#9fb0c3]">Attach up to {MAX_POST_SUBJECTS} subjects if they help classmates discover this post.</p>
             </label>
 
-            <label className="grid gap-2 text-sm font-bold">
+            <label className="grid gap-2 text-sm font-bold text-[#1a1a2e]">
               <div className="flex items-center justify-between gap-3">
                 <span>Title</span>
-                <span className="text-xs font-black text-[#9fb0c3]">{draft.title.trim().length}/{CREATE_POST_RULES.titleMax}</span>
+                <span className="text-xs font-bold text-[#8c857e]">{draft.title.trim().length}/{CREATE_POST_RULES.titleMax}</span>
               </div>
               <input
-                className={`rounded-2xl border bg-white px-4 py-3 text-[#172033] ${validationErrors.title ? "border-[#ff8c8c]" : "border-[#43526a]"}`}
+                className={`rounded-xl border bg-white px-4 py-2.5 text-sm font-medium text-[#1a1a2e] outline-none transition focus:border-[#4648d4] focus:shadow-[0_0_0_3px_rgba(70,72,212,0.12)] ${validationErrors.title ? "border-[#ff8c8c]" : "border-[#e4e0d8]"}`}
                 disabled={!isAuthenticated}
                 maxLength={CREATE_POST_RULES.titleMax}
                 placeholder={composerContent.titlePlaceholder}
                 value={draft.title}
                 onChange={(event) => updateField("title", event.target.value)}
               />
-              <p className="m-0 text-xs text-[#9fb0c3]">Minimum {CREATE_POST_RULES.titleMin} characters.</p>
               <FieldError message={validationErrors.title} />
             </label>
 
             <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-3 text-sm font-bold">
-                <span className="text-white">Body</span>
-                <span className="text-xs font-black text-[#9fb0c3]">{draft.body.trim().length}/{CREATE_POST_RULES.bodyMax}</span>
+              <div className="flex items-center justify-between gap-3 text-sm font-bold text-[#1a1a2e]">
+                <span>Body</span>
+                <span className="text-xs font-bold text-[#8c857e]">{draft.body.trim().length}/{CREATE_POST_RULES.bodyMax}</span>
               </div>
 
-              <div className="flex items-center gap-1 rounded-t-2xl border border-b-0 border-[#43526a] bg-[rgba(255,255,255,0.05)] px-3 py-1.5">
+              <div className="flex items-center gap-1 rounded-t-xl border border-b-0 border-[#e4e0d8] bg-white px-3 py-1.5">
                 <button
                   aria-label="Bold (Ctrl+B)"
-                  className="rounded px-2 py-1 text-sm font-black text-white transition hover:bg-[rgba(255,255,255,0.12)] disabled:opacity-40"
+                  className={`rounded px-2 py-1 text-sm font-bold transition disabled:opacity-40 ${isBoldActive ? "bg-[#ede9fe] text-[#4648d4] shadow-sm" : "text-[#6b6660] hover:bg-[#f0ece4] hover:text-[#1a1a2e]"}`}
                   disabled={!isAuthenticated}
                   onClick={() => wrapSelection("**", "**")}
                   title="Bold (Ctrl+B)"
@@ -390,7 +481,7 @@ export default function CommunityComposer({
                 </button>
                 <button
                   aria-label="Italic (Ctrl+I)"
-                  className="rounded px-2 py-1 text-sm font-bold italic text-white transition hover:bg-[rgba(255,255,255,0.12)] disabled:opacity-40"
+                  className={`rounded px-2 py-1 text-sm font-bold italic transition disabled:opacity-40 ${isItalicActive ? "bg-[#ede9fe] text-[#4648d4] shadow-sm" : "text-[#6b6660] hover:bg-[#f0ece4] hover:text-[#1a1a2e]"}`}
                   disabled={!isAuthenticated}
                   onClick={() => wrapSelection("*", "*")}
                   title="Italic (Ctrl+I)"
@@ -398,17 +489,17 @@ export default function CommunityComposer({
                 >
                   I
                 </button>
-                <div className="mx-1 h-4 w-px bg-[rgba(255,255,255,0.18)]" aria-hidden="true" />
+                <div className="mx-1 h-4 w-px bg-[#e8e4dc]" aria-hidden="true" />
                 <button
                   aria-label="Insert image"
-                  className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-bold text-white transition hover:bg-[rgba(255,255,255,0.12)] disabled:opacity-40"
+                  className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-bold text-[#6b6660] transition hover:bg-[#f0ece4] hover:text-[#1a1a2e] disabled:opacity-40"
                   disabled={!isAuthenticated || isUploadingImage}
                   onClick={() => imageInputRef.current?.click()}
                   title="Insert image"
                   type="button"
                 >
                   {isUploadingImage ? (
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <svg className="h-4 w-4 animate-spin text-[#4648d4]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" strokeLinecap="round" opacity="0.3" />
                       <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                     </svg>
@@ -430,35 +521,36 @@ export default function CommunityComposer({
                 />
               </div>
 
-              <textarea
+              <div
                 ref={bodyRef}
-                className={`-mt-px min-h-[180px] rounded-b-2xl rounded-t-none border bg-white px-4 py-3 text-[#172033] ${validationErrors.body ? "border-[#ff8c8c]" : "border-[#43526a]"}`}
-                disabled={!isAuthenticated}
-                maxLength={CREATE_POST_RULES.bodyMax}
+                contentEditable={isAuthenticated}
+                className={`-mt-px min-h-[180px] rounded-b-xl rounded-t-none border bg-white px-4 py-2.5 text-sm font-medium text-[#1a1a2e] outline-none transition focus:border-[#4648d4] focus:shadow-[0_0_0_3px_rgba(70,72,212,0.12)] overflow-y-auto composer-editor ${validationErrors.body ? "border-[#ff8c8c]" : "border-[#e4e0d8]"}`}
+                style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
                 placeholder={composerContent.bodyPlaceholder}
-                value={draft.body}
-                onChange={(event) => updateField("body", event.target.value)}
+                onInput={handleContentChange}
+                onSelect={updateActiveStates}
+                onKeyUp={updateActiveStates}
+                onMouseUp={updateActiveStates}
+                onFocus={updateActiveStates}
+                onBlur={updateActiveStates}
                 onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key === "b") {
-                    event.preventDefault();
-                    wrapSelection("**", "**");
-                  }
-                  if ((event.ctrlKey || event.metaKey) && event.key === "i") {
-                    event.preventDefault();
-                    wrapSelection("*", "*");
+                  if ((event.ctrlKey || event.metaKey) && (event.key === "b" || event.key === "i")) {
+                    setTimeout(() => {
+                      updateActiveStates();
+                      handleContentChange();
+                    }, 0);
                   }
                 }}
               />
-              {imageUploadError ? <p className="m-0 text-xs font-bold text-[#ffb4b4]">{imageUploadError}</p> : null}
-              <p className="m-0 text-xs leading-5 text-[#9fb0c3]">{composerContent.bodyHint} Supports **bold**, *italic*, and inline images.</p>
+              {imageUploadError ? <p className="m-0 text-xs font-bold text-[#ef4444]">{imageUploadError}</p> : null}
               <FieldError message={validationErrors.body} />
             </div>
 
             {draft.postType === "document_share" ? (
               <div className="grid gap-2">
-                <p className="m-0 text-sm font-extrabold text-white">Attached document</p>
+                <p className="m-0 text-sm font-bold text-[#1a1a2e]">Attached document</p>
                 <PickerCard
-                  actionLabel={isDocumentPickerOpen ? "Hide Library Files" : "Select Indexed Document"}
+                  actionLabel={isDocumentPickerOpen ? "Hide Files" : "Select Document"}
                   icon={<AttachmentIcon />}
                   isOpen={isDocumentPickerOpen}
                   onToggle={() => setIsDocumentPickerOpen((current) => !current)}
@@ -469,17 +561,17 @@ export default function CommunityComposer({
                   {readyDocuments.length ? readyDocuments.map((doc) => (
                     <button
                       className={String(draft.documentId) === String(doc.id)
-                        ? "rounded-2xl border border-white bg-white px-4 py-3 text-left text-sm font-extrabold text-[#172033]"
-                        : "rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-left text-sm font-bold text-white"}
+                        ? "rounded-xl border border-transparent bg-[#ede9fe] px-4 py-3 text-left text-sm font-bold text-[#4648d4]"
+                        : "rounded-xl border border-[#e8e4dc] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1a1a2e] hover:bg-[#faf8f5] transition-all"}
                       key={doc.id}
                       onClick={() => updateField("documentId", String(doc.id))}
                       type="button"
                     >
                       <span className="block">{doc.title}</span>
-                      <span className="mt-1 block text-xs text-[#99a6ba]">{doc.subjects?.code || "No subject"} - Ready for sharing</span>
+                      <span className="mt-1 block text-xs text-[#8c857e]">{doc.subjects?.code || "No subject"} - Ready for sharing</span>
                     </button>
                   )) : (
-                    <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.16)] px-4 py-4 text-sm text-[#d5deea]">
+                    <div className="rounded-xl border border-dashed border-[#e4e0d8] bg-white px-4 py-4 text-sm text-[#8c857e]">
                       {composerContent.attachmentEmpty}
                     </div>
                   )}
@@ -490,9 +582,9 @@ export default function CommunityComposer({
 
             {draft.postType === "ai_study_log" ? (
               <div className="grid gap-2">
-                <p className="m-0 text-sm font-extrabold text-white">Attached AI session</p>
+                <p className="m-0 text-sm font-bold text-[#1a1a2e]">Attached AI session</p>
                 <PickerCard
-                  actionLabel={isSessionPickerOpen ? "Hide AI Sessions" : "Attach Conversation"}
+                  actionLabel={isSessionPickerOpen ? "Hide Sessions" : "Attach Session"}
                   icon={<SparkIcon />}
                   isOpen={isSessionPickerOpen}
                   onToggle={() => setIsSessionPickerOpen((current) => !current)}
@@ -503,17 +595,17 @@ export default function CommunityComposer({
                   {sessions.length ? sessions.map((item) => (
                     <button
                       className={String(draft.chatSessionId) === String(item.session.id)
-                        ? "rounded-2xl border border-white bg-white px-4 py-3 text-left text-sm font-extrabold text-[#172033]"
-                        : "rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] px-4 py-3 text-left text-sm font-bold text-white"}
+                        ? "rounded-xl border border-transparent bg-[#ede9fe] px-4 py-3 text-left text-sm font-bold text-[#4648d4]"
+                        : "rounded-xl border border-[#e8e4dc] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1a1a2e] hover:bg-[#faf8f5] transition-all"}
                       key={item.session.id}
                       onClick={() => updateField("chatSessionId", String(item.session.id))}
                       type="button"
                     >
                       <span className="block">{item.session.title}</span>
-                      <span className="mt-1 block text-xs text-[#99a6ba]">{item.documents.length} linked documents</span>
+                      <span className="mt-1 block text-xs text-[#8c857e]">{item.documents.length} linked documents</span>
                     </button>
                   )) : (
-                    <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.16)] px-4 py-4 text-sm text-[#d5deea]">
+                    <div className="rounded-xl border border-dashed border-[#e4e0d8] bg-white px-4 py-4 text-sm text-[#8c857e]">
                       {composerContent.attachmentEmpty}
                     </div>
                   )}
@@ -523,11 +615,11 @@ export default function CommunityComposer({
             ) : null}
 
             {showPreview && isPreviewOpen ? (
-              <div className="rounded-[18px] border border-[#324255] bg-[#101722] p-4">
-                <p className="m-0 text-[11px] font-black uppercase tracking-[0.18em] text-[#99a6ba]">Publish preview</p>
+              <div className="rounded-xl border border-[#e8e4dc] bg-[#faf8f5] p-4">
+                <p className="m-0 text-[10px] font-bold uppercase tracking-wider text-[#6b6660]">Publish preview</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {publishBadges.map((badge) => (
-                    <span className="rounded-full bg-[rgba(255,255,255,0.12)] px-3 py-1.5 text-xs font-extrabold text-white" key={badge}>
+                    <span className="rounded-full bg-[#f0ece4] px-3 py-1.5 text-xs font-semibold text-[#6b6660]" key={badge}>
                       {badge}
                     </span>
                   ))}
@@ -536,17 +628,16 @@ export default function CommunityComposer({
             ) : null}
 
             {submitError ? (
-              <div className="rounded-2xl border border-[#ff8c8c] bg-[rgba(127,29,29,0.18)] px-4 py-3 text-sm font-bold text-[#ffd7d7]">
+              <div className="rounded-xl border border-[#ff8c8c] bg-[#fff7f7] px-4 py-3 text-sm font-bold text-[#ef4444]">
                 {submitError}
               </div>
             ) : null}
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-[#9fb0c3]">Subjects are optional. Attachments only appear for document and AI study log posts.</div>
+            <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="flex items-center gap-3">
                 {showPreview ? (
                   <button
-                    className="rounded-full border border-[rgba(255,255,255,0.16)] px-4 py-2 text-sm font-bold text-white"
+                    className="rounded-full border border-[#e8e4dc] bg-white px-4 py-1.5 text-xs font-bold text-[#6b6660] hover:border-[#4648d4] hover:text-[#4648d4] hover:bg-[#ede9fe] transition"
                     onClick={() => setIsPreviewOpen((current) => !current)}
                     type="button"
                   >
@@ -554,7 +645,7 @@ export default function CommunityComposer({
                   </button>
                 ) : null}
                 <button
-                  className="rounded-full bg-white px-5 py-2.5 text-sm font-extrabold text-[#172033] disabled:cursor-not-allowed disabled:bg-[#cbd5e1] disabled:text-[#5f7084]"
+                  className="rounded-xl bg-[#4648d4] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:bg-[#e8e4dc] disabled:text-[#8c857e]"
                   disabled={!isAuthenticated || isSubmitting}
                   type="submit"
                 >

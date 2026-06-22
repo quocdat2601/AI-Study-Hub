@@ -229,3 +229,10 @@ body,
     color: #94a3b8;
   }
 }
+
+.composer-editor[contenteditable="true"]:empty::before {
+  content: attr(placeholder);
+  color: #8c857e;
+  pointer-events: none;
+  display: block;
+}

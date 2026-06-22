@@ -4,7 +4,7 @@ import CommunityBanner from "../components/community/CommunityBanner.jsx";
 import CommunityComposer from "../components/community/CommunityComposer.jsx";
 import CommunityLoginPromptModal from "../components/community/CommunityLoginPromptModal.jsx";
 import CommunityPageShell from "../components/community/CommunityPageShell.jsx";
-import { normalizeComposeType, validateDraft, mapServerErrorsToFields, mergeSubjectIds } from "../components/community/communityComposerUtils.js";
+import { normalizeComposeType, validateDraft, mapServerErrorsToFields } from "../components/community/communityComposerUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { listChatSessions } from "../services/chatApi.js";
 import {
@@ -129,21 +129,20 @@ export default function CommunityCreatePostPage() {
   }, [draft.postType, draft.subjectIds, draft.title, draft.body, draft.documentId, draft.chatSessionId]);
 
   useEffect(() => {
-    if (draft.subjectIds.length || draft.postType !== "document_share" || !draft.documentId) return;
+    if (draft.postType !== "document_share" || !draft.documentId) return;
 
     const matchingDocument = documents.find((doc) => String(doc.id) === String(draft.documentId));
     const nextSubjectId = matchingDocument?.subject_id || matchingDocument?.subjects?.id;
     if (!nextSubjectId) return;
 
-    setDraft((current) => (
-      current.subjectIds.length
-        ? current
-        : { ...current, subjectIds: mergeSubjectIds(current.subjectIds, [String(nextSubjectId)]) }
-    ));
-  }, [documents, draft.documentId, draft.postType, draft.subjectIds]);
+    setDraft((current) => ({
+      ...current,
+      subjectIds: [String(nextSubjectId)],
+    }));
+  }, [documents, draft.documentId, draft.postType]);
 
   useEffect(() => {
-    if (draft.subjectIds.length || draft.postType !== "ai_study_log" || !draft.chatSessionId) return;
+    if (draft.postType !== "ai_study_log" || !draft.chatSessionId) return;
 
     const matchingSession = sessions.find((item) => String(item.session.id) === String(draft.chatSessionId));
     if (!matchingSession) return;
@@ -155,12 +154,11 @@ export default function CommunityCreatePostPage() {
 
     if (!suggestedSubjectIds.length) return;
 
-    setDraft((current) => (
-      current.subjectIds.length
-        ? current
-        : { ...current, subjectIds: mergeSubjectIds(current.subjectIds, suggestedSubjectIds) }
-    ));
-  }, [draft.chatSessionId, draft.postType, draft.subjectIds, sessions]);
+    setDraft((current) => ({
+      ...current,
+      subjectIds: suggestedSubjectIds,
+    }));
+  }, [draft.chatSessionId, draft.postType, sessions]);
 
   async function handleSubmit(event) {
     event.preventDefault();
