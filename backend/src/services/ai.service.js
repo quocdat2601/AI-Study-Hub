@@ -109,7 +109,7 @@ async function processDocument({ id, userId, sendEvent }) {
     throw createError(400, 'No readable document chunks could be created');
   }
 
-  let chunksToSave = chunks;
+  let chunksToSave;
   try {
     sendEvent?.('status', { message: 'Creating embeddings...' });
     chunksToSave = await embeddingService.embedChunks(chunks);
@@ -321,7 +321,7 @@ async function prepareAskDocument({ id, userId, question, mode, model, sendEvent
   const userMessage = await chatModel.addMessage(session.id, 'user', cleanedQuestion);
 
   let chunks;
-  let autoProcessed = false;
+  let autoProcessed;
   try {
     ({ chunks, autoProcessed } = await getOrCreateChunksForAsk({ doc, userId, sendEvent }));
   } catch (err) {

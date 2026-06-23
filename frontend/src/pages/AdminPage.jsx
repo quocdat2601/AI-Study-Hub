@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import DashboardSidebar from "../components/dashboard/DashboardSidebar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import {
   createAdminSubject,
@@ -7,17 +6,14 @@ import {
   listAdminSubjects,
   listAdminUsers,
   updateAdminUser,
+  updateAdminSubject,
+  deleteAdminSubject,
+  listAdminDocuments,
+  purgeAdminDocument,
 } from "../services/adminApi.js";
+import { getDocumentSignedUrl } from "../services/documentApi.js";
 
 const emptySubject = { name: "", code: "", description: "" };
-
-const adminSidebarItems = [
-  { id: "dashboard", icon: "dashboard", label: "Dashboard" },
-  { id: "users", icon: "users", label: "Users" },
-  { id: "documents", icon: "document", label: "Documents" },
-  { id: "reports", icon: "reports", label: "Reports" },
-  { id: "activity-logs", icon: "activity", label: "Activity Logs" },
-];
 
 const STATUS_CLASSES = {
   active: "bg-[#e8f5ee] text-[#087443]",
@@ -32,7 +28,7 @@ const metricStyles = {
 };
 
 function messageFromError(err) {
-  return err.response?.data?.error || "Something went wrong. Please try again.";
+  return err.response?.data?.error || err.message || "Something went wrong. Please try again.";
 }
 
 function getDisplayName(user) {
@@ -47,6 +43,15 @@ function formatCompact(value) {
   if (number >= 1000000) return `${(number / 1000000).toFixed(1)}m`;
   if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 1 : 0)}k`;
   return String(number);
+}
+
+function formatBytes(bytes, decimals = 1) {
+  if (bytes === 0 || !bytes || isNaN(bytes)) return "0 Bytes";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
 function timeAgo(value) {
@@ -97,6 +102,191 @@ function MiniIcon({ type }) {
     <svg className="h-5 w-5 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths[type]}
     </svg>
+  );
+}
+
+function AdminIcon({ name }) {
+  const paths = {
+    dashboard: (
+      <>
+        <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" fill="none" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" fill="none" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" fill="none" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      </>
+    ),
+    users: (
+      <>
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    document: (
+      <>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points="14 2 14 8 20 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    subject: (
+      <>
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    reports: (
+      <>
+        <line x1="18" y1="20" x2="18" y2="10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="12" y1="20" x2="12" y2="4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="6" y1="20" x2="6" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    activity: (
+      <>
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points="12 6 12 12 16 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    settings: (
+      <>
+        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    help: (
+      <>
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    logout: (
+      <>
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points="16 17 21 12 16 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    )
+  };
+
+  return (
+    <svg className="h-5 w-5 fill-none" viewBox="0 0 24 24" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  );
+}
+
+function AdminSidebar({
+  activeSection,
+  onSectionChange,
+  isCollapsed,
+  onToggleCollapse,
+  userName,
+  onLogout
+}) {
+  const initials = (userName || "Admin").slice(0, 2).toUpperCase();
+
+  const sidebarItems = [
+    { id: "dashboard", icon: "dashboard", label: "Dashboard" },
+    { id: "users", icon: "users", label: "Users" },
+    { id: "documents", icon: "document", label: "Documents" },
+    { id: "subjects", icon: "subject", label: "Subjects" },
+    { id: "reports", icon: "reports", label: "Reports" },
+    { id: "activity-logs", icon: "activity", label: "Activity Logs" },
+    { id: "settings", icon: "settings", label: "Settings" },
+  ];
+
+  return (
+    <aside
+      className={`flex h-full min-w-0 flex-col border-r border-[#c7c4d7] bg-[#f2f4f6] px-3 py-4 transition-all duration-200 shrink-0 ${
+        isCollapsed ? "w-16 px-[10px]" : "w-56"
+      }`}
+      aria-label="Admin navigation"
+    >
+      <button
+        className="absolute right-[-13px] top-1/2 z-10 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
+        onClick={onToggleCollapse}
+        type="button"
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {isCollapsed ? ">" : "<"}
+      </button>
+
+      <div className={`mb-6 flex items-center gap-3 px-1 ${isCollapsed ? "justify-center" : ""}`}>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4648d4] text-sm font-bold text-white shadow-[0_8px_20px_rgba(70,72,212,0.28)]">
+          A
+        </span>
+        {!isCollapsed && (
+          <div className="min-w-0">
+            <strong className="block truncate text-[14px] font-bold text-slate-900">StudyHub AI</strong>
+            <small className="block truncate text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Admin Console</small>
+          </div>
+        )}
+      </div>
+
+      <nav className="grid content-start gap-1">
+        {sidebarItems.map((item) => {
+          const isActive = activeSection === item.id;
+          return (
+            <button
+              key={item.id}
+              className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] transition ${
+                isCollapsed ? "justify-center px-0" : ""
+              } ${
+                isActive
+                  ? "bg-[#d5e3fc] text-[#4648d4] font-extrabold"
+                  : "hover:bg-white"
+              }`}
+              onClick={() => onSectionChange(item.id)}
+              type="button"
+            >
+              <span className="flex h-5 w-5 flex-none items-center justify-center">
+                <AdminIcon name={item.icon} />
+              </span>
+              {!isCollapsed && <span className="truncate">{item.label}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
+        <button
+          className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-bold text-[#344154] transition ${
+            isCollapsed ? "justify-center px-0" : ""
+          } ${activeSection === "help-center" ? "bg-[#d5e3fc] text-[#4648d4] font-extrabold" : "hover:bg-white"}`}
+          onClick={() => onSectionChange("help-center")}
+          type="button"
+        >
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
+            <AdminIcon name="help" />
+          </span>
+          {!isCollapsed && <span className="truncate">Help Center</span>}
+        </button>
+
+        <div className={`flex items-center gap-2 px-1 ${isCollapsed ? "justify-center" : ""}`}>
+          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
+            {initials}
+          </span>
+          {!isCollapsed && <strong className="block min-w-0 truncate text-xs text-[#172033]">{userName}</strong>}
+        </div>
+
+        <button
+          className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 text-left text-[13px] font-bold text-slate-600 transition hover:bg-red-50 hover:text-red-600 ${
+            isCollapsed ? "justify-center px-0" : ""
+          }`}
+          onClick={onLogout}
+          type="button"
+        >
+          <span className="flex h-5 w-5 flex-none items-center justify-center">
+            <AdminIcon name="logout" />
+          </span>
+          {!isCollapsed && <span className="truncate">Logout</span>}
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -192,14 +382,14 @@ function MetricCard({ label, value, metricKey }) {
 
 function OverviewSkeleton() {
   return (
-    <div className="grid gap-5">
-      <div className="h-10 w-64 rounded bg-[#e8edf5] animate-pulse" />
+    <div className="grid gap-5 animate-pulse">
+      <div className="h-10 w-64 rounded bg-[#e8edf5]" />
       <div className="grid gap-5 lg:grid-cols-2">
-        <div className="h-[244px] rounded-lg border border-[#d9dde6] bg-white animate-pulse" />
-        <div className="h-[244px] rounded-lg border border-[#d9dde6] bg-white animate-pulse" />
+        <div className="h-[244px] rounded-lg border border-[#d9dde6] bg-white" />
+        <div className="h-[244px] rounded-lg border border-[#d9dde6] bg-white" />
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[0, 1, 2, 3].map((item) => <div className="h-[86px] rounded-lg border border-[#d9dde6] bg-white animate-pulse" key={item} />)}
+        {[0, 1, 2, 3].map((item) => <div className="h-[86px] rounded-lg border border-[#d9dde6] bg-white" key={item} />)}
       </div>
     </div>
   );
@@ -276,20 +466,45 @@ function AdminOverview({ data }) {
 }
 
 export default function AdminPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [overview, setOverview] = useState(null);
+  
+  // Data lists
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  
+  // Selection states (for details sidebars)
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUserDocs, setSelectedUserDocs] = useState([]);
+  const [isFetchingUserDocs, setIsFetchingUserDocs] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
+  
+  // Subjects states
   const [subjectForm, setSubjectForm] = useState(emptySubject);
+  const [editingSubject, setEditingSubject] = useState(null);
+  
+  // Filters
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [userStatusFilter, setUserStatusFilter] = useState("all");
+  const [userSortOrder, setUserSortOrder] = useState("newest"); // newest, oldest, email
+  
+  const [docSearch, setDocSearch] = useState("");
+  const [docSubjectFilter, setDocSubjectFilter] = useState("all");
+  const [docTypeFilter, setDocTypeFilter] = useState("all");
+  const [docStatusFilter, setDocStatusFilter] = useState("all");
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const displayName = getDisplayName(user);
+  
   const contentClass = isSidebarCollapsed
-    ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
-    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
+    ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6 h-full overflow-y-auto"
+    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8 h-full overflow-y-auto";
 
   useEffect(() => {
     loadAdminData();
@@ -300,14 +515,16 @@ export default function AdminPage() {
     setError("");
 
     try {
-      const [overviewData, userData, subjectData] = await Promise.all([
+      const [overviewData, userData, subjectData, documentData] = await Promise.all([
         getAdminOverview(),
         listAdminUsers(),
         listAdminSubjects(),
+        listAdminDocuments(),
       ]);
       setOverview(overviewData);
       setUsers(userData);
       setSubjects(subjectData);
+      setDocuments(documentData);
     } catch (err) {
       setError(messageFromError(err));
     } finally {
@@ -315,6 +532,7 @@ export default function AdminPage() {
     }
   }
 
+  // User Actions
   async function updateStatus(targetUser, status) {
     if (!window.confirm(`Set ${targetUser.email} to ${status}?`)) {
       return;
@@ -326,14 +544,62 @@ export default function AdminPage() {
     try {
       const updated = await updateAdminUser(targetUser.id, { status });
       setUsers((current) => current.map((item) => (item.id === targetUser.id ? updated : item)));
-      setSuccess("User status updated");
+      if (selectedUser && selectedUser.id === targetUser.id) {
+        setSelectedUser(updated);
+      }
+      setSuccess(`User status updated to ${status}`);
     } catch (err) {
       setError(messageFromError(err));
     }
   }
 
+  async function handleEditStorageLimit(targetUser) {
+    const currentLimitGB = (targetUser.storage_limit_bytes / (1024 * 1024 * 1024)).toFixed(1);
+    const input = window.prompt(`Enter new storage limit in GB for ${targetUser.email}:`, currentLimitGB);
+    if (input === null) return; // user cancelled
+
+    const gbVal = parseFloat(input);
+    if (isNaN(gbVal) || gbVal <= 0) {
+      alert("Please enter a valid positive number for storage limit.");
+      return;
+    }
+
+    const bytes = Math.round(gbVal * 1024 * 1024 * 1024);
+    setError("");
+    setSuccess("");
+
+    try {
+      const updated = await updateAdminUser(targetUser.id, { storage_limit_bytes: bytes });
+      setUsers((current) => current.map((item) => (item.id === targetUser.id ? updated : item)));
+      if (selectedUser && selectedUser.id === targetUser.id) {
+        setSelectedUser(updated);
+      }
+      setSuccess("User storage limit updated");
+    } catch (err) {
+      setError(messageFromError(err));
+    }
+  }
+
+  async function handleUserClick(targetUser) {
+    setSelectedUser(targetUser);
+    setSelectedUserDocs([]);
+    setIsFetchingUserDocs(true);
+    try {
+      const docs = await listAdminDocuments({ search: targetUser.email });
+      // Filter exactly by user id (or user email) since search is fuzzy
+      const userSpecificDocs = docs.filter(doc => doc.user_id === targetUser.id || doc.users?.email === targetUser.email);
+      setSelectedUserDocs(userSpecificDocs);
+    } catch (err) {
+      console.error("Failed to load user documents:", err);
+    } finally {
+      setIsFetchingUserDocs(false);
+    }
+  }
+
+  // Subject Actions
   function resetSubjectForm() {
     setSubjectForm(emptySubject);
+    setEditingSubject(null);
   }
 
   async function saveSubject(event) {
@@ -342,134 +608,891 @@ export default function AdminPage() {
     setSuccess("");
 
     try {
-      const subject = await createAdminSubject(subjectForm);
-      setSubjects((current) => [...current, subject].sort((a, b) => a.name.localeCompare(b.name)));
-      setSuccess("Subject created");
+      if (editingSubject) {
+        // Edit Subject
+        const updated = await updateAdminSubject(editingSubject.id, subjectForm);
+        setSubjects((current) => current.map(item => item.id === editingSubject.id ? updated : item).sort((a, b) => a.name.localeCompare(b.name)));
+        setSuccess("Subject updated");
+      } else {
+        // Create Subject
+        const subject = await createAdminSubject(subjectForm);
+        setSubjects((current) => [...current, subject].sort((a, b) => a.name.localeCompare(b.name)));
+        setSuccess("Subject created");
+      }
       resetSubjectForm();
-      await loadAdminData();
+      // Reload stats and details
+      const overviewData = await getAdminOverview();
+      setOverview(overviewData);
     } catch (err) {
       setError(messageFromError(err));
     }
   }
 
+  function handleEditSubjectClick(subject) {
+    setEditingSubject(subject);
+    setSubjectForm({
+      name: subject.name,
+      code: subject.code,
+      description: subject.description || ""
+    });
+  }
+
+  async function handleDeleteSubjectClick(subject) {
+    if (!window.confirm(`Are you sure you want to delete the subject "${subject.name}" (${subject.code})?`)) {
+      return;
+    }
+    setError("");
+    setSuccess("");
+    try {
+      await deleteAdminSubject(subject.id);
+      setSubjects((current) => current.filter(item => item.id !== subject.id));
+      setSuccess("Subject deleted successfully");
+      const overviewData = await getAdminOverview();
+      setOverview(overviewData);
+    } catch (err) {
+      setError(messageFromError(err));
+    }
+  }
+
+  // Document Actions
+  async function handleDownloadDoc(doc) {
+    try {
+      const { signedUrl } = await getDocumentSignedUrl(doc.id);
+      window.open(signedUrl, "_blank");
+    } catch (err) {
+      alert("Failed to download file: " + messageFromError(err));
+    }
+  }
+
+  async function handlePurgeDoc(doc) {
+    if (!window.confirm(`WARNING: Are you sure you want to PERMANENTLY delete "${doc.title}"? This will erase the database metadata and remove the file from cloud storage. This action cannot be undone.`)) {
+      return;
+    }
+    setError("");
+    setSuccess("");
+    try {
+      await purgeAdminDocument(doc.id);
+      setDocuments((current) => current.filter(item => item.id !== doc.id));
+      if (selectedDoc && selectedDoc.id === doc.id) {
+        setSelectedDoc(null);
+      }
+      setSuccess("Document permanently deleted");
+      const overviewData = await getAdminOverview();
+      setOverview(overviewData);
+    } catch (err) {
+      setError(messageFromError(err));
+    }
+  }
+
+  // Computed / Filtered lists
+  const filteredUsers = useMemo(() => {
+    let list = [...users];
+
+    // Status filter
+    if (userStatusFilter !== "all") {
+      list = list.filter((u) => u.status === userStatusFilter);
+    }
+
+    // Role filter
+    if (userRoleFilter !== "all") {
+      list = list.filter((u) => u.role === userRoleFilter);
+    }
+
+    // Search filter
+    if (userSearch.trim()) {
+      const term = userSearch.toLowerCase().trim();
+      list = list.filter(
+        (u) =>
+          u.email?.toLowerCase().includes(term) ||
+          u.name?.toLowerCase().includes(term) ||
+          u.full_name?.toLowerCase().includes(term)
+      );
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      if (userSortOrder === "newest") {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (userSortOrder === "oldest") {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      if (userSortOrder === "email") {
+        return (a.email || "").localeCompare(b.email || "");
+      }
+      return 0;
+    });
+
+    return list;
+  }, [users, userStatusFilter, userRoleFilter, userSearch, userSortOrder]);
+
+  const userStats = useMemo(() => {
+    const total = users.length;
+    const active = users.filter((u) => u.status === "active").length;
+    const disabled = users.filter((u) => u.status === "disabled").length;
+    
+    // New this week (7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const newThisWeek = users.filter((u) => new Date(u.created_at || u.createdAt).getTime() >= sevenDaysAgo.getTime()).length;
+
+    return { total, active, disabled, newThisWeek };
+  }, [users]);
+
+  const filteredDocs = useMemo(() => {
+    let list = [...documents];
+
+    // Subject filter
+    if (docSubjectFilter !== "all") {
+      list = list.filter((d) => Number(d.subject_id) === Number(docSubjectFilter));
+    }
+
+    // File Type filter
+    if (docTypeFilter !== "all") {
+      list = list.filter((d) => {
+        const mime = d.cloud_files?.mime_type || "";
+        const title = d.title || "";
+        if (docTypeFilter === "pdf") {
+          return mime === "application/pdf" || title.toLowerCase().endsWith(".pdf");
+        }
+        if (docTypeFilter === "docx") {
+          return (
+            mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+            title.toLowerCase().endsWith(".docx")
+          );
+        }
+        return true;
+      });
+    }
+
+    // Status filter
+    if (docStatusFilter !== "all") {
+      list = list.filter((d) => (d.status || "").toLowerCase() === docStatusFilter);
+    }
+
+    // Search filter
+    if (docSearch.trim()) {
+      const term = docSearch.toLowerCase().trim();
+      list = list.filter(
+        (d) =>
+          d.title?.toLowerCase().includes(term) ||
+          d.users?.email?.toLowerCase().includes(term)
+      );
+    }
+
+    return list;
+  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docSearch]);
+
+  const docStats = useMemo(() => {
+    const total = documents.length;
+    
+    const pdfs = documents.filter((d) => {
+      const mime = d.cloud_files?.mime_type || "";
+      const title = d.title || "";
+      return mime === "application/pdf" || title.toLowerCase().endsWith(".pdf");
+    }).length;
+
+    const docxs = documents.filter((d) => {
+      const mime = d.cloud_files?.mime_type || "";
+      const title = d.title || "";
+      return (
+        mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        title.toLowerCase().endsWith(".docx")
+      );
+    }).length;
+
+    const totalStorageBytes = documents.reduce((sum, d) => sum + Number(d.cloud_files?.size_bytes || 0), 0);
+
+    return { total, pdfs, docxs, totalStorageBytes };
+  }, [documents]);
+
+  // Render sub sections
   function renderUsers() {
     return (
-      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_18px_50px_rgba(20,31,48,0.08)]">
-        <h1 className="m-0 text-2xl font-extrabold">User Management</h1>
-        <p className="mt-1 mb-5 text-sm text-[#66758a]">Manage platform access and account status.</p>
-        {users.length === 0 ? (
-          <p className="text-[#66758a]">No users found.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
-                  <th className="py-3 pr-4">Email</th>
-                  <th className="py-3 pr-4">Role</th>
-                  <th className="py-3 pr-4">Status</th>
-                  <th className="py-3 pr-4">Joined</th>
-                  <th className="py-3 pr-4">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((item) => (
-                  <tr className="border-b border-[#eef0f3] last:border-b-0" key={item.id}>
-                    <td className="py-4 pr-4 font-bold text-[#191c1e]">{item.email}</td>
-                    <td className="py-4 pr-4 text-[#464554]">{item.role}</td>
-                    <td className="py-4 pr-4">
-                      <span className={`inline-flex rounded-full px-[10px] py-[5px] text-xs font-extrabold ${STATUS_CLASSES[item.status] ?? ""}`}>
-                        {item.status}
+      <div className="flex flex-col gap-5">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">User Management</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">View, search, and manage student accounts.</p>
+        </header>
+
+        {/* User stats cards */}
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#ecebff] text-[#4648d4]">
+              <MiniIcon type="users" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">Total Users</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{userStats.total}</strong>
+              <small className="mt-1 block text-[11px] font-bold text-[#4648d4]">+12%</small>
+            </div>
+          </article>
+
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#e8f5ee] text-[#087443]">
+              <MiniIcon type="users" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">Active Users</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{userStats.active}</strong>
+            </div>
+          </article>
+
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#fff0f0] text-[#dc2626]">
+              <MiniIcon type="alert" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">Disabled Users</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{userStats.disabled}</strong>
+            </div>
+          </article>
+
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#e5f0ff] text-[#3868a8]">
+              <MiniIcon type="users" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">New This Week</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">+{userStats.newThisWeek}</strong>
+            </div>
+          </article>
+        </section>
+
+        {/* Filters and List block */}
+        <div className="flex gap-6 items-start">
+          <section className="flex-1 min-w-0 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            {/* Filter Bar */}
+            <div className="mb-5 flex flex-wrap gap-4 items-center justify-between">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="w-64 rounded-lg border border-[#cbd5e1] px-[14px] py-2 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                    placeholder="Search by name or email..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Role:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none"
+                    value={userRoleFilter}
+                    onChange={(e) => setUserRoleFilter(e.target.value)}
+                  >
+                    <option value="all">All</option>
+                    <option value="student">Student</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Status:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none"
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <select
+                  className="rounded border border-[#cbd5e1] bg-white px-3 py-1.5 text-xs font-bold text-[#172033] focus:outline-none"
+                  value={userSortOrder}
+                  onChange={(e) => setUserSortOrder(e.target.value)}
+                >
+                  <option value="newest">Sort: Newest</option>
+                  <option value="oldest">Sort: Oldest</option>
+                  <option value="email">Sort: Email</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredUsers.length === 0 ? (
+              <p className="text-[#66758a] text-center py-6">No users found matching the filter criteria.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
+                      <th className="py-3 pr-4">User</th>
+                      <th className="py-3 pr-4">Role</th>
+                      <th className="py-3 pr-4">Status</th>
+                      <th className="py-3 pr-4">Joined</th>
+                      <th className="py-3 pr-4">Storage Limit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((item) => {
+                      const isSelected = selectedUser?.id === item.id;
+                      const userInitials = (item.email || "U").slice(0, 2).toUpperCase();
+                      return (
+                        <tr
+                          className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
+                            isSelected ? "bg-[#f1f5f9]" : ""
+                          }`}
+                          key={item.id}
+                          onClick={() => handleUserClick(item)}
+                        >
+                          <td className="py-3 pr-4 font-bold text-[#191c1e]">
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ecebff] text-[10px] font-black text-[#4648d4] shrink-0">
+                                {userInitials}
+                              </span>
+                              <div className="min-w-0">
+                                <span className="block truncate">{getDisplayName(item)}</span>
+                                <span className="block text-xs font-normal text-[#66758a] truncate">{item.email}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 text-[#464554] capitalize">{item.role}</td>
+                          <td className="py-3 pr-4">
+                            <span className={`inline-flex rounded-full px-[10px] py-[3px] text-xs font-extrabold capitalize ${STATUS_CLASSES[item.status] ?? ""}`}>
+                              {item.status}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
+                          <td className="py-3 pr-4 text-[#464554] font-semibold">{formatBytes(item.storage_limit_bytes)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* User Details Sidebar Panel */}
+          {selectedUser && (
+            <aside className="w-[360px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+              <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
+                <h3 className="m-0 font-extrabold text-base text-[#191c1e]">User Details</h3>
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  className="border-0 bg-transparent text-[#66758a] text-lg font-bold cursor-pointer"
+                  type="button"
+                >
+                  ✕
+                </button>
+              </header>
+
+              <div className="flex flex-col items-center text-center gap-2 mb-6">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#4648d4] text-xl font-black text-white shadow-sm">
+                  {(selectedUser.email || "U").slice(0, 2).toUpperCase()}
+                </span>
+                <h4 className="m-0 font-extrabold text-lg text-[#191c1e]">{getDisplayName(selectedUser)}</h4>
+                <p className="m-0 text-xs text-[#66758a] break-all">{selectedUser.email}</p>
+                <div className="flex gap-2 mt-1">
+                  <span className="rounded bg-[#ecebff] px-2 py-0.5 text-[11px] font-bold text-[#4648d4] capitalize">{selectedUser.role}</span>
+                  <span className={`rounded px-2 py-0.5 text-[11px] font-bold capitalize ${
+                    selectedUser.status === "active" ? "bg-[#e8f5ee] text-[#087443]" : "bg-[#fff0f0] text-[#b42318]"
+                  }`}>{selectedUser.status}</span>
+                </div>
+              </div>
+
+              {/* Storage Usage Progress Bar */}
+              {selectedUser.role === "student" && (
+                <div className="mb-6">
+                  <div className="flex justify-between text-xs font-bold text-[#344154] mb-2">
+                    <span>Storage Usage</span>
+                    <span>
+                      {formatBytes(selectedUserDocs.reduce((sum, d) => sum + Number(d.cloud_files?.size_bytes || 0), 0))} / {formatBytes(selectedUser.storage_limit_bytes)}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-[#e2e8f0] rounded-full overflow-hidden">
+                    <div
+                      className="bg-[#6366e8] h-full transition-all duration-300"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (selectedUserDocs.reduce((sum, d) => sum + Number(d.cloud_files?.size_bytes || 0), 0) /
+                            selectedUser.storage_limit_bytes) *
+                            100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Uploaded Files Section */}
+              <div className="mb-6">
+                <h5 className="m-0 font-extrabold text-xs uppercase tracking-wider text-[#66758a] mb-3">
+                  Uploaded Files ({selectedUserDocs.length})
+                </h5>
+                {isFetchingUserDocs ? (
+                  <p className="text-xs text-[#66758a] italic">Loading files...</p>
+                ) : selectedUserDocs.length === 0 ? (
+                  <p className="text-xs text-[#66758a] italic">No files uploaded yet.</p>
+                ) : (
+                  <div className="max-h-[180px] overflow-y-auto grid gap-2 pr-1">
+                    {selectedUserDocs.map((doc) => (
+                      <div
+                        key={doc.id}
+                        onClick={() => {
+                          setSelectedDoc(doc);
+                          setActiveSection("documents");
+                        }}
+                        className="flex items-center justify-between p-2 border border-[#eef0f3] rounded hover:border-[#4648d4] cursor-pointer transition text-xs"
+                      >
+                        <span className="font-semibold text-slate-800 truncate pr-3">{doc.title}</span>
+                        <span className="text-[#66758a] shrink-0">{formatBytes(doc.cloud_files?.size_bytes || 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid gap-2 border-t border-[#eef0f3] pt-4">
+                {selectedUser.id !== user.id ? (
+                  <>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-[#cbd5e1] bg-white text-xs font-bold text-[#1e293b] hover:bg-[#f8fafc] cursor-pointer"
+                      onClick={() => handleEditStorageLimit(selectedUser)}
+                      type="button"
+                    >
+                      Edit Storage Limit
+                    </button>
+                    {selectedUser.status === "active" ? (
+                      <button
+                        className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#fff0f0] text-xs font-bold text-[#b42318] hover:bg-[#ffe1e1] cursor-pointer"
+                        onClick={() => updateStatus(selectedUser, "disabled")}
+                        type="button"
+                      >
+                        Disable Account
+                      </button>
+                    ) : (
+                      <button
+                        className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#e8f5ee] text-xs font-bold text-[#087443] hover:bg-[#d2edd6] cursor-pointer"
+                        onClick={() => updateStatus(selectedUser, "active")}
+                        type="button"
+                      >
+                        Enable Account
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-[#66758a] text-center italic m-0">You are currently logged in as this user.</p>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderDocuments() {
+    return (
+      <div className="flex flex-col gap-5">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Document Management</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Monitor, search, and manage uploaded study documents.</p>
+        </header>
+
+        {/* Document Stats Cards */}
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#ecebff] text-[#4648d4]">
+              <MiniIcon type="doc" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">Total Documents</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{docStats.total}</strong>
+            </div>
+          </article>
+
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#e5f0ff] text-[#3868a8]">
+              <MiniIcon type="doc" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">PDF Files</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{docStats.pdfs}</strong>
+            </div>
+          </article>
+
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#fff1dc] text-[#b66a00]">
+              <MiniIcon type="doc" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">DOCX Files</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{docStats.docxs}</strong>
+            </div>
+          </article>
+
+          <article className="flex min-h-[86px] items-center gap-4 rounded-lg border border-[#c7c4d7] bg-white p-4">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-[#fff0f0] text-[#dc2626]">
+              <MiniIcon type="chip" />
+            </span>
+            <div>
+              <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">Storage Used</p>
+              <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{formatBytes(docStats.totalStorageBytes)}</strong>
+            </div>
+          </article>
+        </section>
+
+        {/* Filters and List panel */}
+        <div className="flex gap-6 items-start">
+          <section className="flex-1 min-w-0 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            {/* Filter bar */}
+            <div className="mb-5 flex flex-wrap gap-4 items-center justify-between">
+              <div className="flex flex-wrap gap-3 items-center">
+                <input
+                  type="text"
+                  className="w-56 rounded-lg border border-[#cbd5e1] px-[14px] py-2 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                  placeholder="Search by title..."
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                />
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Subject:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none max-w-36"
+                    value={docSubjectFilter}
+                    onChange={(e) => setDocSubjectFilter(e.target.value)}
+                  >
+                    <option value="all">All Subjects</option>
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.code} - {sub.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Type:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none"
+                    value={docTypeFilter}
+                    onChange={(e) => setDocTypeFilter(e.target.value)}
+                  >
+                    <option value="all">File Type</option>
+                    <option value="pdf">PDF</option>
+                    <option value="docx">DOCX</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Status:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none"
+                    value={docStatusFilter}
+                    onChange={(e) => setDocStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Status</option>
+                    <option value="indexed">Indexed</option>
+                    <option value="uploaded">Uploaded</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {filteredDocs.length === 0 ? (
+              <p className="text-[#66758a] text-center py-6">No documents found matching the filter criteria.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
+                      <th className="py-3 pr-4">Document</th>
+                      <th className="py-3 pr-4">Owner</th>
+                      <th className="py-3 pr-4">Type</th>
+                      <th className="py-3 pr-4">Size</th>
+                      <th className="py-3 pr-4">Status</th>
+                      <th className="py-3 pr-4">Upload Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDocs.map((item) => {
+                      const isSelected = selectedDoc?.id === item.id;
+                      const ownerInitials = (item.users?.email || "U").slice(0, 2).toUpperCase();
+                      const isPdf = item.title?.toLowerCase().endsWith(".pdf") || item.cloud_files?.mime_type === "application/pdf";
+                      
+                      return (
+                        <tr
+                          className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
+                            isSelected ? "bg-[#f1f5f9]" : ""
+                          }`}
+                          key={item.id}
+                          onClick={() => setSelectedDoc(item)}
+                        >
+                          <td className="py-3 pr-4 font-bold text-[#191c1e]">
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-8 w-8 items-center justify-center rounded bg-[#fff8ef] text-amber-600 text-lg font-bold shrink-0">
+                                {isPdf ? "📄" : "📝"}
+                              </span>
+                              <div className="min-w-0">
+                                <span className="block truncate max-w-xs">{item.title}</span>
+                                <span className="block text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2 w-max mt-0.5">
+                                  {item.subjects?.code || "No Subject"}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 text-[#464554]">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#eef0f3] text-[9px] font-black text-slate-700 shrink-0">
+                                {ownerInitials}
+                              </span>
+                              <span className="truncate max-w-[150px]">{item.users?.email || "System"}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 text-[#464554] uppercase text-xs font-semibold">{isPdf ? "PDF" : "DOCX"}</td>
+                          <td className="py-3 pr-4 text-[#464554]">{formatBytes(item.cloud_files?.size_bytes || 0)}</td>
+                          <td className="py-3 pr-4">
+                            <span className={`inline-flex rounded px-2 py-0.5 text-xs font-extrabold capitalize ${
+                              item.status === "indexed" || item.extraction_status === "ready"
+                                ? "bg-[#e8f5ee] text-[#087443]"
+                                : item.status === "failed" || item.extraction_status === "failed"
+                                ? "bg-[#fff0f0] text-[#b42318]"
+                                : "bg-[#f0f4f8] text-[#475569]"
+                            }`}>
+                              {item.status || item.extraction_status || "uploaded"}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* Document Details Sidebar Panel */}
+          {selectedDoc && (
+            <aside className="w-[360px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+              <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
+                <h3 className="m-0 font-extrabold text-base text-[#191c1e]">Document Details</h3>
+                <button
+                  onClick={() => setSelectedDoc(null)}
+                  className="border-0 bg-transparent text-[#66758a] text-lg font-bold cursor-pointer"
+                  type="button"
+                >
+                  ✕
+                </button>
+              </header>
+
+              {/* Document icon placeholder */}
+              <div className="flex flex-col items-center justify-center p-6 bg-[#f8fafc] border border-dashed border-[#d9dde6] rounded-lg gap-3 mb-4 text-center">
+                <span className="text-4xl">📄</span>
+                <span className="text-xs text-[#66758a] font-bold">Preview Available inline</span>
+                <span className="text-[10px] text-slate-500 break-all truncate max-w-[200px]">{selectedDoc.title}</span>
+              </div>
+
+              <div className="mb-4">
+                <h4 className="m-0 font-extrabold text-sm text-slate-900 break-words">{selectedDoc.title}</h4>
+                <p className="m-0 mt-1 text-[11px] text-[#66758a]">
+                  Uploaded by {selectedDoc.users?.email || "System"} on {new Date(selectedDoc.created_at).toLocaleDateString()}
+                </p>
+              </div>
+
+              {/* Metadata Table */}
+              <div className="grid grid-cols-2 gap-y-2 gap-x-4 border-t border-b border-[#eef0f3] py-3 mb-4 text-xs">
+                <span className="text-[#66758a]">File Type</span>
+                <span className="font-bold text-slate-800 uppercase text-right">
+                  {selectedDoc.title?.toLowerCase().endsWith(".pdf") || selectedDoc.cloud_files?.mime_type === "application/pdf" ? "PDF" : "DOCX"}
+                </span>
+                
+                <span className="text-[#66758a]">File Size</span>
+                <span className="font-bold text-slate-800 text-right">{formatBytes(selectedDoc.cloud_files?.size_bytes || 0)}</span>
+                
+                <span className="text-[#66758a]">Subject</span>
+                <span className="font-bold text-indigo-700 text-right">{selectedDoc.subjects?.name || "No Subject"}</span>
+                
+                <span className="text-[#66758a]">Status</span>
+                <span className="font-bold text-slate-800 capitalize text-right">{selectedDoc.status || "uploaded"}</span>
+              </div>
+
+              {/* Tags Section */}
+              <div className="mb-6">
+                <h5 className="m-0 font-extrabold text-xs uppercase tracking-wider text-[#66758a] mb-2">Tags</h5>
+                {selectedDoc.tags ? (
+                  <div className="flex flex-wrap gap-1">
+                    {String(selectedDoc.tags).split(",").map((tag, idx) => (
+                      <span className="text-[10px] font-bold bg-[#f1f5f9] text-[#475569] rounded px-2 py-0.5" key={idx}>
+                        {tag.trim()}
                       </span>
-                    </td>
-                    <td className="py-4 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
-                    <td className="py-4 pr-4">
-                      {item.id === user.id ? (
-                        <span className="text-[#66758a]">Current admin</span>
-                      ) : item.status === "active" ? (
-                        <button className="border-0 bg-transparent p-0 font-extrabold text-[#4648d4]" onClick={() => updateStatus(item, "disabled")} type="button">
-                          Disable
-                        </button>
-                      ) : (
-                        <button className="border-0 bg-transparent p-0 font-extrabold text-[#4648d4]" onClick={() => updateStatus(item, "active")} type="button">
-                          Enable
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#66758a] italic m-0">No tags.</p>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid gap-2 border-t border-[#eef0f3] pt-4">
+                <button
+                  className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer"
+                  onClick={() => handleDownloadDoc(selectedDoc)}
+                  type="button"
+                >
+                  Download File
+                </button>
+                
+                <button
+                  className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-[#b42318] bg-white text-xs font-bold text-[#b42318] hover:bg-[#fff0f0] cursor-pointer"
+                  onClick={() => handlePurgeDoc(selectedDoc)}
+                  type="button"
+                >
+                  Remove Document
+                </button>
+                <p className="text-[10px] text-red-600 text-center italic m-0">Warning: This action cannot be undone.</p>
+              </div>
+            </aside>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderSubjects() {
+    return (
+      <div className="flex flex-col gap-5">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Subject Configuration</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Configure and manage academic subjects for course categorization.</p>
+        </header>
+
+        <section className="grid items-start gap-[18px] lg:grid-cols-[360px_1fr]">
+          <form className="grid gap-4 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]" onSubmit={saveSubject}>
+            <h2 className="m-0 text-lg font-extrabold text-slate-800">
+              {editingSubject ? `Edit Subject: ${editingSubject.code}` : "Create Subject"}
+            </h2>
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Name
+              <input
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                value={subjectForm.name}
+                onChange={(event) => setSubjectForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Software Engineering"
+                required
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Code
+              <input
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                value={subjectForm.code}
+                onChange={(event) => setSubjectForm((current) => ({ ...current, code: event.target.value }))}
+                placeholder="SWP391"
+                required
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Description
+              <textarea
+                className="w-full resize-y rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                value={subjectForm.description}
+                onChange={(event) => setSubjectForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Optional course description"
+                rows="4"
+              />
+            </label>
+            
+            <div className="flex gap-2">
+              <button className="flex-1 inline-flex min-h-10 items-center justify-center rounded-lg border-0 bg-[#4648d4] px-[18px] font-extrabold text-white hover:bg-[#383ac4] text-xs cursor-pointer" type="submit">
+                {editingSubject ? "Save Changes" : "Create Subject"}
+              </button>
+              {editingSubject && (
+                <button
+                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#cbd5e1] bg-white px-[18px] font-extrabold text-slate-700 hover:bg-[#f8fafc] text-xs cursor-pointer"
+                  onClick={resetSubjectForm}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+
+          <div className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-xl font-extrabold mb-4 text-slate-800">Subjects</h2>
+            {subjects.length === 0 ? (
+              <p className="text-[#66758a]">No subjects created yet.</p>
+            ) : (
+              <div className="grid gap-3 max-h-[500px] overflow-y-auto pr-1">
+                {subjects.map((subject) => (
+                  <article className="flex items-start justify-between gap-[18px] rounded-lg border border-[#e5e9ef] p-4 transition hover:shadow-sm" key={subject.id}>
+                    <div className="min-w-0">
+                      <strong className="text-sm text-slate-900 block truncate">{subject.name}</strong>
+                      <span className="block text-xs font-bold text-[#66758a] mt-0.5">{subject.code}</span>
+                      {subject.description ? <p className="mt-2 mb-0 text-xs text-[#526173] break-words">{subject.description}</p> : null}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => handleEditSubjectClick(subject)}
+                        className="border border-[#cbd5e1] bg-white rounded px-2.5 py-1 text-xs font-bold text-[#4648d4] hover:bg-[#f8fafc] cursor-pointer"
+                        type="button"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSubjectClick(subject)}
+                        className="border border-[#cbd5e1] bg-white rounded px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-[#fff0f0] cursor-pointer"
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderActivityLogs() {
+    const logs = overview?.recentActivity || [];
+    return (
+      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <h1 className="m-0 text-2xl font-extrabold">Activity Logs</h1>
+        <p className="mt-1 mb-5 text-sm text-[#66758a]">Platform audit logs and logs history.</p>
+        
+        {logs.length === 0 ? (
+          <p className="text-sm text-[#66758a] italic">No activity logs recorded.</p>
+        ) : (
+          <div className="grid gap-3">
+            {logs.map((activity) => (
+              <article className="rounded-lg border border-[#eef0f3] p-4 flex justify-between items-start" key={activity.id}>
+                <div>
+                  <strong className="block text-sm text-slate-800">{activity.title}</strong>
+                  <span className="mt-1 block text-xs text-[#66758a]">
+                    Performed by: <span className="font-semibold text-slate-700">{activity.userEmail || "System"}</span>
+                  </span>
+                  {activity.description && (
+                    <span className="block text-xs text-slate-500 mt-0.5">Details: {activity.description}</span>
+                  )}
+                </div>
+                <span className="text-xs text-[#66758a] shrink-0 font-semibold">{timeAgo(activity.created_at)}</span>
+              </article>
+            ))}
           </div>
         )}
       </section>
     );
   }
 
-  function renderSubjects() {
-    return (
-      <section className="grid items-start gap-[18px] lg:grid-cols-[360px_1fr]">
-        <form className="grid gap-4 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_18px_50px_rgba(20,31,48,0.08)]" onSubmit={saveSubject}>
-          <h1 className="m-0 text-2xl font-extrabold">Create Subject</h1>
-          <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
-            Name
-            <input
-              className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033]"
-              value={subjectForm.name}
-              onChange={(event) => setSubjectForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Software Engineering"
-              required
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
-            Code
-            <input
-              className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033]"
-              value={subjectForm.code}
-              onChange={(event) => setSubjectForm((current) => ({ ...current, code: event.target.value }))}
-              placeholder="SWP391"
-              required
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
-            Description
-            <textarea
-              className="w-full resize-y rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033]"
-              value={subjectForm.description}
-              onChange={(event) => setSubjectForm((current) => ({ ...current, description: event.target.value }))}
-              placeholder="Optional course description"
-              rows="4"
-            />
-          </label>
-          <button className="inline-flex min-h-11 items-center justify-center rounded-lg border-0 bg-[#4648d4] px-[18px] font-extrabold text-white" type="submit">
-            Create subject
-          </button>
-        </form>
-
-        <div className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_18px_50px_rgba(20,31,48,0.08)]">
-          <h1 className="m-0 text-2xl font-extrabold">Subjects</h1>
-          {subjects.length === 0 ? (
-            <p className="text-[#66758a]">No subjects created yet.</p>
-          ) : (
-            <div className="mt-[18px] grid gap-3">
-              {subjects.map((subject) => (
-                <article className="flex items-start justify-between gap-[18px] rounded-lg border border-[#e5e9ef] p-4" key={subject.id}>
-                  <div>
-                    <strong>{subject.name}</strong>
-                    <span className="block text-[#66758a]">{subject.code}</span>
-                    {subject.description ? <p className="mt-2 mb-0 text-sm text-[#526173]">{subject.description}</p> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-    );
-  }
-
   function renderPlaceholder(title, description) {
     return (
-      <section className="rounded-lg border border-[#dfe4ea] bg-white p-8 shadow-[0_18px_50px_rgba(20,31,48,0.08)]">
+      <section className="rounded-lg border border-[#dfe4ea] bg-white p-8 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
         <h1 className="m-0 text-2xl font-extrabold">{title}</h1>
         <p className="mt-2 mb-0 text-[#66758a]">{description}</p>
       </section>
@@ -479,45 +1502,35 @@ export default function AdminPage() {
   function renderContent() {
     if (isLoading) return <OverviewSkeleton />;
     if (activeSection === "users") return renderUsers();
-    if (activeSection === "settings") return renderSubjects();
-    if (activeSection === "documents") return renderPlaceholder("Documents", "Document moderation and review tools will live here.");
+    if (activeSection === "documents") return renderDocuments();
+    if (activeSection === "subjects") return renderSubjects();
+    if (activeSection === "activity-logs") return renderActivityLogs();
     if (activeSection === "reports") return renderPlaceholder("Reports", "Exportable platform reports will be added in a later increment.");
-    if (activeSection === "activity-logs") {
-      return (
-        <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_18px_50px_rgba(20,31,48,0.08)]">
-          <h1 className="m-0 text-2xl font-extrabold">Activity Logs</h1>
-          <div className="mt-5 grid gap-3">
-            {(overview?.recentActivity || []).map((activity) => (
-              <article className="rounded-lg border border-[#eef0f3] p-4" key={activity.id}>
-                <strong>{activity.title}</strong>
-                <span className="mt-1 block text-sm text-[#66758a]">{timeAgo(activity.created_at)}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-      );
-    }
+    if (activeSection === "settings") return renderPlaceholder("Settings", "Administrative settings and configuration panel.");
+    if (activeSection === "help-center") return renderPlaceholder("Help Center", "Admin help resources and developer documentation.");
     return <AdminOverview data={overview} />;
   }
 
   return (
-    <main className={isSidebarCollapsed
-      ? "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out [grid-template-columns:64px_minmax(0,1fr)]"
-      : "grid min-h-[calc(100vh-64px)] bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out [grid-template-columns:224px_minmax(0,1fr)]"
-    }>
-      <DashboardSidebar
+    <main className={`grid h-screen overflow-hidden bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out ${
+      isSidebarCollapsed ? "[grid-template-columns:64px_minmax(0,1fr)]" : "[grid-template-columns:224px_minmax(0,1fr)]"
+    }`}>
+      <AdminSidebar
         activeSection={activeSection}
-        items={adminSidebarItems}
         isCollapsed={isSidebarCollapsed}
-        onSectionChange={setActiveSection}
+        onSectionChange={(section) => {
+          setActiveSection(section);
+          setError("");
+          setSuccess("");
+        }}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
-        showNewDocument={false}
+        onLogout={logout}
       />
 
       <section className={contentClass}>
-        {error ? <div className="rounded-lg bg-[#fff0f0] px-[14px] py-3 font-bold text-[#b42318]">{error}</div> : null}
-        {success ? <div className="rounded-lg bg-[#e8f5ee] px-[14px] py-3 font-bold text-[#087443]">{success}</div> : null}
+        {error ? <div className="rounded-lg bg-[#fff0f0] px-[14px] py-3 font-bold text-[#b42318] text-sm">{error}</div> : null}
+        {success ? <div className="rounded-lg bg-[#e8f5ee] px-[14px] py-3 font-bold text-[#087443] text-sm">{success}</div> : null}
         {renderContent()}
       </section>
     </main>
