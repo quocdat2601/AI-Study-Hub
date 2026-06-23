@@ -3,11 +3,16 @@ import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-ro
 import { AuthProvider, useAuth } from "./contexts/AuthContext.jsx";
 import { PreferencesProvider } from "./contexts/PreferencesContext.jsx";
 import { ToastProvider } from "./contexts/ToastContext.jsx";
+import { UploadDocProvider } from "./contexts/UploadDocContext.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import LandingHeader from "./components/landing/LandingHeader.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
+import CommunityPage from "./pages/CommunityPage.jsx";
+import CommunityCreatePostPage from "./pages/CommunityCreatePostPage.jsx";
+import CommunityPostDetailPage from "./pages/CommunityPostDetailPage.jsx";
+import CommunityUserProfilePage from "./pages/CommunityUserProfilePage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
@@ -45,6 +50,30 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route
+          path="/community"
+          element={<CommunityPage />}
+        />
+        <Route
+          path="/community/subjects/:code"
+          element={<CommunityPage />}
+        />
+        <Route
+          path="/community/new"
+          element={
+            <ProtectedRoute>
+              <CommunityCreatePostPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/community/posts/:id"
+          element={<CommunityPostDetailPage />}
+        />
+        <Route
+          path="/community/users/:userId"
+          element={<CommunityUserProfilePage />}
+        />
         <Route
           path="/dashboard"
           element={
@@ -106,7 +135,9 @@ export default function App() {
       <PreferencesProvider>
         <ToastProvider>
           <BrowserRouter>
-            <AppRoutes />
+            <UploadDocProvider>
+              <AppRoutes />
+            </UploadDocProvider>
           </BrowserRouter>
         </ToastProvider>
       </PreferencesProvider>

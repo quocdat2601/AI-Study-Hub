@@ -52,9 +52,38 @@ class DocumentChunkModel {
     return data || [];
   }
 
+  static async findByDocumentIds(docIds) {
+    const normalizedIds = [...new Set((docIds || []).map(Number).filter(Number.isInteger))];
+    if (!normalizedIds.length) return [];
+
+    const { data, error } = await supabase
+      .from('document_chunks')
+      .select('*')
+      .in('doc_id', normalizedIds)
+      .order('doc_id', { ascending: true })
+      .order('chunk_index', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async matchByEmbedding({ docId, embedding, limit = 4 }) {
     const { data, error } = await supabase.rpc('match_document_chunks', {
       p_doc_id: Number(docId),
+      p_query_embedding: toVectorLiteral(embedding),
+      p_match_count: Number(limit),
+    });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async matchByEmbeddingAcrossDocuments({ docIds, embedding, limit = 4 }) {
+    const normalizedIds = [...new Set((docIds || []).map(Number).filter(Number.isInteger))];
+    if (!normalizedIds.length) return [];
+
+    const { data, error } = await supabase.rpc('match_document_chunks_multi', {
+      p_doc_ids: normalizedIds,
       p_query_embedding: toVectorLiteral(embedding),
       p_match_count: Number(limit),
     });
@@ -71,6 +100,17 @@ class DocumentChunkModel {
 
     if (error) throw error;
     return count || 0;
+  }
+
+  // Sao chép chunks + vector từ document nguồn sang document đích (dedup, khỏi gọi lại Embedding API)
+  static async copyFromDocument(sourceDocId, targetDocId) {
+    const { data, error } = await supabase.rpc('copy_document_chunks', {
+      p_source_doc_id: Number(sourceDocId),
+      p_target_doc_id: Number(targetDocId),
+    });
+
+    if (error) throw error;
+    return data || 0;
   }
 }
 

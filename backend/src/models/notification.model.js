@@ -1,6 +1,24 @@
 const supabase = require('../config/supabase');
 
 class NotificationModel {
+  static async create(notificationData = {}) {
+    const insertData = {
+      user_id: notificationData.user_id || notificationData.userId,
+      type: notificationData.type || 'share',
+      message: notificationData.message,
+      ref_doc_id: notificationData.ref_doc_id || notificationData.refDocId || null,
+      ref_post_id: notificationData.ref_post_id || notificationData.refPostId || null,
+    };
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([insertData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async findByUserId(userId) {
     const { data, error } = await supabase
       .from('notifications')
@@ -33,21 +51,7 @@ class NotificationModel {
     return true;
   }
 
-  static async create({ userId, type = 'share', message, refDocId = null }) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .insert([{
-        user_id: userId,
-        type,
-        message,
-        ref_doc_id: refDocId,
-      }])
-      .select()
-      .single();
 
-    if (error) throw error;
-    return data;
-  }
 }
 
 module.exports = NotificationModel;

@@ -1,22 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 import useDocuments from "../hooks/useDocuments.js";
 import useUploadDoc from "../hooks/useUploadDoc.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
+import { cacheWorkspaceState } from "../utils/workspaceCache.js";
 import {
   deleteDocument,
   getDocumentSignedUrl,
+  updateDocumentVisibility,
 } from "../services/documentApi.js";
 import { listSubjects } from "../services/subjectApi.js";
 import EditDocumentModal from "./EditDocumentModal.jsx";
 import ShareDocumentModal from "./ShareDocumentModal.jsx";
-import UploadDocModal from "./UploadDocModal.jsx";
 
 function getMimeLabel(mimeType) {
   if (mimeType === "application/pdf") return "PDF";
   if (mimeType?.includes("wordprocessingml")) return "DOCX";
+  if (mimeType?.startsWith("image/")) return "IMG";
   return "FILE";
 }
 
@@ -34,7 +37,45 @@ function canManageDocument(doc, user) {
   return doc.user_id === user.id || user.role === "admin";
 }
 
-function ActionButton({ children, onClick, tone = "default" }) {
+function getVisibilityLabel(doc, isOwner) {
+  if (!isOwner) return "Shared";
+  return doc.is_public ? "Public" : "Private";
+}
+
+function getVisibilityTone(doc, isOwner) {
+  if (!isOwner) {
+    return "bg-[#f2f4f6] text-[#66758a] dark:bg-slate-800 dark:text-slate-400";
+  }
+  if (doc.is_public) {
+    return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  }
+  return "bg-[#e8f0ff] text-[#4648d4] dark:bg-indigo-950 dark:text-indigo-300";
+}
+
+function DocumentThumbnail({ doc }) {
+  const label = getMimeLabel(doc.cloud_files?.mime_type);
+
+  if (doc.thumbnailUrl) {
+    return (
+      <div className="h-16 w-16 flex-none overflow-hidden rounded-xl border border-[#e5e9ef] bg-slate-50 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <img
+          alt=""
+          className="h-full w-full object-contain p-1"
+          loading="lazy"
+          src={doc.thumbnailUrl}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <span className="flex h-16 w-16 flex-none items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444] dark:bg-red-950 dark:text-red-300">
+      {label}
+    </span>
+  );
+}
+
+function ActionButton({ children, disabled = false, onClick, tone = "default" }) {
   const tones = {
     default: "border-[#dbe3ed] bg-white text-[#4648d4] hover:bg-[#f8faff] dark:border-slate-600 dark:bg-slate-800 dark:text-indigo-300 dark:hover:bg-slate-700",
     muted: "border-[#dbe3ed] bg-white text-[#344154] hover:bg-[#f8fafc] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
@@ -44,7 +85,8 @@ function ActionButton({ children, onClick, tone = "default" }) {
 
   return (
     <button
-      className={`rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer transition ${tones[tone]}`}
+      className={`rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer transition disabled:cursor-not-allowed disabled:opacity-60 ${tones[tone]}`}
+      disabled={disabled}
       onClick={onClick}
       type="button"
     >
@@ -53,15 +95,43 @@ function ActionButton({ children, onClick, tone = "default" }) {
   );
 }
 
+function VisibilityToggleButton({ doc, disabled, onClick }) {
+  const isPublic = Boolean(doc.is_public);
+  const statusClass = isPublic
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800"
+    : "bg-indigo-50 text-[#4648d4] ring-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:ring-indigo-800";
+  const knobClass = isPublic ? "translate-x-4 bg-emerald-500" : "translate-x-0 bg-[#4648d4]";
+
+  return (
+    <button
+      className={`group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-black ring-1 transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${statusClass}`}
+      disabled={disabled}
+      onClick={onClick}
+      title={isPublic ? "Click to make this document private" : "Click to publish this document"}
+      type="button"
+    >
+      <span className="relative h-4 w-8 rounded-full bg-white/80 ring-1 ring-black/5 dark:bg-slate-900/80">
+        <span className={`absolute left-0.5 top-0.5 h-3 w-3 rounded-full transition-transform ${knobClass}`} />
+      </span>
+      <span>{disabled ? "Saving..." : isPublic ? "Public" : "Private"}</span>
+      <span className="hidden font-bold opacity-65 transition group-hover:opacity-100 sm:inline">
+        {isPublic ? "Make private" : "Publish"}
+      </span>
+    </button>
+  );
+}
+
 export default function DocumentsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("");
   const [subjects, setSubjects] = useState([]);
   const [editingDoc, setEditingDoc] = useState(null);
   const [sharingDoc, setSharingDoc] = useState(null);
+  const [updatingVisibilityId, setUpdatingVisibilityId] = useState(null);
   const [actionError, setActionError] = useState("");
 
   const queryParams = useMemo(
@@ -90,16 +160,10 @@ export default function DocumentsPage() {
     loadSubjects();
   }, [loadSubjects]);
 
-  async function handlePreview(doc) {
+  function handlePreview(doc) {
     setActionError("");
-    try {
-      const { signedUrl } = await getDocumentSignedUrl(doc.id);
-      window.open(signedUrl, "_blank", "noopener,noreferrer");
-    } catch (err) {
-      const message = err.response?.data?.error || "Could not open preview.";
-      setActionError(message);
-      addToast({ type: "error", title: "Preview failed", message });
-    }
+    cacheWorkspaceState({ selectedId: doc.id });
+    navigate("/workspace");
   }
 
   async function handleDownload(doc) {
@@ -134,6 +198,28 @@ export default function DocumentsPage() {
       const message = err.response?.data?.error || "Could not delete document.";
       setActionError(message);
       addToast({ type: "error", title: "Delete failed", message });
+    }
+  }
+
+  async function handleToggleVisibility(doc) {
+    const nextIsPublic = !doc.is_public;
+    setActionError("");
+    setUpdatingVisibilityId(doc.id);
+
+    try {
+      await updateDocumentVisibility(doc.id, nextIsPublic);
+      addToast({
+        type: "success",
+        title: nextIsPublic ? "Document is public" : "Document is private",
+        message: `"${doc.title}" was updated.`,
+      });
+      reload();
+    } catch (err) {
+      const message = err.response?.data?.error || "Could not update visibility.";
+      setActionError(message);
+      addToast({ type: "error", title: "Visibility update failed", message });
+    } finally {
+      setUpdatingVisibilityId(null);
     }
   }
 
@@ -219,16 +305,14 @@ export default function DocumentsPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-start gap-4">
-                      <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-[#fee2e2] text-xs font-black text-[#ef4444] dark:bg-red-950 dark:text-red-300">
-                        {getMimeLabel(doc.cloud_files?.mime_type)}
-                      </span>
+                      <DocumentThumbnail doc={doc} />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h2 className="m-0 truncate text-base font-bold text-[#172033] dark:text-slate-100">{doc.title}</h2>
                           <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${isOwner ? "bg-[#e8f0ff] text-[#4648d4] dark:bg-indigo-950 dark:text-indigo-300" : "bg-[#f2f4f6] text-[#66758a] dark:bg-slate-800 dark:text-slate-400"}`}
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${getVisibilityTone(doc, isOwner)}`}
                           >
-                            {isOwner ? "Private" : "Shared"}
+                            {getVisibilityLabel(doc, isOwner)}
                           </span>
                         </div>
                         <p className="m-0 mt-1 text-sm text-[#66758a] dark:text-slate-400">
@@ -255,6 +339,11 @@ export default function DocumentsPage() {
                       {isOwner ? (
                         <>
                           <ActionButton onClick={() => setEditingDoc(doc)} tone="muted">Edit</ActionButton>
+                          <VisibilityToggleButton
+                            doc={doc}
+                            disabled={updatingVisibilityId === doc.id}
+                            onClick={() => handleToggleVisibility(doc)}
+                          />
                           <ActionButton onClick={() => setSharingDoc(doc)} tone="share">Share</ActionButton>
                           <ActionButton onClick={() => handleDelete(doc)} tone="danger">Delete</ActionButton>
                         </>
@@ -285,14 +374,6 @@ export default function DocumentsPage() {
         )}
       </div>
 
-      <UploadDocModal
-        isOpen={uploadDoc.isOpen}
-        subjects={subjects}
-        onClose={uploadDoc.close}
-        onSuccess={uploadDoc.onSuccess}
-        onError={uploadDoc.onError}
-      />
-
       <EditDocumentModal
         document={editingDoc}
         isOpen={Boolean(editingDoc)}
@@ -318,6 +399,7 @@ export default function DocumentsPage() {
             title: "Share updated",
             message: "Document sharing settings were saved.",
           });
+          reload();
         }}
       />
     </DashboardShell>

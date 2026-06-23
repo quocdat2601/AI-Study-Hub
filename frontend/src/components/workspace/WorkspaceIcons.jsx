@@ -154,6 +154,35 @@ export function PlusIcon(props) {
   );
 }
 
+export function XIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </Icon>
+  );
+}
+
+export function UploadIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M12 16V4" />
+      <path d="m7 9 5-5 5 5" />
+      <path d="M5 20h14" />
+    </Icon>
+  );
+}
+
+export function RefreshIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M20 7v5h-5" />
+      <path d="M4 17v-5h5" />
+      <path d="M6.1 8.2A7 7 0 0 1 18.5 6L20 7" />
+      <path d="M17.9 15.8A7 7 0 0 1 5.5 18L4 17" />
+    </Icon>
+  );
+}
+
 export function ChevronLeftIcon(props) {
   return (
     <Icon {...props}>
@@ -174,6 +203,26 @@ export function ChevronDownIcon(props) {
   return (
     <Icon {...props}>
       <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
+export function PencilIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z" />
+      <path d="m14 7 3 3" />
+    </Icon>
+  );
+}
+
+export function TrashIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="m7 7 1 13h8l1-13" />
+      <path d="M10 11v5M14 11v5" />
     </Icon>
   );
 }

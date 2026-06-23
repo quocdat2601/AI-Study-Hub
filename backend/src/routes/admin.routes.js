@@ -156,6 +156,10 @@ router.delete('/subjects/:id', adminController.deleteSubject);
  *       200: { description: List of logs }
  */
 router.get('/activity-logs', adminController.getActivityLogs);
+router.get('/community/reports', adminController.getCommunityReports);
+router.patch('/community/reports/:id', adminController.resolveCommunityReport);
+router.patch('/community/posts/:id', adminController.moderateCommunityPost);
+router.patch('/community/replies/:id', adminController.moderateCommunityReply);
 
 /**
  * @swagger

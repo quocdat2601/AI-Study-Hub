@@ -46,7 +46,7 @@ async function redirectToLogin() {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401 && error.config?.url !== '/auth/me') {
+    if (error.response?.status === 401 && error.config?.url !== "/auth/me" && !error.config?.suppressAuthRedirect) {
       const originalRequest = error.config || {};
 
       try {
@@ -67,7 +67,7 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
 
-        if (token && originalRequest._authRetry && authCode === 'AUTH_INVALID_OR_EXPIRED_TOKEN') {
+        if (token && originalRequest._authRetry && authCode === "AUTH_INVALID_OR_EXPIRED_TOKEN") {
           await redirectToLogin();
         }
 

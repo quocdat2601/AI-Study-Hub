@@ -22,7 +22,7 @@ const uploadAvatar = require('../middleware/uploadAvatar');
  *     responses:
  *       200: { description: Account data }
  */
-router.get('/', verifyToken, requireRole('student', 'admin'), accountController.getAccount);
+router.get('/', verifyToken, requireRole('user', 'admin'), accountController.getAccount);
 
 /**
  * @swagger
@@ -33,7 +33,7 @@ router.get('/', verifyToken, requireRole('student', 'admin'), accountController.
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/profile', verifyToken, requireRole('student', 'admin'), accountController.updateProfile);
+router.patch('/profile', verifyToken, requireRole('user', 'admin'), accountController.updateProfile);
 
 /**
  * @swagger
@@ -44,7 +44,7 @@ router.patch('/profile', verifyToken, requireRole('student', 'admin'), accountCo
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/preferences', verifyToken, requireRole('student', 'admin'), accountController.updatePreferences);
+router.patch('/preferences', verifyToken, requireRole('user', 'admin'), accountController.updatePreferences);
 
 /**
  * @swagger
@@ -55,7 +55,7 @@ router.patch('/preferences', verifyToken, requireRole('student', 'admin'), accou
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/email', verifyToken, requireRole('student', 'admin'), accountController.updateEmail);
+router.patch('/email', verifyToken, requireRole('user', 'admin'), accountController.updateEmail);
 
 /**
  * @swagger
@@ -66,16 +66,16 @@ router.patch('/email', verifyToken, requireRole('student', 'admin'), accountCont
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/password', verifyToken, requireRole('student', 'admin'), accountController.updatePassword);
+router.patch('/password', verifyToken, requireRole('user', 'admin'), accountController.updatePassword);
 
 router.post(
   '/avatar',
   verifyToken,
-  requireRole('student', 'admin'),
+  requireRole('user', 'admin'),
   uploadAvatar.single('avatar'),
   accountController.uploadAvatar
 );
 
-router.post('/storage/upgrade', verifyToken, requireRole('student', 'admin'), accountController.upgradeStorage);
+router.post('/storage/upgrade', verifyToken, requireRole('user', 'admin'), accountController.upgradeStorage);
 
 module.exports = router;

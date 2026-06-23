@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const chatController = require('../controllers/chat.controller');
 const verifyToken = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 /**
  * @swagger
@@ -27,7 +28,23 @@ const verifyToken = require('../middleware/auth');
  */
 router.use(verifyToken);
 
+// Session lists are owned by their root document; attachments do not affect this filter.
+router.get('/sessions', chatController.listSessions);
+router.post('/sessions', chatController.createSession);
+router.patch('/sessions/:sessionId', chatController.renameSession);
+router.delete('/sessions/:sessionId', chatController.deleteSession);
+
 router.get('/session/:docId', chatController.getOrCreateSession);
+
+router.post('/sessions/:sessionId/documents', chatController.attachExistingDocument);
+router.post(
+  '/sessions/:sessionId/documents/upload',
+  upload.single('file'),
+  chatController.uploadSessionDocument
+);
+router.delete('/sessions/:sessionId/documents/:documentId', chatController.softDetachDocument);
+router.post('/sessions/:sessionId/documents/:documentId/restore', chatController.restoreDocument);
+router.post('/sessions/:sessionId/documents/:documentId/save-to-library', chatController.saveDocumentToLibrary);
 
 /**
  * @swagger

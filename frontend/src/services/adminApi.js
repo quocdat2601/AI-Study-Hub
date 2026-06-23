@@ -44,3 +44,23 @@ export async function purgeAdminDocument(id) {
   const response = await api.delete(`/documents/${id}/purge`);
   return response.data;
 }
+
+export async function listAdminCommunityReports(params = {}) {
+  const response = await api.get("/admin/community/reports", { params });
+  return response.data;
+}
+
+export async function resolveAdminCommunityReport(id, status) {
+  const response = await api.patch(`/admin/community/reports/${id}`, { status });
+  return response.data;
+}
+
+export async function moderateAdminCommunityPost(id, status) {
+  const response = await api.patch(`/admin/community/posts/${id}`, { status });
+  return response.data;
+}
+
+export async function moderateAdminCommunityReply(id, status) {
+  const response = await api.patch(`/admin/community/replies/${id}`, { status });
+  return response.data;
+}

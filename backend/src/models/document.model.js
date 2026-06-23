@@ -1,4 +1,4 @@
-﻿const supabase = require('../config/supabase');
+const supabase = require('../config/supabase');
 const TagModel = require('./tag.model');
 
 const DOCUMENT_SELECT = `
@@ -14,6 +14,8 @@ class DocumentModel {
       .from('documents')
       .select(DOCUMENT_SELECT)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -22,12 +24,15 @@ class DocumentModel {
     const { data: shares, error: sharedError } = await supabase
       .from('doc_shares')
       .select(`
-        documents (
+        documents!inner (
           ${DOCUMENT_SELECT}
         )
       `)
       .eq('shared_to', userId)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('documents.document_scope', 'library')
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null);
 
     if (sharedError) throw sharedError;
 
@@ -46,10 +51,27 @@ class DocumentModel {
       .from('documents')
       .select(DOCUMENT_SELECT)
       .eq('id', id)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  }
+
+  static async findOwnedById(id, userId) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (error) throw error;
     return data;
   }
 
@@ -57,6 +79,7 @@ class DocumentModel {
     const doc = await this.findById(id);
     if (!doc) return null;
     if (doc.user_id === userId) return doc;
+    if (doc.is_public) return doc;
 
     const { data: share, error } = await supabase
       .from('doc_shares')
@@ -68,6 +91,67 @@ class DocumentModel {
 
     if (error) throw error;
     return share ? doc : null;
+  }
+
+  static async findActiveById(id) {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async findActiveSessionScopedById(id, sessionId) {
+    let query = supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('document_scope', 'session')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+
+    if (sessionId !== undefined && sessionId !== null) {
+      query = query.eq('origin_session_id', Number(sessionId));
+    }
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  static async convertSessionDocumentToLibrary({ id, userId, sessionId }) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        document_scope: 'library',
+        origin_session_id: null,
+        lifecycle_status: 'active',
+        last_accessed_at: new Date().toISOString(),
+        expires_at: null,
+        expired_at: null,
+        purge_after: null,
+        is_public: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .eq('origin_session_id', sessionId)
+      .eq('document_scope', 'session')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .select(DOCUMENT_SELECT)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   }
 
   // ─── Soft delete / trash / restore ──────────────────────────────────────────
@@ -90,8 +174,22 @@ class DocumentModel {
       .from('documents')
       .select(DOCUMENT_SELECT)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Doc trong thùng rác đã quá hạn giữ (deleted_at < cutoff) — cho auto-purge
+  static async findExpiredTrash(cutoffISO) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('document_scope', 'library')
+      .not('deleted_at', 'is', null)
+      .lt('deleted_at', cutoffISO);
 
     if (error) throw error;
     return data || [];
@@ -150,6 +248,52 @@ class DocumentModel {
     return true;
   }
 
+  // Tìm một cloud_file đã có cùng mã nội dung (dedup) — để dùng lại storage_path
+  static async findCloudFileByHash(contentHash) {
+    if (!contentHash) return null;
+
+    const { data, error } = await supabase
+      .from('cloud_files')
+      .select('id, storage_path, mime_type, size_bytes, content_hash')
+      .eq('content_hash', contentHash)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Đếm số cloud_file còn trỏ tới cùng object vật lý — để biết khi nào được xóa file thật
+  static async countCloudFilesByStoragePath(storagePath) {
+    const { count, error } = await supabase
+      .from('cloud_files')
+      .select('*', { count: 'exact', head: true })
+      .eq('storage_path', storagePath);
+
+    if (error) throw error;
+    return count || 0;
+  }
+
+  // Tìm một document đã trích xuất xong (cùng nội dung) để sao chép text + chunks
+  static async findReadySourceByHash(contentHash, excludeDocId = null) {
+    if (!contentHash) return null;
+
+    let query = supabase
+      .from('documents')
+      .select('id, extracted_text, extraction_status, extraction_metadata, cloud_files!inner (content_hash)')
+      .eq('cloud_files.content_hash', contentHash)
+      .eq('extraction_status', 'ready')
+      .limit(1);
+
+    if (excludeDocId != null) {
+      query = query.neq('id', excludeDocId);
+    }
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
   static async create(docData) {
     const { data, error } = await supabase
       .from('documents')
@@ -199,6 +343,7 @@ class DocumentModel {
         extracted_text: extractionData.text,
         extraction_status: extractionData.status,
         extraction_error: extractionData.error,
+        extraction_metadata: extractionData.metadata || {},
         extracted_at: new Date().toISOString(),
         status: extractionData.status === 'ready' ? 'indexed' : 'uploaded',
         updated_at: new Date().toISOString(),
@@ -295,6 +440,7 @@ class DocumentModel {
       .from('documents')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
       .is('deleted_at', null);
 
     if (error) throw error;
@@ -309,6 +455,7 @@ class DocumentModel {
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('document_scope', 'library')
       .select(DOCUMENT_SELECT)
       .single();
 
@@ -332,6 +479,36 @@ class DocumentModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async findThumbnailBackfillCandidates({ limit = 50, force = false } = {}) {
+    let query = supabase
+      .from('documents')
+      .select(`
+        id,
+        user_id,
+        title,
+        thumbnail_path,
+        thumbnail_status,
+        thumbnail_error,
+        thumbnail_generated_at,
+        cloud_files!inner (storage_path, mime_type)
+      `)
+      .is('deleted_at', null)
+      .in('cloud_files.mime_type', [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ])
+      .order('created_at', { ascending: true })
+      .limit(Math.min(Math.max(Number(limit) || 50, 1), 500));
+
+    if (!force) {
+      query = query.or('thumbnail_path.is.null,thumbnail_status.in.(pending,failed)');
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
   }
 
   static async findAdminOverviewDocuments(sinceDate) {
@@ -390,6 +567,8 @@ class DocumentModel {
         cloud_files (storage_path, mime_type, size_bytes)
       `)
       .eq('user_id', userId)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 5, 20));
@@ -417,6 +596,8 @@ class DocumentModel {
         cloud_files (mime_type, size_bytes)
       `)
       .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
       .eq('status', 'indexed')
       .eq('extraction_status', 'ready')
       .is('deleted_at', null)

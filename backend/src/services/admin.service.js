@@ -4,6 +4,7 @@ const chatModel = require('../models/chat.model');
 const supabase = require('../config/supabase');
 const subjectService = require('./subject.service');
 const activityService = require('./activity.service');
+const communityService = require('./community.service');
 const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
 
@@ -228,4 +229,8 @@ module.exports = {
   updateSubject: subjectService.updateSubject,
   deleteSubject: subjectService.deleteSubject,
   listActivityLogs: activityService.listLatest,
+  listCommunityReports: communityService.listReports,
+  resolveCommunityReport: communityService.resolveReport,
+  moderateCommunityPost: communityService.updatePostModeration,
+  moderateCommunityReply: communityService.updateReplyModeration,
 };

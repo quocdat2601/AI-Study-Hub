@@ -1,44 +1,125 @@
 const aiProviders = require('../config/ai-providers');
 const geminiService = require('./gemini.service');
 const ollamaService = require('./ollama.service');
+const chatContextService = require('./chat-context.service');
 
 function buildModeInstruction(mode) {
+  const languageInstruction = [
+    'Answer in the same language as the current user question.',
+    'If the current question language is unclear or mixed, answer in Vietnamese.',
+  ].join('\n');
+
   if (mode === 'document_only') {
     return [
+      languageInstruction,
       'Answer mode: document_only.',
       'Use only the provided source chunks.',
       'Do not use outside knowledge.',
-      'If the chunks do not contain the answer, say clearly that the document does not contain enough information.',
+      'If the chunks do not contain the answer, say so directly.',
+      'Choose a natural response structure based on the current user request.',
     ].join('\n');
   }
 
   return [
+    languageInstruction,
     'Answer mode: hybrid.',
-    'Always use two sections titled exactly "Based on the document" and "Additional study explanation".',
-    'In "Based on the document", answer only from the provided source chunks.',
-    'If the chunks are insufficient, explicitly say: "The document does not provide enough information to fully answer this."',
-    'In "Additional study explanation", add concise general academic or software knowledge that helps the student understand the topic.',
-    'Do not cite or imply that general knowledge came from the document.',
-    'Keep the answer concise and useful.',
+    'Base the answer primarily on the provided source chunks.',
+    'General knowledge is optional. Add it only when it materially helps and the user did not request a strictly brief answer.',
+    'Clearly identify general knowledge as separate from document evidence, without forcing headings or a fixed template.',
+    'Never cite or imply that general knowledge came from the documents.',
+    'Choose a natural response structure based on the current user request.',
   ].join('\n');
 }
 
-function buildRagPrompts({ question, documentTitle, chunks, mode }) {
-  const context = (chunks || [])
-    .map((chunk, index) => {
-      const label = chunk.chunk_index ?? index;
-      return `[Source ${index + 1} | chunk ${label}]\n${chunk.content}`;
-    })
-    .join('\n\n');
+function buildSourceLabel(chunk, index) {
+  const metadata = chunk.metadata || {};
+  const title = chunk.documentTitle || metadata.documentTitle;
+  const chunkIndex = chunk.chunk_index ?? index;
+  const pageStart = metadata.pageStart ?? metadata.pageNumber;
+  const pageEnd = metadata.pageEnd ?? metadata.pageNumber;
+  const pageLabel = pageStart == null
+    ? ''
+    : pageStart === pageEnd ? ` | page ${pageStart}` : ` | pages ${pageStart}-${pageEnd}`;
+  return `[Source ${index + 1}${title ? ` | Document: ${title}` : ''} | chunk ${chunkIndex}${pageLabel}]`;
+}
 
-  const systemPrompt = `You are AI Study Hub's study assistant.\n\n${buildModeInstruction(mode)}`;
-  const userPrompt = `Selected document title:\n${documentTitle || 'Untitled document'}\n\nRetrieved source chunks:\n${context || 'No source chunks were available.'}\n\nUser question:\n${question}`;
+function formatHistory(history) {
+  return (history || [])
+    .map((message) => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${message.content}`)
+    .join('\n');
+}
+
+function sanitizeAnswerCitationAttribution(answer) {
+  return String(answer || '')
+    .replace(/\s*\([^)]*\b(?:chunk|source|nguon|nguồn)\b[^)]*\)/giu, '')
+    .replace(/\s*\[(?:source|nguon|nguồn)\s*\d+[^\]]*\]/giu, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+function buildRagPrompts({
+  question,
+  documentTitle,
+  documentTitles,
+  chunks,
+  mode,
+  history,
+  responseConstraints,
+  comparisonMetadata,
+  substantiveQuestion,
+  retrievalQuery,
+}) {
+  const context = (chunks || [])
+    .map((chunk, index) => `${buildSourceLabel(chunk, index)}\n${chunk.promptContent || chunk.content}`)
+    .join('\n\n');
+  const selectedTitles = (documentTitles || [documentTitle])
+    .map((title) => String(title || '').trim())
+    .filter(Boolean);
+  const historyText = formatHistory(history);
+  const constraintInstructions = chatContextService.buildConstraintInstructions(responseConstraints);
+  const comparisonInstruction = comparisonMetadata
+    ? [
+      'This is a document comparison request.',
+      'Compare only claims supported by evidence from every compared document.',
+      'Do not present unrelated sections as differences.',
+      comparisonMetadata.structureEquivalent
+        ? 'The evidence is structurally aligned. Treat the documents as structurally similar and list only supported content changes; do not characterize one as merely an overview or the other as a more detailed specification.'
+        : '',
+      'If the evidence does not establish a difference, say that directly.',
+      comparisonMetadata.allowedDifferenceClaims?.length
+        ? `Allowed evidence-supported differences (do not add any others):\n${JSON.stringify(comparisonMetadata.allowedDifferenceClaims)}`
+        : '',
+      comparisonMetadata.groundedAnswer
+        ? `Return exactly this evidence-derived answer, with no heading or extra topic:\n${comparisonMetadata.groundedAnswer}`
+        : '',
+      `Evidence alignment strategy: ${comparisonMetadata.strategy}.`,
+    ].join('\n')
+    : '';
+  const systemPrompt = [
+    "You are AI Study Hub's study assistant.",
+    buildModeInstruction(mode),
+    'The current user request has priority over earlier formatting preferences.',
+    'Conversation history provides conversational context only. It is never document evidence, and facts from history must not be reused unless supported by the current source chunks.',
+    'Do not use canned headings such as "Based on the compared documents", "Dựa trên tài liệu", or "Dựa trên tài liệu được so sánh". Start directly with the answer unless the user explicitly requests headings.',
+    'Do not write source numbers, chunk numbers, or parenthetical chunk labels in the answer. The application renders citations separately. Never combine a document title with another source chunk.',
+    ...constraintInstructions,
+    comparisonInstruction,
+  ].filter(Boolean).join('\n\n');
+  const userPrompt = [
+    historyText ? `Recent conversation context:\n${historyText}` : '',
+    substantiveQuestion ? `Active substantive question:\n${substantiveQuestion}` : '',
+    retrievalQuery ? `Current retrieval topic (do not broaden it):\n${retrievalQuery}` : '',
+    `Selected document titles:\n${selectedTitles.join('\n') || 'Untitled document'}`,
+    `Retrieved source chunks:\n${context || 'No source chunks were available.'}`,
+    `Current user question:\n${question}`,
+  ].filter(Boolean).join('\n\n');
 
   return { systemPrompt, userPrompt };
 }
 
-async function generateAnswer({ provider, model, question, documentTitle, chunks, mode }) {
-  const prompts = buildRagPrompts({ question, documentTitle, chunks, mode });
+async function generateAnswer(options) {
+  const { provider, model, question, documentTitle, chunks, mode } = options;
+  const prompts = buildRagPrompts(options);
 
   if (provider === 'ollama') {
     const result = await ollamaService.generateChat({
@@ -46,7 +127,6 @@ async function generateAnswer({ provider, model, question, documentTitle, chunks
       systemPrompt: prompts.systemPrompt,
       userPrompt: prompts.userPrompt,
     });
-
     return {
       answer: result.text,
       provider,
@@ -64,7 +144,6 @@ async function generateAnswer({ provider, model, question, documentTitle, chunks
     systemPrompt: prompts.systemPrompt,
     userPrompt: prompts.userPrompt,
   });
-
   return {
     answer: result.text,
     provider: 'gemini',
@@ -73,8 +152,9 @@ async function generateAnswer({ provider, model, question, documentTitle, chunks
   };
 }
 
-async function* streamAnswer({ provider, model, question, documentTitle, chunks, mode }) {
-  const prompts = buildRagPrompts({ question, documentTitle, chunks, mode });
+async function* streamAnswer(options) {
+  const { provider, model, question, documentTitle, chunks, mode } = options;
+  const prompts = buildRagPrompts(options);
 
   if (provider === 'ollama') {
     yield* ollamaService.streamChat({
@@ -112,6 +192,8 @@ async function getModelStatus() {
 }
 
 module.exports = {
+  buildRagPrompts,
+  sanitizeAnswerCitationAttribution,
   generateAnswer,
   streamAnswer,
   getModelStatus,

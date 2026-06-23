@@ -4,6 +4,8 @@ import "../../lib/pdfWorker.js";
 import { PDF_DOCUMENT_OPTIONS } from "../../lib/pdfWorker.js";
 import WorkspaceLazyPdfPage from "./WorkspaceLazyPdfPage.jsx";
 import WorkspaceTextView from "./WorkspaceTextView.jsx";
+import WorkspaceNotebook from "./WorkspaceNotebook.jsx";
+import { loadNotebookNotes } from "../../utils/workspaceNotebook.js";
 import { DownloadIcon, FileTextIcon } from "./WorkspaceIcons.jsx";
 import { getStatusLabel, getSubjectLabel } from "./workspaceDisplay.js";
 
@@ -150,7 +152,7 @@ function PdfBody({
   }
 
   return (
-    <div className="min-h-full bg-[#eef0f2] px-4 py-8 sm:px-8">
+    <div className="workspace-selectable min-h-full bg-[#eef0f2] px-4 py-8 pr-6 sm:px-8 sm:pr-10">
       <div className="mx-auto flex w-full max-w-[680px] flex-col gap-5">
         <Document
           error={<div className="rounded-sm bg-white p-10 text-center text-sm text-red-600 shadow-md">Could not display PDF.</div>}
@@ -201,7 +203,28 @@ export default function DocumentViewer({
   viewMode,
   zoom,
 }) {
+  const [showNotebookPanel, setShowNotebookPanel] = useState(false);
+  const [notebookCount, setNotebookCount] = useState(0);
   const documentType = getDocumentType(selectedDocument);
+
+  useEffect(() => {
+    setNotebookCount(0);
+    setShowNotebookPanel(false);
+    if (!selectedDocument?.id) return undefined;
+
+    let isMounted = true;
+    loadNotebookNotes(selectedDocument.id)
+      .then((items) => {
+        if (isMounted) setNotebookCount(items.length);
+      })
+      .catch(() => {
+        if (isMounted) setNotebookCount(0);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDocument?.id]);
   const showPdfControls = viewMode === "pdf" && documentType === "PDF" && selectedDocument;
   const status = processResult?.status || selectedDocument?.extraction_status || selectedDocument?.status;
 
@@ -238,11 +261,11 @@ export default function DocumentViewer({
           </div>
 
           {selectedDocument && status === "ready" ? (
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">AI ready</span>
+            <span className="no-caret rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">AI ready</span>
           ) : null}
 
           {showPdfControls ? (
-            <div className="hidden shrink-0 items-center gap-1.5 text-[12px] text-slate-600 xl:flex">
+            <div className="no-caret hidden shrink-0 items-center gap-1.5 text-[12px] text-slate-600 xl:flex">
               <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50" onClick={() => changeZoom(-10)} type="button">-</button>
               <span className="min-w-10 text-center font-medium">{zoom}%</span>
               <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50" onClick={() => changeZoom(10)} type="button">+</button>
@@ -264,6 +287,18 @@ export default function DocumentViewer({
             </button>
           ) : null}
 
+          {selectedDocument ? (
+            <button
+              className={showNotebookPanel
+                ? "cursor-pointer rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
+                : "cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"}
+              onClick={() => setShowNotebookPanel((value) => !value)}
+              type="button"
+            >
+              Notebook ({notebookCount})
+            </button>
+          ) : null}
+
           <button
             aria-label="Download document"
             className="cursor-pointer rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -276,19 +311,27 @@ export default function DocumentViewer({
         </div>
       </header>
 
-      <div className="workspace-scrollbar min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
-        <PdfBody
-          currentPage={currentPage}
-          isPdfLoading={isPdfLoading}
-          onReloadPdf={onReloadPdf}
-          pdfBlobUrl={pdfBlobUrl}
-          pdfLoadError={pdfLoadError}
-          selectedDocument={selectedDocument}
-          setCurrentPage={setCurrentPage}
-          setTotalPages={setTotalPages}
+      <div className="workspace-scrollbar workspace-selectable relative min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
+        <WorkspaceNotebook
+          docId={selectedDocument?.id}
+          onNotesChange={setNotebookCount}
+          onTogglePanel={setShowNotebookPanel}
+          showPanel={showNotebookPanel}
           viewMode={viewMode}
-          zoom={zoom}
-        />
+        >
+          <PdfBody
+            currentPage={currentPage}
+            isPdfLoading={isPdfLoading}
+            onReloadPdf={onReloadPdf}
+            pdfBlobUrl={pdfBlobUrl}
+            pdfLoadError={pdfLoadError}
+            selectedDocument={selectedDocument}
+            setCurrentPage={setCurrentPage}
+            setTotalPages={setTotalPages}
+            viewMode={viewMode}
+            zoom={zoom}
+          />
+        </WorkspaceNotebook>
       </div>
     </section>
   );

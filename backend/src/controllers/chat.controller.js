@@ -1,4 +1,5 @@
 const chatService = require('../services/chat.service');
+const sessionAttachmentService = require('../services/session-attachment.service');
 
 async function getOrCreateSession(req, res, next) {
   try {
@@ -80,12 +81,130 @@ async function revokePublicLink(req, res, next) {
   }
 }
 
+async function listSessions(req, res, next) {
+  try {
+    res.json(await chatService.listSessions({
+      userId: req.user.id,
+      documentId: req.query.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function createSession(req, res, next) {
+  try {
+    res.status(201).json(await chatService.createSession({
+      userId: req.user.id,
+      title: req.body?.title,
+      documentId: req.body?.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function renameSession(req, res, next) {
+  try {
+    res.json(await chatService.renameSession({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      title: req.body?.title,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteSession(req, res, next) {
+  try {
+    res.json(await chatService.deleteSession({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function attachExistingDocument(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.attachExistingDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      documentId: req.body?.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function uploadSessionDocument(req, res, next) {
+  try {
+    res.status(201).json(await sessionAttachmentService.uploadSessionDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      file: req.file,
+      title: req.body.title,
+      subjectId: req.body.subjectId,
+      tags: req.body.tags,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function softDetachDocument(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.softDetachDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      documentId: req.params.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function restoreDocument(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.restoreDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      documentId: req.params.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function saveDocumentToLibrary(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.saveToLibrary({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      documentId: req.params.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
+  listSessions,
+  createSession,
+  renameSession,
+  deleteSession,
   getOrCreateSession,
   getMessages,
   sendMessage,
   shareSessionWithUser,
   removeUserShare,
   createPublicLink,
-  revokePublicLink
+  revokePublicLink,
+  attachExistingDocument,
+  uploadSessionDocument,
+  softDetachDocument,
+  restoreDocument,
+  saveDocumentToLibrary,
 };

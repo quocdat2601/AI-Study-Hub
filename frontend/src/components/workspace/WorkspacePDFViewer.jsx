@@ -110,7 +110,7 @@ export default function WorkspacePDFViewer() {
   }
 
   return (
-    <div className="min-h-full bg-[#eef0f2] px-4 py-8 sm:px-8">
+    <div className="workspace-selectable min-h-full bg-[#eef0f2] px-4 py-8 sm:px-8">
       <div className="mx-auto flex w-full max-w-[680px] flex-col gap-5">
         <Document
           error={

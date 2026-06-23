@@ -1,0 +1,1251 @@
+const CommunityModel = require('../models/community.model');
+const SubjectModel = require('../models/subject.model');
+const NotificationModel = require('../models/notification.model');
+const ChatModel = require('../models/chat.model');
+const documentService = require('./document.service');
+const chatService = require('./chat.service');
+const activityService = require('./activity.service');
+const createError = require('../utils/createError');
+
+const FEED_LIMIT_MAX = 250;
+const POST_TYPES = new Set(['discussion', 'question', 'document_share', 'ai_study_log']);
+const FEED_TABS = new Set(['latest', 'trending', 'unanswered', 'solved']);
+const POST_STATUSES = new Set(['active', 'hidden', 'removed']);
+const REPORT_STATUSES = new Set(['open', 'resolved', 'dismissed']);
+const REPLY_STATUSES = new Set(['active', 'hidden', 'removed']);
+const POST_SUBJECT_LIMIT = 3;
+const POST_VIEW_WINDOW_MINUTES = 30;
+
+function normalizeTab(value) {
+  const tab = String(value || 'latest').trim().toLowerCase();
+  return FEED_TABS.has(tab) ? tab : 'latest';
+}
+
+function normalizePostType(value) {
+  const postType = String(value || '').trim().toLowerCase();
+  return POST_TYPES.has(postType) ? postType : '';
+}
+
+function normalizePostStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  return POST_STATUSES.has(status) ? status : '';
+}
+
+function normalizeReplyStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  return REPLY_STATUSES.has(status) ? status : '';
+}
+
+function normalizeReportStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  return REPORT_STATUSES.has(status) ? status : '';
+}
+
+function normalizeLimit(value, fallback = 24) {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue <= 0) return fallback;
+  return Math.min(numericValue, FEED_LIMIT_MAX);
+}
+
+function normalizeNumericId(value, fieldName) {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue <= 0) {
+    throw createError(400, `${fieldName} is invalid`);
+  }
+  return numericValue;
+}
+
+function requireText(value, fieldName, maxLength) {
+  const cleaned = String(value || '').trim();
+  if (!cleaned) {
+    throw createError(400, `${fieldName} is required`);
+  }
+  if (maxLength && cleaned.length > maxLength) {
+    throw createError(400, `${fieldName} must be ${maxLength} characters or fewer`);
+  }
+  return cleaned;
+}
+
+function requireTextWithBounds(value, fieldName, { minLength, maxLength } = {}) {
+  const cleaned = requireText(value, fieldName, maxLength);
+
+  if (minLength && cleaned.length < minLength) {
+    throw createError(400, `${fieldName} must be at least ${minLength} characters`);
+  }
+
+  return cleaned;
+}
+
+function normalizeSubjectIds(subjectIds, subjectId) {
+  const rawValues = Array.isArray(subjectIds)
+    ? subjectIds
+    : subjectIds != null
+      ? [subjectIds]
+      : subjectId != null
+        ? [subjectId]
+        : [];
+
+  const normalizedIds = [...new Set(
+    rawValues
+      .filter((value) => value !== null && value !== undefined && String(value).trim() !== '')
+      .map((value) => normalizeNumericId(value, 'subjectId'))
+  )];
+
+  if (normalizedIds.length > POST_SUBJECT_LIMIT) {
+    throw createError(400, `subjectIds must contain ${POST_SUBJECT_LIMIT} subjects or fewer`);
+  }
+
+  return normalizedIds;
+}
+
+function displayNameFromEmail(email) {
+  const local = String(email || '').split('@')[0].replace(/[._-]+/g, ' ').trim();
+  if (!local) return 'Student';
+  return local.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function buildAuthor(user, statsByUserId = null) {
+  if (!user) return null;
+  const stats = statsByUserId?.get(String(user.id)) || null;
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.display_name || displayNameFromEmail(user.email),
+    role: user.role,
+    createdAt: user.created_at || null,
+    postCount: stats?.postCount || 0,
+    utilityPoints: stats?.utilityPoints || 0,
+  };
+}
+
+function buildVoteCount(votes) {
+  return (votes || []).reduce((total, vote) => total + Number(vote.value || 0), 0);
+}
+
+function summarizeText(text, maxChars = 220) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars)}...`;
+}
+
+function buildSentencePreview(text, maxSentences = 3, maxChars = 320) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+
+  const sentences = normalized.match(/[^.!?]+[.!?]?/g) || [];
+  const picked = [];
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    const next = [...picked, trimmed].join(' ');
+    if (next.length > maxChars && picked.length) break;
+    picked.push(trimmed);
+    if (picked.length >= maxSentences) break;
+  }
+
+  const preview = picked.join(' ').trim();
+  if (!preview) return summarizeText(normalized, Math.min(maxChars, 220));
+  if (preview.length <= maxChars) return preview;
+  return `${preview.slice(0, maxChars)}...`;
+}
+
+async function notify(userId, type, message, refPostId = null) {
+  if (!userId || !message) return;
+
+  try {
+    await NotificationModel.create({
+      user_id: userId,
+      type,
+      message,
+      ref_post_id: refPostId,
+    });
+  } catch (err) {
+    console.error('Notification create failed:', err.message);
+  }
+}
+
+async function buildDocumentAttachment(document) {
+  if (!document) return null;
+
+  const [documentWithThumb] = await documentService.addThumbnailUrls([document]);
+  const preview = documentService.buildPublicDocumentPreview(documentWithThumb);
+
+  return {
+    id: documentWithThumb.id,
+    title: preview.title,
+    fileName: preview.title,
+    subject: preview.subject,
+    subjectCode: preview.subjectCode,
+    fileType: preview.fileType,
+    fileSizeBytes: preview.fileSizeBytes,
+    thumbnailUrl: preview.thumbnailUrl,
+    abstractPreview: buildSentencePreview(documentWithThumb.extracted_text),
+    previewText: buildSentencePreview(documentWithThumb.extracted_text),
+  };
+}
+
+async function buildChatAttachment(sessionId, includeMessages = false) {
+  if (!sessionId) return null;
+
+  const session = await ChatModel.findSessionById(sessionId);
+  if (!session) return null;
+
+  const [documents, messages] = await Promise.all([
+    ChatModel.listSessionDocuments(sessionId),
+    includeMessages ? ChatModel.getMessages(sessionId) : Promise.resolve([]),
+  ]);
+  const documentsWithThumb = await documentService.addThumbnailUrls(documents);
+  const documentPreviews = documentsWithThumb.map((doc) => ({
+    id: doc.id,
+    title: doc.title,
+    subject: doc.subjects?.name || null,
+    subjectCode: doc.subjects?.code || null,
+    previewText: summarizeText(doc.extracted_text, 140),
+    thumbnailUrl: doc.thumbnailUrl || null,
+    fileType: documentService.buildPublicDocumentPreview(doc).fileType,
+    isPublic: Boolean(doc.is_public),
+  }));
+
+  return {
+    session: {
+      id: session.id,
+      title: session.title,
+      createdAt: session.created_at,
+      updatedAt: session.updated_at,
+      lastActivityAt: session.last_activity_at,
+    },
+    documents: documentPreviews,
+    previewText: summarizeText((messages || []).map((message) => message.content).join(' '), 200) || 'A published AI study session with linked source documents.',
+    messages: includeMessages ? messages : undefined,
+  };
+}
+
+async function ensureSubjects(subjectIds, subjectId) {
+  const normalizedSubjectIds = normalizeSubjectIds(subjectIds, subjectId);
+  if (!normalizedSubjectIds.length) {
+    return [];
+  }
+
+  const subjects = await SubjectModel.listSubjects();
+  const subjectById = new Map((subjects || []).map((subject) => [Number(subject.id), subject]));
+
+  return normalizedSubjectIds.map((id) => {
+    const subject = subjectById.get(Number(id));
+    if (!subject) {
+      throw createError(404, 'Subject not found');
+    }
+    return subject;
+  });
+}
+
+function groupBy(items, key) {
+  return (items || []).reduce((map, item) => {
+    const value = item[key];
+    if (!map.has(value)) map.set(value, []);
+    map.get(value).push(item);
+    return map;
+  }, new Map());
+}
+
+async function buildAuthorStatsByUserId(posts, replies, options = {}) {
+  if (!options.includeAuthorStats) {
+    return new Map();
+  }
+
+  const targetUserIds = [...new Set(
+    [
+      ...(posts || []).map((post) => post?.user_id || post?.users?.id),
+      ...(replies || []).map((reply) => reply?.user_id || reply?.users?.id),
+    ]
+      .filter(Boolean)
+      .map((value) => String(value))
+  )];
+
+  if (!targetUserIds.length) {
+    return new Map();
+  }
+
+  const allPosts = await CommunityModel.listPosts();
+  const activePosts = (allPosts || []).filter((post) => post.status === 'active');
+  const activePostIds = activePosts.map((post) => post.id);
+  const allReplies = activePostIds.length
+    ? await CommunityModel.listRepliesByPostIds(activePostIds)
+    : [];
+  const activeReplies = (allReplies || []).filter((reply) => reply.status === 'active');
+
+  const authoredPosts = activePosts.filter((post) => targetUserIds.includes(String(post.user_id || post.users?.id)));
+  const authoredReplies = activeReplies.filter((reply) => targetUserIds.includes(String(reply.user_id || reply.users?.id)));
+  const [postVotes, replyVotes] = await Promise.all([
+    CommunityModel.listVotesForPosts(authoredPosts.map((post) => post.id)),
+    CommunityModel.listVotesForReplies(authoredReplies.map((reply) => reply.id)),
+  ]);
+  const postVotesByPostId = groupBy(postVotes, 'post_id');
+  const replyVotesByReplyId = groupBy(replyVotes, 'reply_id');
+  const statsByUserId = new Map();
+
+  targetUserIds.forEach((userId) => {
+    statsByUserId.set(userId, {
+      postCount: 0,
+      utilityPoints: 0,
+    });
+  });
+
+  authoredPosts.forEach((post) => {
+    const key = String(post.user_id || post.users?.id);
+    const current = statsByUserId.get(key);
+    if (!current) return;
+    current.postCount += 1;
+    current.utilityPoints += buildVoteCount(postVotesByPostId.get(post.id) || []);
+  });
+
+  authoredReplies.forEach((reply) => {
+    const key = String(reply.user_id || reply.users?.id);
+    const current = statsByUserId.get(key);
+    if (!current) return;
+    current.postCount += 1;
+    current.utilityPoints += buildVoteCount(replyVotesByReplyId.get(reply.id) || []);
+  });
+
+  return statsByUserId;
+}
+
+function mapLinkedSubjects(post, subjectLinksByPostId) {
+  const linkedSubjects = (subjectLinksByPostId.get(post.id) || [])
+    .map((link) => link.subjects ? ({
+      id: link.subjects.id,
+      name: link.subjects.name,
+      code: link.subjects.code,
+    }) : null)
+    .filter(Boolean);
+
+  if (linkedSubjects.length) {
+    return linkedSubjects;
+  }
+
+  if (post.subjects?.id) {
+    return [{
+      id: post.subjects.id,
+      name: post.subjects.name,
+      code: post.subjects.code,
+    }];
+  }
+
+  return [];
+}
+
+async function hydratePosts(posts, options = {}) {
+  const includeReplies = Boolean(options.includeReplies);
+  const includeFullAttachments = Boolean(options.includeFullAttachments);
+  const viewerUserId = options.viewerUserId ? String(options.viewerUserId) : '';
+  const postIds = (posts || []).map((post) => post.id);
+  const replies = await CommunityModel.listRepliesByPostIds(postIds);
+  const subjectLinks = await CommunityModel.listPostSubjectLinksByPostIds(postIds);
+  const visibleReplies = replies.filter((reply) => options.includeHiddenReplies || reply.status === 'active');
+  const repliesByPostId = groupBy(visibleReplies, 'post_id');
+  const subjectLinksByPostId = groupBy(subjectLinks, 'post_id');
+  const replyIds = visibleReplies.map((reply) => reply.id);
+  const [postVotes, replyVotes] = await Promise.all([
+    CommunityModel.listVotesForPosts(postIds),
+    CommunityModel.listVotesForReplies(replyIds),
+  ]);
+  const postVotesByPostId = groupBy(postVotes, 'post_id');
+  const replyVotesByReplyId = groupBy(replyVotes, 'reply_id');
+  const viewerPostVoteIds = viewerUserId
+    ? new Set(
+      (postVotes || [])
+        .filter((vote) => String(vote.user_id) === viewerUserId && Number(vote.value) > 0)
+        .map((vote) => Number(vote.post_id))
+    )
+    : new Set();
+  const viewerReplyVoteIds = viewerUserId
+    ? new Set(
+      (replyVotes || [])
+        .filter((vote) => String(vote.user_id) === viewerUserId && Number(vote.value) > 0)
+        .map((vote) => Number(vote.reply_id))
+    )
+    : new Set();
+  const authorStatsByUserId = await buildAuthorStatsByUserId(posts, visibleReplies, options);
+
+  return Promise.all((posts || []).map(async (post) => {
+    const postReplyRows = repliesByPostId.get(post.id) || [];
+    const replyById = new Map(postReplyRows.map((reply) => [Number(reply.id), reply]));
+    const acceptedReply = postReplyRows.find((reply) => reply.id === post.solved_reply_id && reply.status === 'active') || null;
+    const latestReply = [...postReplyRows].sort((a, b) => {
+      const left = new Date(a.updated_at || a.created_at || 0).getTime();
+      const right = new Date(b.updated_at || b.created_at || 0).getTime();
+      return right - left;
+    })[0] || null;
+    const mappedReplies = postReplyRows.map((reply) => ({
+      id: reply.id,
+      postId: reply.post_id,
+      parentReplyId: reply.parent_reply_id || null,
+      parentReply: reply.parent_reply_id ? (() => {
+        const parentReply = replyById.get(Number(reply.parent_reply_id));
+        if (!parentReply || parentReply.status !== 'active') return null;
+
+        return {
+          id: parentReply.id,
+          author: buildAuthor(parentReply.users, authorStatsByUserId),
+          excerpt: summarizeText(parentReply.body, 140),
+        };
+      })() : null,
+      body: reply.body,
+      status: reply.status,
+      isAccepted: Boolean(reply.is_accepted),
+      createdAt: reply.created_at,
+      updatedAt: reply.updated_at,
+      author: buildAuthor(reply.users, authorStatsByUserId),
+      voteCount: buildVoteCount(replyVotesByReplyId.get(reply.id) || []),
+      isUpvoted: viewerReplyVoteIds.has(Number(reply.id)),
+    }));
+
+    const documentAttachment = post.post_type === 'document_share'
+      ? await buildDocumentAttachment(post.documents)
+      : null;
+    const chatAttachment = post.post_type === 'ai_study_log'
+      ? await buildChatAttachment(post.chat_session_id, includeFullAttachments)
+      : null;
+    const linkedSubjects = mapLinkedSubjects(post, subjectLinksByPostId);
+    const primarySubject = linkedSubjects[0] || null;
+
+    return {
+      id: post.id,
+      title: post.title,
+      body: post.body,
+      excerpt: summarizeText(post.body, 180),
+      postType: post.post_type,
+      status: post.status,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      subject: primarySubject,
+      subjects: linkedSubjects,
+      author: buildAuthor(post.users, authorStatsByUserId),
+      lastActivity: latestReply ? {
+        at: latestReply.updated_at || latestReply.created_at,
+        replyId: latestReply.id,
+        user: buildAuthor(latestReply.users, authorStatsByUserId),
+      } : {
+        at: post.updated_at || post.created_at,
+        replyId: null,
+        user: buildAuthor(post.users, authorStatsByUserId),
+      },
+      voteCount: buildVoteCount(postVotesByPostId.get(post.id) || []),
+      isUpvoted: viewerPostVoteIds.has(Number(post.id)),
+      viewCount: Number(post.view_count || 0),
+      replyCount: mappedReplies.length,
+      solved: Boolean(acceptedReply),
+      acceptedReplyId: acceptedReply?.id || null,
+      documentAttachment,
+      chatAttachment,
+      replies: includeReplies ? mappedReplies : undefined,
+    };
+  }));
+}
+
+function sortFeed(posts, tab) {
+  if (tab === 'latest') {
+    return [...posts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  if (tab === 'solved') {
+    return posts
+      .filter((post) => post.postType === 'question' && post.solved)
+      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  }
+
+  if (tab === 'unanswered') {
+    return posts
+      .filter((post) => post.postType === 'question' && post.replyCount === 0)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  return [...posts].sort((a, b) => {
+    const scoreDiff = Number(b.voteCount || 0) - Number(a.voteCount || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+}
+
+async function listPublicFeed({ tab, postType, subjectCode, search, page, pageSize, viewerContext = {} }) {
+  const normalizedTab = normalizeTab(tab);
+  const normalizedPostType = normalizePostType(postType);
+  const normalizedSubjectCode = String(subjectCode || '').trim().toUpperCase();
+  const normalizedPage = Math.max(1, Number.isInteger(Number(page)) ? Number(page) : 1);
+  const normalizedPageSize = Math.min(50, Math.max(1, Number.isInteger(Number(pageSize)) ? Number(pageSize) : 15));
+  const normalizedSearch = String(search || '').trim().toLowerCase();
+  const posts = await CommunityModel.listPosts();
+  const activePosts = posts.filter((post) => post.status === 'active');
+  let filtered = activePosts;
+
+  if (normalizedPostType) {
+    filtered = filtered.filter((post) => post.post_type === normalizedPostType);
+  }
+
+  let hydrated = await hydratePosts(filtered, {
+    includeReplies: false,
+    includeFullAttachments: false,
+    viewerUserId: viewerContext.userId || null,
+  });
+
+  if (normalizedSubjectCode) {
+    hydrated = hydrated.filter((post) => (post.subjects || []).some((subject) => subject.code === normalizedSubjectCode));
+  }
+
+  if (normalizedSearch) {
+    hydrated = hydrated.filter((post) => {
+      const haystack = [
+        post.title,
+        post.body,
+        post.excerpt,
+        ...(post.subjects || []).flatMap((s) => [s.code, s.name]),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }
+
+  const sorted = sortFeed(hydrated, normalizedTab);
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize));
+  const safePage = Math.min(normalizedPage, totalPages);
+  const start = (safePage - 1) * normalizedPageSize;
+  const posts_page = sorted.slice(start, start + normalizedPageSize);
+
+  return { posts: posts_page, total, page: safePage, pageSize: normalizedPageSize, totalPages };
+}
+
+async function getPublicPostById(id, viewerContext = {}) {
+  const postId = normalizeNumericId(id, 'postId');
+  let post = await CommunityModel.findPostById(postId);
+
+  if (!post || post.status !== 'active') {
+    throw createError(404, 'Community post not found');
+  }
+
+  const viewerKey = String(viewerContext.viewerKey || '').trim();
+  if (viewerKey) {
+    await CommunityModel.trackPostView(postId, viewerKey, POST_VIEW_WINDOW_MINUTES);
+    post = await CommunityModel.findPostById(postId);
+  }
+
+  const [hydratedPost] = await hydratePosts([post], {
+    includeReplies: true,
+    includeFullAttachments: true,
+    includeAuthorStats: true,
+    viewerUserId: viewerContext.userId || null,
+  });
+
+  return hydratedPost;
+}
+
+async function listPublicSubjects() {
+  const [subjects, posts] = await Promise.all([
+    SubjectModel.listSubjects(),
+    CommunityModel.listPosts(),
+  ]);
+  const activePosts = posts.filter((post) => post.status === 'active');
+  const activePostIds = activePosts.map((post) => post.id);
+  const subjectLinks = await CommunityModel.listPostSubjectLinksByPostIds(activePostIds);
+  const counts = subjectLinks.reduce((map, link) => {
+    map.set(link.subject_id, (map.get(link.subject_id) || 0) + 1);
+    return map;
+  }, new Map());
+  const postsWithLinks = new Set(subjectLinks.map((link) => link.post_id));
+
+  activePosts.forEach((post) => {
+    if (postsWithLinks.has(post.id) || !post.subject_id) return;
+    counts.set(post.subject_id, (counts.get(post.subject_id) || 0) + 1);
+  });
+
+  return (subjects || []).map((subject) => ({
+    id: subject.id,
+    name: subject.name,
+    code: subject.code,
+    postCount: counts.get(subject.id) || 0,
+  }));
+}
+
+async function createPost({ userId, postType, title, body, subjectIds, subjectId, documentId, chatSessionId }) {
+  const normalizedPostType = normalizePostType(postType);
+  if (!normalizedPostType) {
+    throw createError(400, 'postType is invalid');
+  }
+
+  const resolvedSubjects = await ensureSubjects(subjectIds, subjectId);
+  const cleanedTitle = requireTextWithBounds(title, 'title', {
+    minLength: 10,
+    maxLength: 255,
+  });
+  const cleanedBody = requireTextWithBounds(body, 'body', {
+    minLength: 20,
+    maxLength: 5000,
+  });
+  let normalizedDocumentId = null;
+  let normalizedChatSessionId = null;
+
+  if (normalizedPostType === 'document_share') {
+    normalizedDocumentId = normalizeNumericId(documentId, 'documentId');
+    const document = await documentService.canEditDocument(userId, normalizedDocumentId);
+    if (!document) {
+      throw createError(404, 'Document not found');
+    }
+    if (document.status !== 'indexed' || document.extraction_status !== 'ready') {
+      throw createError(400, 'Only indexed documents with ready extraction can be shared to community');
+    }
+    if (!document.is_public) {
+      await documentService.updateVisibility({
+        id: normalizedDocumentId,
+        userId,
+        isPublic: true,
+      });
+    }
+  }
+
+  if (normalizedPostType === 'ai_study_log') {
+    normalizedChatSessionId = normalizeNumericId(chatSessionId, 'chatSessionId');
+    const session = await chatService.canWriteChatSession(userId, normalizedChatSessionId);
+    if (!session) {
+      throw createError(404, 'Chat session not found');
+    }
+  }
+
+  let post;
+  try {
+    post = await CommunityModel.createPost({
+      user_id: userId,
+      subject_id: resolvedSubjects[0]?.id || null,
+      post_type: normalizedPostType,
+      title: cleanedTitle,
+      body: cleanedBody,
+      document_id: normalizedDocumentId,
+      chat_session_id: normalizedChatSessionId,
+      status: 'active',
+    });
+  } catch (err) {
+    if (err.code === '23505' && normalizedPostType === 'ai_study_log') {
+      throw createError(409, 'This chat session already has an active community study log');
+    }
+    throw err;
+  }
+
+  await CommunityModel.replacePostSubjects(post.id, resolvedSubjects.map((subject) => subject.id));
+
+  activityService.log({
+    userId,
+    action: 'community.post.create',
+    targetType: 'community_post',
+    targetId: post.id,
+    metadata: {
+      postType: normalizedPostType,
+      subjectIds: resolvedSubjects.map((subject) => subject.id),
+      documentId: normalizedDocumentId,
+      chatSessionId: normalizedChatSessionId,
+    },
+  });
+
+  return getPublicPostById(post.id);
+}
+
+async function updatePost({ postId, userId, updates }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const post = await CommunityModel.findOwnedPostById(normalizedPostId, userId);
+
+  if (!post) {
+    throw createError(404, 'Community post not found');
+  }
+
+  const nextUpdates = {};
+  if (updates.title !== undefined) nextUpdates.title = requireText(updates.title, 'title', 255);
+  if (updates.body !== undefined) nextUpdates.body = requireText(updates.body, 'body', 5000);
+  const hasSubjectUpdates = updates.subjectIds !== undefined || updates.subjectId !== undefined;
+  const resolvedSubjects = hasSubjectUpdates
+    ? await ensureSubjects(updates.subjectIds, updates.subjectId)
+    : null;
+  if (resolvedSubjects) nextUpdates.subject_id = resolvedSubjects[0]?.id || null;
+
+  if (!Object.keys(nextUpdates).length) {
+    throw createError(400, 'No supported updates provided');
+  }
+
+  await CommunityModel.updatePost(normalizedPostId, nextUpdates);
+  if (resolvedSubjects) {
+    await CommunityModel.replacePostSubjects(normalizedPostId, resolvedSubjects.map((subject) => subject.id));
+  }
+  activityService.log({
+    userId,
+    action: 'community.post.update',
+    targetType: 'community_post',
+    targetId: normalizedPostId,
+    metadata: resolvedSubjects ? { subjectIds: resolvedSubjects.map((subject) => subject.id) } : undefined,
+  });
+
+  return getPublicPostById(normalizedPostId);
+}
+
+async function deletePost({ postId, userId }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const post = await CommunityModel.findOwnedPostById(normalizedPostId, userId);
+  if (!post) {
+    throw createError(404, 'Community post not found');
+  }
+
+  await CommunityModel.deletePost(normalizedPostId);
+  activityService.log({
+    userId,
+    action: 'community.post.delete',
+    targetType: 'community_post',
+    targetId: normalizedPostId,
+    metadata: {
+      postType: post.post_type,
+    },
+  });
+
+  return { message: 'Community post deleted' };
+}
+
+async function deleteReply({ replyId, userId }) {
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+
+  if (!reply || reply.status !== 'active' || String(reply.user_id) !== String(userId)) {
+    throw createError(404, 'Community reply not found');
+  }
+
+  await CommunityModel.deleteReply(normalizedReplyId);
+
+  const post = await CommunityModel.findPostById(reply.post_id);
+  if (post && Number(post.solved_reply_id) === normalizedReplyId) {
+    await CommunityModel.updatePost(reply.post_id, { solved_reply_id: null });
+  }
+
+  activityService.log({
+    userId,
+    action: 'community.reply.delete',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+    metadata: {
+      postId: reply.post_id,
+    },
+  });
+
+  return getPublicPostById(reply.post_id);
+}
+
+async function editReply({ replyId, userId, body }) {
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+
+  if (!reply || reply.status !== 'active' || String(reply.user_id) !== String(userId)) {
+    throw createError(404, 'Community reply not found');
+  }
+
+  const cleanedBody = requireText(body, 'body', 4000);
+  await CommunityModel.updateReply(normalizedReplyId, { body: cleanedBody });
+
+  activityService.log({
+    userId,
+    action: 'community.reply.edit',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+    metadata: { postId: reply.post_id },
+  });
+
+  return getPublicPostById(reply.post_id);
+}
+
+async function addReply({ postId, userId, body, parentReplyId }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const post = await CommunityModel.findPostById(normalizedPostId);
+
+  if (!post || post.status !== 'active') {
+    throw createError(404, 'Community post not found');
+  }
+
+  const normalizedParentReplyId = parentReplyId != null && parentReplyId !== ''
+    ? normalizeNumericId(parentReplyId, 'parentReplyId')
+    : null;
+  let parentReply = null;
+
+  if (normalizedParentReplyId) {
+    parentReply = await CommunityModel.findReplyById(normalizedParentReplyId);
+    if (!parentReply || Number(parentReply.post_id) !== normalizedPostId || parentReply.status !== 'active') {
+      throw createError(404, 'Parent reply not found');
+    }
+  }
+
+  const reply = await CommunityModel.createReply({
+    post_id: normalizedPostId,
+    user_id: userId,
+    parent_reply_id: normalizedParentReplyId,
+    body: requireText(body, 'body', 4000),
+    status: 'active',
+  });
+
+  await CommunityModel.updatePost(normalizedPostId, {});
+
+  activityService.log({
+    userId,
+    action: 'community.reply.create',
+    targetType: 'community_reply',
+    targetId: reply.id,
+    metadata: {
+      postId: normalizedPostId,
+      parentReplyId: normalizedParentReplyId,
+    },
+  });
+
+  if (String(post.user_id) !== String(userId)) {
+    notify(post.user_id, 'community_reply', `Someone replied to your post "${post.title}"`, normalizedPostId);
+  }
+
+  if (parentReply && String(parentReply.user_id) !== String(userId)) {
+    notify(parentReply.user_id, 'community_reply', `Someone replied to your comment on "${post.title}"`, normalizedPostId);
+  }
+
+  return getPublicPostById(normalizedPostId);
+}
+
+async function togglePostVote({ postId, userId }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const post = await CommunityModel.findPostById(normalizedPostId);
+
+  if (!post || post.status !== 'active') {
+    throw createError(404, 'Community post not found');
+  }
+
+  const existingVote = await CommunityModel.findPostVote(userId, normalizedPostId);
+  let voted = false;
+
+  if (existingVote) {
+    await CommunityModel.deleteVote(existingVote.id);
+  } else {
+    await CommunityModel.createVote({
+      user_id: userId,
+      post_id: normalizedPostId,
+      reply_id: null,
+      value: 1,
+    });
+    voted = true;
+  }
+
+  activityService.log({
+    userId,
+    action: voted ? 'community.vote.post.create' : 'community.vote.post.delete',
+    targetType: 'community_post',
+    targetId: normalizedPostId,
+  });
+
+  if (voted && String(post.user_id) !== String(userId)) {
+    notify(post.user_id, 'community_upvote', `Someone upvoted your post "${post.title}"`, normalizedPostId);
+  }
+
+  const [hydrated] = await hydratePosts([post], {
+    includeReplies: false,
+    includeFullAttachments: false,
+  });
+  return {
+    postId: normalizedPostId,
+    voted,
+    voteCount: hydrated.voteCount,
+  };
+}
+
+async function toggleReplyVote({ replyId, userId }) {
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+
+  if (!reply || reply.status !== 'active') {
+    throw createError(404, 'Community reply not found');
+  }
+
+  const existingVote = await CommunityModel.findReplyVote(userId, normalizedReplyId);
+  let voted = false;
+
+  if (existingVote) {
+    await CommunityModel.deleteVote(existingVote.id);
+  } else {
+    await CommunityModel.createVote({
+      user_id: userId,
+      post_id: null,
+      reply_id: normalizedReplyId,
+      value: 1,
+    });
+    voted = true;
+  }
+
+  activityService.log({
+    userId,
+    action: voted ? 'community.vote.reply.create' : 'community.vote.reply.delete',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+  });
+
+  if (voted && String(reply.user_id) !== String(userId)) {
+    const post = await CommunityModel.findPostById(reply.post_id);
+    if (post) {
+      notify(reply.user_id, 'community_upvote', `Someone upvoted your reply on "${post.title}"`, reply.post_id);
+    }
+  }
+
+  const votes = await CommunityModel.listVotesForReplies([normalizedReplyId]);
+  return {
+    replyId: normalizedReplyId,
+    voted,
+    voteCount: buildVoteCount(votes),
+  };
+}
+
+async function acceptReply({ postId, replyId, userId }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const post = await CommunityModel.findOwnedPostById(normalizedPostId, userId);
+
+  if (!post || post.status !== 'active') {
+    throw createError(404, 'Community post not found');
+  }
+  if (post.post_type !== 'question') {
+    throw createError(400, 'Only question posts can accept a reply');
+  }
+
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+  if (!reply || Number(reply.post_id) !== normalizedPostId || reply.status !== 'active') {
+    throw createError(404, 'Community reply not found');
+  }
+
+  await CommunityModel.clearAcceptedReplies(normalizedPostId);
+  await CommunityModel.updateReply(normalizedReplyId, { is_accepted: true });
+  await CommunityModel.updatePost(normalizedPostId, { solved_reply_id: normalizedReplyId });
+
+  activityService.log({
+    userId,
+    action: 'community.reply.accept',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+    metadata: {
+      postId: normalizedPostId,
+    },
+  });
+
+  if (String(reply.user_id) !== String(userId)) {
+    notify(reply.user_id, 'community_accepted', `Your reply was accepted as the answer on "${post.title}"`, normalizedPostId);
+  }
+
+  return getPublicPostById(normalizedPostId);
+}
+
+async function reportPost({ postId, replyId, userId, reason }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const cleanedReason = requireText(reason, 'reason', 600);
+  const post = await CommunityModel.findPostById(normalizedPostId);
+
+  if (!post || post.status !== 'active') {
+    throw createError(404, 'Community post not found');
+  }
+
+  let normalizedReplyId = null;
+  if (replyId != null && replyId !== '') {
+    normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+    const reply = await CommunityModel.findReplyById(normalizedReplyId);
+    if (!reply || Number(reply.post_id) !== normalizedPostId) {
+      throw createError(404, 'Community reply not found');
+    }
+
+    const existingReplyReport = await CommunityModel.findOpenReplyReport(userId, normalizedReplyId);
+    if (existingReplyReport) {
+      throw createError(409, 'You already have an open report for this reply');
+    }
+  } else {
+    const existingPostReport = await CommunityModel.findOpenPostReport(userId, normalizedPostId);
+    if (existingPostReport) {
+      throw createError(409, 'You already have an open report for this post');
+    }
+  }
+
+  let report;
+  try {
+    report = await CommunityModel.createReport({
+      post_id: normalizedReplyId ? null : normalizedPostId,
+      reply_id: normalizedReplyId,
+      reported_by: userId,
+      reason: cleanedReason,
+      status: 'open',
+    });
+  } catch (err) {
+    if (err.code === '23505') {
+      throw createError(409, 'You already have an open report for this item');
+    }
+    throw err;
+  }
+
+  activityService.log({
+    userId,
+    action: 'community.report.create',
+    targetType: normalizedReplyId ? 'community_reply' : 'community_post',
+    targetId: normalizedReplyId || normalizedPostId,
+    metadata: {
+      reportId: report.id,
+    },
+  });
+
+  return {
+    message: 'Report submitted',
+    reportId: report.id,
+  };
+}
+
+async function listReports({ status, limit }) {
+  const normalizedStatus = normalizeReportStatus(status);
+  const reports = await CommunityModel.listReports(limit);
+  const filtered = normalizedStatus ? reports.filter((report) => report.status === normalizedStatus) : reports;
+
+  return filtered.map((report) => ({
+    id: report.id,
+    reason: report.reason,
+    status: report.status,
+    createdAt: report.created_at,
+    resolvedAt: report.resolved_at,
+    reporter: buildAuthor(report.reporters),
+    resolver: buildAuthor(report.resolvers),
+    post: report.community_posts ? {
+      id: report.community_posts.id,
+      title: report.community_posts.title,
+      body: report.community_posts.body,
+      postType: report.community_posts.post_type,
+      status: report.community_posts.status,
+    } : null,
+    reply: report.community_replies ? {
+      id: report.community_replies.id,
+      postId: report.community_replies.post_id,
+      body: summarizeText(report.community_replies.body, 160),
+      status: report.community_replies.status,
+      postTitle: report.community_replies.community_posts?.title || report.community_replies['community_posts!community_replies_post_id_fkey']?.title,
+    } : null,
+  }));
+}
+
+async function updatePostModeration({ postId, adminUserId, status }) {
+  const normalizedPostId = normalizeNumericId(postId, 'postId');
+  const normalizedStatus = normalizePostStatus(status);
+  if (!normalizedStatus || normalizedStatus === 'active') {
+    throw createError(400, 'status must be hidden or removed');
+  }
+
+  const post = await CommunityModel.findPostById(normalizedPostId);
+  if (!post) {
+    throw createError(404, 'Community post not found');
+  }
+
+  const updated = await CommunityModel.updatePost(normalizedPostId, { status: normalizedStatus });
+  
+  const resolvedReports = await CommunityModel.resolveOpenReportsForPost(normalizedPostId, adminUserId);
+  for (const r of resolvedReports) {
+    if (r.reported_by) {
+      await notify(r.reported_by, 'system', 'Your community report has been reviewed');
+    }
+  }
+
+  activityService.log({
+    userId: adminUserId,
+    action: 'community.post.moderate',
+    targetType: 'community_post',
+    targetId: normalizedPostId,
+    metadata: {
+      status: normalizedStatus,
+    },
+  });
+
+  return {
+    id: updated.id,
+    status: updated.status,
+  };
+}
+
+async function updateReplyModeration({ replyId, adminUserId, status }) {
+  const normalizedReplyId = normalizeNumericId(replyId, 'replyId');
+  const normalizedStatus = normalizeReplyStatus(status);
+  if (!normalizedStatus || normalizedStatus === 'active') {
+    throw createError(400, 'status must be hidden or removed');
+  }
+
+  const reply = await CommunityModel.findReplyById(normalizedReplyId);
+  if (!reply) {
+    throw createError(404, 'Community reply not found');
+  }
+
+  await CommunityModel.updateReply(normalizedReplyId, {
+    status: normalizedStatus,
+    is_accepted: false,
+  });
+
+  const resolvedReports = await CommunityModel.resolveOpenReportsForReply(normalizedReplyId, adminUserId);
+  for (const r of resolvedReports) {
+    if (r.reported_by) {
+      await notify(r.reported_by, 'system', 'Your community report has been reviewed');
+    }
+  }
+
+  const post = await CommunityModel.findPostById(reply.post_id);
+  if (post && Number(post.solved_reply_id) === normalizedReplyId) {
+    await CommunityModel.updatePost(reply.post_id, { solved_reply_id: null });
+  }
+
+  activityService.log({
+    userId: adminUserId,
+    action: 'community.reply.moderate',
+    targetType: 'community_reply',
+    targetId: normalizedReplyId,
+    metadata: {
+      status: normalizedStatus,
+    },
+  });
+
+  return {
+    id: normalizedReplyId,
+    status: normalizedStatus,
+  };
+}
+
+async function resolveReport({ reportId, adminUserId, status }) {
+  const normalizedReportId = normalizeNumericId(reportId, 'reportId');
+  const normalizedStatus = normalizeReportStatus(status);
+  if (!normalizedStatus || normalizedStatus === 'open') {
+    throw createError(400, 'status must be resolved or dismissed');
+  }
+
+  const report = await CommunityModel.updateReport(normalizedReportId, {
+    status: normalizedStatus,
+    resolved_at: new Date().toISOString(),
+    resolved_by: adminUserId,
+  });
+
+  if (!report) {
+    throw createError(404, 'Community report not found');
+  }
+
+  activityService.log({
+    userId: adminUserId,
+    action: 'community.report.resolve',
+    targetType: 'community_report',
+    targetId: normalizedReportId,
+    metadata: {
+      status: normalizedStatus,
+    },
+  });
+
+  if (report.reported_by) {
+    await notify(report.reported_by, 'system', 'Your community report has been reviewed');
+  }
+
+  return {
+    id: report.id,
+    status: report.status,
+    resolvedAt: report.resolved_at,
+  };
+}
+
+async function listTopContributors(limit = 5) {
+  const posts = await CommunityModel.listPosts();
+  const activePosts = posts.filter((post) => post.status === 'active');
+  const hydratedPosts = await hydratePosts(activePosts, { includeReplies: true, includeFullAttachments: false });
+  const contributors = new Map();
+
+  hydratedPosts.forEach((post) => {
+    if (post.author?.id) {
+      const current = contributors.get(post.author.id) || {
+        ...post.author,
+        score: 0,
+      };
+      current.score += Math.max(0, post.voteCount);
+      contributors.set(post.author.id, current);
+    }
+
+    (post.replies || []).forEach((reply) => {
+      if (!reply.author?.id) return;
+      const current = contributors.get(reply.author.id) || {
+        ...reply.author,
+        score: 0,
+      };
+      current.score += Math.max(0, reply.voteCount);
+      if (reply.isAccepted) current.score += 3;
+      contributors.set(reply.author.id, current);
+    });
+  });
+
+  return [...contributors.values()]
+    .sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName))
+    .slice(0, Math.max(1, Number(limit) || 5));
+}
+
+async function getUserCommunityProfile(userId) {
+  const normalizedUserId = normalizeNumericId(userId, 'userId');
+  const allPosts = await CommunityModel.listPosts();
+  const userPosts = allPosts.filter((p) => Number(p.user_id) === normalizedUserId && p.status === 'active');
+
+  const hydratedPosts = await hydratePosts(userPosts, {
+    includeReplies: false,
+    includeFullAttachments: false,
+  });
+
+  const author = hydratedPosts[0]?.author || null;
+
+  if (!author && userPosts.length === 0) {
+    throw createError(404, 'User not found or has no community activity');
+  }
+
+  const totalVotesReceived = hydratedPosts.reduce((sum, p) => sum + Math.max(0, p.voteCount || 0), 0);
+
+  const recentPosts = hydratedPosts
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 10);
+
+  return {
+    user: author,
+    stats: {
+      postCount: hydratedPosts.length,
+      totalVotesReceived,
+      utilityPoints: author?.utilityPoints || totalVotesReceived,
+    },
+    recentPosts,
+  };
+}
+
+async function getCommunityHome({ tab, postType, subjectCode, search, page, pageSize, viewerContext = {} }) {
+  const [feedResult, subjects, topContributors] = await Promise.all([
+    listPublicFeed({ tab, postType, subjectCode, search, page, pageSize, viewerContext }),
+    listPublicSubjects(),
+    listTopContributors(5),
+  ]);
+
+  return {
+    feed: feedResult.posts,
+    total: feedResult.total,
+    page: feedResult.page,
+    pageSize: feedResult.pageSize,
+    totalPages: feedResult.totalPages,
+    subjects,
+    topContributors,
+  };
+}
+
+module.exports = {
+  getCommunityHome,
+  listPublicFeed,
+  getUserCommunityProfile,
+  getPublicPostById,
+  listPublicSubjects,
+  createPost,
+  updatePost,
+  deletePost,
+  editReply,
+  deleteReply,
+  addReply,
+  togglePostVote,
+  toggleReplyVote,
+  acceptReply,
+  reportPost,
+  listReports,
+  updatePostModeration,
+  updateReplyModeration,
+  resolveReport,
+};

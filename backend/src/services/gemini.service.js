@@ -4,16 +4,14 @@ const GEMINI_TIMEOUT_MS = 15000;
 
 function withTimeout(promise, timeoutMs) {
   let timeoutId;
-
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-        const err = new Error('Gemini request timed out');
-        err.publicMessage = 'AI service is temporarily unavailable. Please try again';
-        err.statusCode = 503;
-        reject(err);
-      }, timeoutMs);
+      const err = new Error('Gemini request timed out');
+      err.publicMessage = 'AI service is temporarily unavailable. Please try again';
+      err.statusCode = 503;
+      reject(err);
+    }, timeoutMs);
   });
-
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 
@@ -34,66 +32,71 @@ async function queryDocument(question, documentText) {
     throw err;
   }
 
-  const prompt = `You are a study assistant. Answer ONLY using the document text below. Do not use outside knowledge. If the answer is not in the document, say so clearly.\n\n[Document]\n${documentText}\n\n[Question]\n${question}`;
+  const prompt = `You are a study assistant. Answer in the same language as the user question. If the language is unclear or mixed, answer in Vietnamese. Answer ONLY using the document text below. Do not use outside knowledge. If the answer is not in the document, say so clearly. Follow the user's requested length and format without forcing headings.\n\n[Document]\n${documentText}\n\n[Question]\n${question}`;
   const response = await withTimeout(
-    genAI.models.generateContent({
-      model: modelName,
-      contents: prompt,
-    }),
+    genAI.models.generateContent({ model: modelName, contents: prompt }),
     GEMINI_TIMEOUT_MS
   );
-
   return response.text || '';
 }
 
 function buildModeInstruction(mode) {
+  const languageInstruction = [
+    'Answer in the same language as the current user question.',
+    'If the current question language is unclear or mixed, answer in Vietnamese.',
+  ].join('\n');
   if (mode === 'document_only') {
     return [
+      languageInstruction,
       'Answer mode: document_only.',
       'Use only the provided source chunks.',
       'Do not use outside knowledge.',
-      'If the chunks do not contain the answer, say clearly that the document does not contain enough information.',
+      'If the chunks do not contain the answer, say so directly.',
+      'Follow explicit brevity and formatting instructions in the current request.',
     ].join('\n');
   }
-
   return [
+    languageInstruction,
     'Answer mode: hybrid.',
-    'Always use two sections titled exactly "Based on the document" and "Additional study explanation".',
-    'In "Based on the document", answer only from the provided source chunks.',
-    'If the chunks are insufficient, explicitly say: "The document does not provide enough information to fully answer this."',
-    'In "Additional study explanation", add concise general academic or software knowledge that helps the student understand the topic.',
-    'Do not cite or imply that general knowledge came from the document.',
-    'Keep the answer concise and useful.',
+    'Base the answer primarily on the provided source chunks.',
+    'Add clearly identified general knowledge only when it materially helps.',
+    'Do not force headings or a fixed response template.',
+    'Follow explicit brevity and formatting instructions in the current request.',
   ].join('\n');
 }
 
-async function queryDocumentChunks({ question, documentTitle, chunks, mode = 'hybrid', model = modelName, systemPrompt, userPrompt }) {
+function buildFallbackPrompt({ question, documentTitle, chunks, mode }) {
+  const context = (chunks || [])
+    .map((chunk, index) => {
+      const label = chunk.chunk_index ?? index;
+      return `[Source ${index + 1} | chunk ${label}]\n${chunk.promptContent || chunk.content}`;
+    })
+    .join('\n\n');
+  return `You are AI Study Hub's study assistant.\n\nSelected document title:\n${documentTitle || 'Untitled document'}\n\nRetrieved source chunks:\n${context || 'No source chunks were available.'}\n\nUser question:\n${question}\n\n${buildModeInstruction(mode)}`;
+}
+
+async function queryDocumentChunks({
+  question,
+  documentTitle,
+  chunks,
+  mode = 'hybrid',
+  model = modelName,
+  systemPrompt,
+  userPrompt,
+}) {
   if (!genAI) {
     const err = new Error('Gemini API key is not configured');
     err.publicMessage = 'AI service is temporarily unavailable. Please try again';
     err.statusCode = 503;
     throw err;
   }
-
-  const context = (chunks || [])
-    .map((chunk, index) => {
-      const label = chunk.chunk_index ?? index;
-      return `[Source ${index + 1} | chunk ${label}]\n${chunk.content}`;
-    })
-    .join('\n\n');
-
   const prompt = systemPrompt && userPrompt
     ? `${systemPrompt}\n\n${userPrompt}`
-    : `You are AI Study Hub's study assistant.\n\nSelected document title:\n${documentTitle || 'Untitled document'}\n\nRetrieved source chunks:\n${context || 'No source chunks were available.'}\n\nUser question:\n${question}\n\n${buildModeInstruction(mode)}`;
-
+    : buildFallbackPrompt({ question, documentTitle, chunks, mode });
   const response = await withTimeout(
-    genAI.models.generateContent({
-      model,
-      contents: prompt,
-    }),
+    genAI.models.generateContent({ model, contents: prompt }),
     GEMINI_TIMEOUT_MS
   );
-
   return {
     text: response.text || '',
     usageMetadata: extractUsageMetadata(response),
@@ -101,35 +104,29 @@ async function queryDocumentChunks({ question, documentTitle, chunks, mode = 'hy
   };
 }
 
-async function* streamDocumentChunks({ question, documentTitle, chunks, mode = 'hybrid', model = modelName, systemPrompt, userPrompt }) {
+async function* streamDocumentChunks({
+  question,
+  documentTitle,
+  chunks,
+  mode = 'hybrid',
+  model = modelName,
+  systemPrompt,
+  userPrompt,
+}) {
   if (!genAI) {
     const err = new Error('Gemini API key is not configured');
     err.publicMessage = 'AI service is temporarily unavailable. Please try again';
     err.statusCode = 503;
     throw err;
   }
-
-  const context = (chunks || [])
-    .map((chunk, index) => {
-      const label = chunk.chunk_index ?? index;
-      return `[Source ${index + 1} | chunk ${label}]\n${chunk.content}`;
-    })
-    .join('\n\n');
-
   const prompt = systemPrompt && userPrompt
     ? `${systemPrompt}\n\n${userPrompt}`
-    : `You are AI Study Hub's study assistant.\n\nSelected document title:\n${documentTitle || 'Untitled document'}\n\nRetrieved source chunks:\n${context || 'No source chunks were available.'}\n\nUser question:\n${question}\n\n${buildModeInstruction(mode)}`;
-
-  const stream = await genAI.models.generateContentStream({
-    model,
-    contents: prompt,
-  });
+    : buildFallbackPrompt({ question, documentTitle, chunks, mode });
+  const stream = await genAI.models.generateContentStream({ model, contents: prompt });
 
   for await (const chunk of stream) {
     const text = chunk.text || '';
-    if (text) {
-      yield { type: 'token', text };
-    }
+    if (text) yield { type: 'token', text };
     if (chunk.usageMetadata || chunk.usage_metadata) {
       yield { type: 'usage', usageMetadata: extractUsageMetadata(chunk), model };
     }

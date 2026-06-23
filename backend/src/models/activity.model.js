@@ -40,6 +40,19 @@ class ActivityModel {
     if (error) throw error;
     return data || [];
   }
+
+  // Lọc log theo danh sách action (vd các action xóa tài liệu)
+  static async listByActions(actions, limit = 50) {
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .select('*')
+      .in('action', actions)
+      .order('created_at', { ascending: false })
+      .limit(Math.min(Number(limit) || 50, 200));
+
+    if (error) throw error;
+    return data || [];
+  }
 }
 
 module.exports = ActivityModel;

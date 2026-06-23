@@ -1,6 +1,7 @@
 const bookmarkService = require('./bookmark.service');
 const chatService = require('./chat.service');
 const documentService = require('./document.service');
+const notebookService = require('./notebook.service');
 const subjectService = require('./subject.service');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
@@ -16,6 +17,25 @@ function parseDocId(docId) {
 function isChatReady(document) {
   const text = String(document.extracted_text || '').trim();
   return document.extraction_status === 'ready' && text.length >= 50;
+}
+
+function getFileExtension(mimeType) {
+  if (mimeType === 'application/pdf') return '.pdf';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    return '.docx';
+  }
+  if (mimeType === 'image/png') return '.png';
+  if (mimeType === 'image/jpeg') return '.jpg';
+  if (mimeType === 'image/tiff') return '.tiff';
+  if (mimeType === 'image/bmp') return '.bmp';
+  return '';
+}
+
+function buildDownloadFileName(title, mimeType) {
+  const baseName = String(title || 'document').trim() || 'document';
+  const extension = getFileExtension(mimeType);
+  if (!extension || baseName.toLowerCase().endsWith(extension)) return baseName;
+  return `${baseName}${extension}`;
 }
 
 async function getBootstrap({ userId, search, subjectId }) {
@@ -68,11 +88,12 @@ async function getDocumentPdf({ userId, docId }) {
 
   const blob = await supabaseService.downloadFileBlob(storagePath);
   const buffer = Buffer.from(await blob.arrayBuffer());
+  const mimeType = document.cloud_files?.mime_type || 'application/pdf';
 
   return {
     buffer,
-    mimeType: document.cloud_files?.mime_type || 'application/pdf',
-    fileName: document.title || 'document',
+    mimeType,
+    fileName: buildDownloadFileName(document.title, mimeType),
   };
 }
 
@@ -88,6 +109,42 @@ async function removeBookmark({ userId, docId }) {
   return bookmarkService.removeBookmark({ userId, docId: parseDocId(docId) });
 }
 
+async function listNotes({ userId, docId }) {
+  return notebookService.listNotes({ userId, docId: parseDocId(docId) });
+}
+
+async function createNote({ userId, docId, payload }) {
+  return notebookService.createNote({
+    userId,
+    docId: parseDocId(docId),
+    viewMode: payload.viewMode,
+    selectedText: payload.selectedText,
+    content: payload.content,
+    pageNumber: payload.pageNumber,
+    paragraphIndex: payload.paragraphIndex,
+    anchor: payload.anchor,
+    color: payload.color,
+  });
+}
+
+async function deleteNote({ userId, docId, noteId }) {
+  return notebookService.deleteNote({
+    userId,
+    docId: parseDocId(docId),
+    noteId,
+  });
+}
+
+async function updateNote({ userId, docId, noteId, payload }) {
+  return notebookService.updateNote({
+    userId,
+    docId: parseDocId(docId),
+    noteId,
+    content: payload.content,
+    color: payload.color,
+  });
+}
+
 module.exports = {
   getBootstrap,
   getDocumentContext,
@@ -95,4 +152,8 @@ module.exports = {
   sendMessage,
   addBookmark,
   removeBookmark,
+  listNotes,
+  createNote,
+  updateNote,
+  deleteNote,
 };
