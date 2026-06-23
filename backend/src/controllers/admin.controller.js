@@ -71,12 +71,36 @@ async function getActivityLogs(req, res, next) {
   }
 }
 
+async function getAllDocuments(req, res, next) {
+  try {
+    res.json(await adminService.listDocuments({
+      search: req.query.search,
+      subjectId: req.query.subjectId,
+      isDeleted: req.query.isDeleted,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getCommunityReports(req, res, next) {
   try {
     res.json(await adminService.listCommunityReports({
       status: req.query.status,
       limit: req.query.limit,
     }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Update subject (Admin)
+ */
+async function updateSubject(req, res, next) {
+  try {
+    const subject = await adminService.updateSubject(req.params.id, req.body);
+    res.json(subject);
   } catch (err) {
     next(err);
   }
@@ -89,6 +113,18 @@ async function resolveCommunityReport(req, res, next) {
       adminUserId: req.user.id,
       status: req.body.status,
     }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Delete subject (Admin)
+ */
+async function deleteSubject(req, res, next) {
+  try {
+    const subject = await adminService.deleteSubject(req.params.id);
+    res.json(subject);
   } catch (err) {
     next(err);
   }
@@ -124,7 +160,10 @@ module.exports = {
   updateUser,
   getAllSubjects,
   createSubject,
+  updateSubject,
+  deleteSubject,
   getActivityLogs,
+  getAllDocuments,
   getCommunityReports,
   resolveCommunityReport,
   moderateCommunityPost,

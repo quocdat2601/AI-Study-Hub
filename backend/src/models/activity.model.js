@@ -21,7 +21,7 @@ class ActivityModel {
   static async listLatest(limit = 20) {
     const { data, error } = await supabase
       .from('activity_logs')
-      .select('*')
+      .select('*, users (email)')
       .order('created_at', { ascending: false })
       .limit(Math.min(Number(limit) || 20, 100));
 

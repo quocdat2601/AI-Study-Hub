@@ -25,6 +25,26 @@ export async function createAdminSubject(subject) {
   return response.data;
 }
 
+export async function updateAdminSubject(id, data) {
+  const response = await api.patch(`/admin/subjects/${id}`, data);
+  return response.data;
+}
+
+export async function deleteAdminSubject(id) {
+  const response = await api.delete(`/admin/subjects/${id}`);
+  return response.data;
+}
+
+export async function listAdminDocuments(params = {}) {
+  const response = await api.get("/admin/documents", { params });
+  return response.data;
+}
+
+export async function purgeAdminDocument(id) {
+  const response = await api.delete(`/documents/${id}/purge`);
+  return response.data;
+}
+
 export async function listAdminCommunityReports(params = {}) {
   const response = await api.get("/admin/community/reports", { params });
   return response.data;
