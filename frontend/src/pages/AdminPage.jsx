@@ -545,7 +545,6 @@ export default function AdminPage() {
     setIsLoading(true);
 
     try {
-<<<<<<< HEAD
       const [overviewData, userData, subjectData, documentData, reportData] = await Promise.all([
         getAdminOverview(),
         listAdminUsers(),
