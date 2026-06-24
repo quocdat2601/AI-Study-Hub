@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import {
   createAdminSubject,
@@ -602,8 +602,6 @@ export default function AdminPage() {
     }
 
     const bytes = Math.round(gbVal * 1024 * 1024 * 1024);
-    setError("");
-    setSuccess("");
 
     try {
       const updated = await updateAdminUser(targetUser.id, { storage_limit_bytes: bytes });
@@ -611,9 +609,9 @@ export default function AdminPage() {
       if (selectedUser && selectedUser.id === targetUser.id) {
         setSelectedUser(updated);
       }
-      setSuccess("User storage limit updated");
+      showSuccess("User storage limit updated");
     } catch (err) {
-      setError(messageFromError(err));
+      showError(messageFromError(err));
     }
   }
 
@@ -721,16 +719,14 @@ export default function AdminPage() {
     if (!window.confirm(`Are you sure you want to delete the subject "${subject.name}" (${subject.code})?`)) {
       return;
     }
-    setError("");
-    setSuccess("");
     try {
       await deleteAdminSubject(subject.id);
       setSubjects((current) => current.filter(item => item.id !== subject.id));
-      setSuccess("Subject deleted successfully");
+      showSuccess("Subject deleted successfully");
       const overviewData = await getAdminOverview();
       setOverview(overviewData);
     } catch (err) {
-      setError(messageFromError(err));
+      showError(messageFromError(err));
     }
   }
 
@@ -748,19 +744,17 @@ export default function AdminPage() {
     if (!window.confirm(`WARNING: Are you sure you want to PERMANENTLY delete "${doc.title}"? This will erase the database metadata and remove the file from cloud storage. This action cannot be undone.`)) {
       return;
     }
-    setError("");
-    setSuccess("");
     try {
       await purgeAdminDocument(doc.id);
       setDocuments((current) => current.filter(item => item.id !== doc.id));
       if (selectedDoc && selectedDoc.id === doc.id) {
         setSelectedDoc(null);
       }
-      setSuccess("Document permanently deleted");
+      showSuccess("Document permanently deleted");
       const overviewData = await getAdminOverview();
       setOverview(overviewData);
     } catch (err) {
-      setError(messageFromError(err));
+      showError(messageFromError(err));
     }
   }
 
@@ -1791,11 +1785,7 @@ export default function AdminPage() {
       <AdminSidebar
         activeSection={activeSection}
         isCollapsed={isSidebarCollapsed}
-        onSectionChange={(section) => {
-          setActiveSection(section);
-          setError("");
-          setSuccess("");
-        }}
+        onSectionChange={setActiveSection}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
         userName={displayName}
         onLogout={logout}
