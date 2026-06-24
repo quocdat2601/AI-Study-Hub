@@ -4,6 +4,7 @@ const documentChunkModel = require('../models/document-chunk.model');
 const tagModel = require('../models/tag.model');
 const userModel = require('../models/user.model');
 const documentService = require('./document.service');
+const notificationService = require('./notification.service');
 const supabaseService = require('./supabase.service');
 const documentTextService = require('./document-text.service');
 const documentThumbnailService = require('./document-thumbnail.service');
@@ -195,6 +196,13 @@ async function upload({
         extractionStatus: savedDocument.extraction_status,
         deduplicated: deduped,
       },
+    });
+
+    // Notify administrators of the new upload
+    await notificationService.notifyAdmins({
+      type: 'system',
+      message: `User ${user.email} uploaded a new document: "${savedDocument.title}"`,
+      refDocId: savedDocument.id,
     });
 
     return {

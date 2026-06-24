@@ -11,6 +11,9 @@ if (!supabaseUrl || !serviceRoleKey) {
 
 function buildClientOptions(headers = {}) {
   return {
+    auth: {
+      persistSession: false,
+    },
     global: {
       headers,
     },
@@ -34,3 +37,4 @@ function createUserScopedClient(accessToken) {
 
 module.exports = supabase;
 module.exports.createUserScopedClient = createUserScopedClient;
+
