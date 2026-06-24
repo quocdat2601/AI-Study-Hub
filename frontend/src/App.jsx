@@ -21,6 +21,8 @@ import DocumentsPage from "./pages/DocumentsPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 import WorkspacePage from "./pages/WorkspacePage.jsx";
+import PublicDocumentsCatalogPage from "./pages/PublicDocumentsCatalogPage.jsx";
+import PublicDocumentDetailPage from "./pages/PublicDocumentDetailPage.jsx";
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
@@ -29,7 +31,8 @@ function AppRoutes() {
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
   const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library", "/admin"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
-    && !dashboardShellRoutes.includes(location.pathname);
+    && !dashboardShellRoutes.includes(location.pathname)
+    && !location.pathname.startsWith("/public-documents");
 
   async function handleLogout() {
     await logout();
@@ -111,6 +114,22 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <WorkspacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/public-documents"
+          element={
+            <ProtectedRoute>
+              <PublicDocumentsCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/public-documents/:id"
+          element={
+            <ProtectedRoute>
+              <PublicDocumentDetailPage />
             </ProtectedRoute>
           }
         />
