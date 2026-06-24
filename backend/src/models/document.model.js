@@ -40,8 +40,26 @@ class DocumentModel {
       .map((share) => share.documents)
       .filter((doc) => doc && !doc.deleted_at);
 
+    // Fetch bookmarked public documents
+    const { data: bookmarks, error: bookmarkError } = await supabase
+      .from('bookmarks')
+      .select(`
+        documents!inner (
+          ${DOCUMENT_SELECT}
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('documents.lifecycle_status', 'active')
+      .is('documents.deleted_at', null);
+
+    if (bookmarkError) throw bookmarkError;
+
+    const bookmarkedDocs = (bookmarks || [])
+      .map((b) => b.documents)
+      .filter((doc) => doc && !doc.deleted_at);
+
     const byId = new Map();
-    [...(ownedDocs || []), ...sharedDocs].forEach((doc) => byId.set(doc.id, doc));
+    [...(ownedDocs || []), ...sharedDocs, ...bookmarkedDocs].forEach((doc) => byId.set(doc.id, doc));
 
     return [...byId.values()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
@@ -650,6 +668,136 @@ class DocumentModel {
     return (data || []).reduce((total, doc) => {
       return total + Number(doc.cloud_files?.size_bytes || 0);
     }, 0);
+  }
+
+  static async findPublicById(id) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(`
+        *,
+        subjects (id, name, code),
+        cloud_files (storage_path, mime_type, size_bytes),
+        users (id, email)
+      `)
+      .eq('id', id)
+      .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async searchPublic({ search, subjectId, sortBy, page, limit }) {
+    let query = supabase
+      .from('documents')
+      .select(`
+        id,
+        title,
+        created_at,
+        view_count,
+        download_count,
+        thumbnail_path,
+        thumbnail_status,
+        subjects (id, name, code),
+        cloud_files (mime_type, size_bytes)
+      `, { count: 'exact' })
+      .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
+      .eq('status', 'indexed')
+      .is('deleted_at', null);
+
+    if (subjectId) {
+      query = query.eq('subject_id', subjectId);
+    }
+
+    if (search) {
+      query = query.ilike('title', `%${search}%`);
+    }
+
+    if (sortBy === 'newest') {
+      query = query.order('created_at', { ascending: false });
+    } else if (sortBy === 'downloads') {
+      query = query.order('download_count', { ascending: false });
+    } else {
+      query = query.order('view_count', { ascending: false });
+    }
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    query = query.range(from, to);
+
+    const { data, count, error } = await query;
+    if (error) throw error;
+    return { documents: data || [], totalCount: count || 0 };
+  }
+
+  static async incrementViewCount(id) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('view_count')
+      .eq('id', id)
+      .maybeSingle();
+    
+    if (error) return;
+    
+    const nextViews = (data?.view_count || 0) + 1;
+    await supabase
+      .from('documents')
+      .update({ view_count: nextViews })
+      .eq('id', id);
+  }
+
+  static async incrementDownloadCount(id) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('download_count')
+      .eq('id', id)
+      .maybeSingle();
+    
+    if (error) return;
+    
+    const nextDownloads = (data?.download_count || 0) + 1;
+    await supabase
+      .from('documents')
+      .update({ download_count: nextDownloads })
+      .eq('id', id);
+  }
+
+  static async listComments(docId) {
+    const { data, error } = await supabase
+      .from('document_comments')
+      .select(`
+        *,
+        users (id, email)
+      `)
+      .eq('doc_id', docId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async createComment({ docId, userId, content, rating }) {
+    const { data, error } = await supabase
+      .from('document_comments')
+      .insert([{
+        doc_id: docId,
+        user_id: userId,
+        content,
+        rating,
+      }])
+      .select(`
+        *,
+        users (id, email)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 }
 

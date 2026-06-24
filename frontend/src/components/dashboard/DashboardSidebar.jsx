@@ -8,6 +8,7 @@ export const dashboardSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard", labelKey: "nav.dashboard", to: "/dashboard" },
   { id: "study-sets", icon: "book", label: "Study Sets", labelKey: "nav.studySets", to: "/library" },
   { id: "documents", icon: "document", label: "Documents", labelKey: "nav.documents", to: "/documents" },
+  { id: "study-resources", icon: "compass", label: "Explore Docs", labelKey: "nav.studyResources", to: "/public-documents" },
   { id: "community", icon: "community", label: "Community", labelKey: "nav.community", to: "/community" },
   { id: "ai-workspace", icon: "chat", label: "AI Workspace", labelKey: "nav.aiWorkspace", to: "/workspace" },
   { id: "analytics", icon: "analytics", label: "Analytics", labelKey: "nav.analytics", to: "/dashboard" },
@@ -99,6 +100,12 @@ function SidebarIcon({ name }) {
         <path d="M6 3.5h8l4 4v13H6v-17Z" />
         <path d="M14 3.5v4h4" />
         <path d="M9 13h6" />
+      </>
+    ),
+    compass: (
+      <>
+        <circle cx="12" cy="12" r="10" />
+        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
       </>
     ),
   };
@@ -253,6 +260,7 @@ function ControlledSidebar({
   const initials = getInitials(userName);
   const activeId = activeSection || "";
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   return (
     <aside
@@ -316,7 +324,7 @@ function ControlledSidebar({
                 <span className="flex h-5 w-5 flex-none items-center justify-center">
                   <SidebarIcon name={item.icon} />
                 </span>
-                {!isCollapsed ? <b className="truncate">{item.label}</b> : null}
+                {!isCollapsed ? <b className="truncate">{t(item.labelKey || item.id)}</b> : null}
               </Link>
             );
           }
@@ -331,7 +339,7 @@ function ControlledSidebar({
               <span className="flex h-5 w-5 flex-none items-center justify-center">
                 <SidebarIcon name={item.icon} />
               </span>
-              {!isCollapsed ? <b className="truncate">{item.label}</b> : null}
+              {!isCollapsed ? <b className="truncate">{t(item.labelKey || item.id)}</b> : null}
             </button>
           );
         })}

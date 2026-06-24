@@ -32,7 +32,7 @@ export default function DashboardShell({ children }) {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center gap-4 border-b border-slate-200/80 bg-[#f8fafc]/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-slate-200/80 bg-[#f8fafc]/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
           <form className="flex min-w-0 flex-1 items-center" onSubmit={handleSearchSubmit}>
             <label className="relative flex min-w-0 flex-1 items-center">
               <span className="pointer-events-none absolute left-4 text-slate-400">

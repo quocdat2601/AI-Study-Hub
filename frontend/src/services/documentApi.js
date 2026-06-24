@@ -24,6 +24,31 @@ export async function listTrendingDocuments(limit = 12) {
   return response.data;
 }
 
+export async function searchPublicDocuments(params = {}) {
+  const response = await api.get("/public/documents", { params });
+  return response.data;
+}
+
+export async function getPublicDocument(id) {
+  const response = await api.get(`/public/documents/${id}`);
+  return response.data;
+}
+
+export async function getPublicDocumentSignedUrl(id) {
+  const response = await api.get(`/public/documents/${id}/signed-url`);
+  return response.data;
+}
+
+export async function listDocumentComments(id) {
+  const response = await api.get(`/public/documents/${id}/comments`);
+  return response.data;
+}
+
+export async function addDocumentComment(id, content, rating = null) {
+  const response = await api.post(`/public/documents/${id}/comments`, { content, rating });
+  return response.data;
+}
+
 export async function updateDocument(id, data) {
   const response = await api.patch(`/documents/${id}`, data);
   return response.data;
