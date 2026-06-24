@@ -55,6 +55,19 @@ class CommunityModel {
     return data || [];
   }
 
+  static async listActivePostsByUserId(userId) {
+    const { data, error } = await supabase
+      .from('community_posts')
+      .select(POST_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+
   static async findPostById(id) {
     const { data, error } = await supabase
       .from('community_posts')
@@ -64,6 +77,17 @@ class CommunityModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async findPostsByIds(ids) {
+    if (!ids.length) return [];
+    const { data, error } = await supabase
+      .from('community_posts')
+      .select(POST_SELECT)
+      .in('id', ids);
+
+    if (error) throw error;
+    return data || [];
   }
 
   static async findOwnedPostById(id, userId) {

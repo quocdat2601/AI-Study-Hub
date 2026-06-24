@@ -5,7 +5,7 @@ import {
   updateWorkspaceNote,
 } from "../services/workspaceApi.js";
 
-import { DEFAULT_NOTE_COLOR, normalizeNoteColor } from "./workspaceNotebookColors.js";
+import { normalizeNoteColor } from "./workspaceNotebookColors.js";
 
 function mapNote(note) {
   if (!note) return null;

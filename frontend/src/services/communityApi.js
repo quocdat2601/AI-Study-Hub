@@ -81,3 +81,8 @@ export async function uploadCommunityImage(file) {
   });
   return response.data;
 }
+
+export async function editCommunityPost(postId, payload) {
+  const response = await api.patch(`/community/posts/${postId}`, payload);
+  return response.data;
+}

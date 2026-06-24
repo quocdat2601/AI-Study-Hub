@@ -22,6 +22,7 @@ import {
   createCommunityReply,
   deleteCommunityPost,
   deleteCommunityReply,
+  editCommunityPost,
   editCommunityReply,
   getCommunityPostDetail,
   reportCommunityPost,
@@ -68,6 +69,64 @@ function EditReplyForm({ initialBody, onSave, onCancel }) {
             className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-4 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed disabled:border-[#c7d2e2] disabled:bg-[#e5e7eb] disabled:text-[#7f95ac]"
             type="submit"
             disabled={isSaving || !body.trim()}
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function EditPostForm({ initialTitle, initialBody, onSave, onCancel }) {
+  const [title, setTitle] = React.useState(initialTitle || "");
+  const [body, setBody] = React.useState(initialBody || "");
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!title.trim() || !body.trim()) return;
+    setIsSaving(true);
+    try {
+      await onSave(title, body);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-[#4648d4] bg-white p-5 shadow-[0_18px_40px_rgba(20,31,48,0.06)] mb-6">
+      <p className="m-0 mb-3 text-xs font-black uppercase tracking-[0.8px] text-[#4648d4]">Editing post</p>
+      <form className="grid gap-3" onSubmit={handleSubmit}>
+        <input
+          autoFocus
+          type="text"
+          className="w-full rounded-xl border border-[#dbe3ed] bg-[#f8fafc] px-4 py-2 text-[15px] font-bold text-[#172033] outline-none transition focus:border-[#4648d4] focus:bg-white"
+          placeholder="Title"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          disabled={isSaving}
+        />
+        <textarea
+          className="min-h-[180px] w-full resize-y rounded-[18px] border border-[#dbe3ed] bg-[#f8fafc] px-4 py-3 text-[15px] leading-7 text-[#172033] outline-none transition focus:border-[#4648d4] focus:bg-white"
+          placeholder="Body"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          disabled={isSaving}
+        />
+        <div className="flex items-center justify-end gap-3">
+          <button
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[#dbe3ed] bg-white px-4 text-sm font-black text-[#172033] transition hover:border-[#172033]"
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+          >
+            Cancel
+          </button>
+          <button
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-[#4648d4] bg-[#4648d4] px-4 text-sm font-black text-white transition hover:bg-[#3537b8] disabled:cursor-not-allowed"
+            type="submit"
+            disabled={isSaving || !title.trim() || !body.trim()}
           >
             {isSaving ? "Saving..." : "Save"}
           </button>
@@ -144,7 +203,6 @@ export default function CommunityPostDetailPage() {
   const [actionError, setActionError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptingReplyId, setAcceptingReplyId] = useState(null);
-  const [isPostVotePending, setIsPostVotePending] = useState(false);
   const [replyTarget, setReplyTarget] = useState(null);
   const [pendingScrollReplyId, setPendingScrollReplyId] = useState(null);
   const [reportTarget, setReportTarget] = useState(null);
@@ -153,7 +211,6 @@ export default function CommunityPostDetailPage() {
   const [isReporting, setIsReporting] = useState(false);
   const [reportedKeys, setReportedKeys] = useState({});
   const [highlightedReplyId, setHighlightedReplyId] = useState(null);
-  const [pendingReplyVotes, setPendingReplyVotes] = useState({});
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
@@ -161,6 +218,7 @@ export default function CommunityPostDetailPage() {
     onConfirm: null,
   });
   const [editingReply, setEditingReply] = useState(null);
+  const [isEditingPost, setIsEditingPost] = useState(false);
 
   const loadThreadDetail = useCallback(async ({ showLoading = true } = {}) => {
     const loadId = latestLoadIdRef.current + 1;
@@ -192,9 +250,6 @@ export default function CommunityPostDetailPage() {
 
   useEffect(() => () => {
     isMountedRef.current = false;
-    if (noticeTimeoutRef.current) {
-      clearTimeout(noticeTimeoutRef.current);
-    }
     if (highlightTimeoutRef.current) {
       clearTimeout(highlightTimeoutRef.current);
     }
@@ -533,6 +588,22 @@ export default function CommunityPostDetailPage() {
     }
   }
 
+  async function handleSaveEditPost(newTitle, newBody) {
+    if (!newTitle.trim() || !newBody.trim()) return;
+    try {
+      setActionError("");
+      const response = await editCommunityPost(normalizedDetail.rootPost.id, {
+        title: newTitle.trim(),
+        body: newBody.trim(),
+      });
+      setThreadDetail(response);
+      setIsEditingPost(false);
+      showNotice("Post updated");
+    } catch (err) {
+      setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update this post.");
+    }
+  }
+
   async function handleSubmitReply(event) {
     event.preventDefault();
 
@@ -615,7 +686,6 @@ export default function CommunityPostDetailPage() {
     const nextVoteCount = Math.max(0, previousVoteCount + (nextVoted ? 1 : -1));
 
     postVotePendingRef.current = true;
-    setIsPostVotePending(true);
     setActionError("");
     setThreadDetail((current) => current ? {
       ...current,
@@ -643,7 +713,6 @@ export default function CommunityPostDetailPage() {
       setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update the post vote.");
     } finally {
       postVotePendingRef.current = false;
-      setIsPostVotePending(false);
     }
   }
 
@@ -661,7 +730,6 @@ export default function CommunityPostDetailPage() {
     const nextVoteCount = Math.max(0, previousVoteCount + (nextVoted ? 1 : -1));
 
     pendingReplyVoteIdsRef.current.add(replyKey);
-    setPendingReplyVotes((current) => ({ ...current, [replyKey]: true }));
     setActionError("");
     setThreadDetail((current) => {
       if (!current) return current;
@@ -704,11 +772,6 @@ export default function CommunityPostDetailPage() {
       setActionError(err.response?.data?.error || err.response?.data?.message || "Could not update the reply vote.");
     } finally {
       pendingReplyVoteIdsRef.current.delete(replyKey);
-      setPendingReplyVotes((current) => {
-        const next = { ...current };
-        delete next[replyKey];
-        return next;
-      });
     }
   }
 
@@ -829,11 +892,18 @@ export default function CommunityPostDetailPage() {
 
   const rootReportKey = buildReportKey("post", normalizedDetail.rootPost.id);
   const rootMenuItems = [
-    ...(isPostOwner ? [{
-      id: "delete-post",
-      label: "Delete post",
-      onClick: () => triggerDeletePost(normalizedDetail.rootPost),
-    }] : []),
+    ...(isPostOwner ? [
+      {
+        id: "edit-post",
+        label: "Edit post",
+        onClick: () => setIsEditingPost(true),
+      },
+      {
+        id: "delete-post",
+        label: "Delete post",
+        onClick: () => triggerDeletePost(normalizedDetail.rootPost),
+      }
+    ] : []),
     {
       id: "report-post",
       label: reportedKeys[rootReportKey] ? "Report submitted" : "Report post",
@@ -891,19 +961,28 @@ export default function CommunityPostDetailPage() {
         </div>
       ) : null}
 
-      <CommunityThreadItem
-        post={normalizedDetail.rootPost}
-        isRootPost
-        attachmentSlot={attachmentSlot}
-        onReply={handleReplyToPost}
-        onShare={handleShare}
-        onUpvote={handlePostVote}
-        menuItems={rootMenuItems}
-        LinkComponent={Link}
-        variant="light"
-        showTitle={false}
-        showCreatedMeta
-      />
+      {isEditingPost ? (
+        <EditPostForm
+          initialTitle={normalizedDetail.rootPost.title}
+          initialBody={normalizedDetail.rootPost.content || normalizedDetail.rootPost.body}
+          onSave={handleSaveEditPost}
+          onCancel={() => setIsEditingPost(false)}
+        />
+      ) : (
+        <CommunityThreadItem
+          post={normalizedDetail.rootPost}
+          isRootPost
+          attachmentSlot={attachmentSlot}
+          onReply={handleReplyToPost}
+          onShare={handleShare}
+          onUpvote={handlePostVote}
+          menuItems={rootMenuItems}
+          LinkComponent={Link}
+          variant="light"
+          showTitle={false}
+          showCreatedMeta
+        />
+      )}
 
       <section className="flex items-center gap-4 rounded-xl border border-[#e4e0d8] bg-white px-5 py-3 shadow-sm">
         <span className="h-px flex-1 bg-[#e8e4dc]" />

@@ -2,7 +2,6 @@ const userModel = require('../models/user.model');
 const createError = require('../utils/createError');
 
 function normalizeRole(role) {
-  if (role === 'user') return 'student';
   return role;
 }
 

@@ -7,7 +7,6 @@ const chatService = require('./chat.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 
-const FEED_LIMIT_MAX = 250;
 const POST_TYPES = new Set(['discussion', 'question', 'document_share', 'ai_study_log']);
 const FEED_TABS = new Set(['latest', 'trending', 'unanswered', 'solved']);
 const POST_STATUSES = new Set(['active', 'hidden', 'removed']);
@@ -41,11 +40,6 @@ function normalizeReportStatus(value) {
   return REPORT_STATUSES.has(status) ? status : '';
 }
 
-function normalizeLimit(value, fallback = 24) {
-  const numericValue = Number(value);
-  if (!Number.isInteger(numericValue) || numericValue <= 0) return fallback;
-  return Math.min(numericValue, FEED_LIMIT_MAX);
-}
 
 function normalizeNumericId(value, fieldName) {
   const numericValue = Number(value);
@@ -267,24 +261,15 @@ async function buildAuthorStatsByUserId(posts, replies, options = {}) {
     return new Map();
   }
 
-  const allPosts = await CommunityModel.listPosts();
-  const activePosts = (allPosts || []).filter((post) => post.status === 'active');
-  const activePostIds = activePosts.map((post) => post.id);
-  const allReplies = activePostIds.length
-    ? await CommunityModel.listRepliesByPostIds(activePostIds)
-    : [];
-  const activeReplies = (allReplies || []).filter((reply) => reply.status === 'active');
+  const supabase = require('../config/supabase');
+  const { data, error } = await supabase
+    .from('community_user_stats')
+    .select('id, post_count, reply_count, utility_points')
+    .in('id', targetUserIds);
 
-  const authoredPosts = activePosts.filter((post) => targetUserIds.includes(String(post.user_id || post.users?.id)));
-  const authoredReplies = activeReplies.filter((reply) => targetUserIds.includes(String(reply.user_id || reply.users?.id)));
-  const [postVotes, replyVotes] = await Promise.all([
-    CommunityModel.listVotesForPosts(authoredPosts.map((post) => post.id)),
-    CommunityModel.listVotesForReplies(authoredReplies.map((reply) => reply.id)),
-  ]);
-  const postVotesByPostId = groupBy(postVotes, 'post_id');
-  const replyVotesByReplyId = groupBy(replyVotes, 'reply_id');
+  if (error) throw error;
+
   const statsByUserId = new Map();
-
   targetUserIds.forEach((userId) => {
     statsByUserId.set(userId, {
       postCount: 0,
@@ -292,20 +277,12 @@ async function buildAuthorStatsByUserId(posts, replies, options = {}) {
     });
   });
 
-  authoredPosts.forEach((post) => {
-    const key = String(post.user_id || post.users?.id);
-    const current = statsByUserId.get(key);
-    if (!current) return;
-    current.postCount += 1;
-    current.utilityPoints += buildVoteCount(postVotesByPostId.get(post.id) || []);
-  });
-
-  authoredReplies.forEach((reply) => {
-    const key = String(reply.user_id || reply.users?.id);
-    const current = statsByUserId.get(key);
-    if (!current) return;
-    current.postCount += 1;
-    current.utilityPoints += buildVoteCount(replyVotesByReplyId.get(reply.id) || []);
+  (data || []).forEach((row) => {
+    const key = String(row.id);
+    statsByUserId.set(key, {
+      postCount: Number(row.post_count || 0) + Number(row.reply_count || 0),
+      utilityPoints: Number(row.utility_points || 0),
+    });
   });
 
   return statsByUserId;
@@ -444,29 +421,6 @@ async function hydratePosts(posts, options = {}) {
   }));
 }
 
-function sortFeed(posts, tab) {
-  if (tab === 'latest') {
-    return [...posts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }
-
-  if (tab === 'solved') {
-    return posts
-      .filter((post) => post.postType === 'question' && post.solved)
-      .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
-  }
-
-  if (tab === 'unanswered') {
-    return posts
-      .filter((post) => post.postType === 'question' && post.replyCount === 0)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }
-
-  return [...posts].sort((a, b) => {
-    const scoreDiff = Number(b.voteCount || 0) - Number(a.voteCount || 0);
-    if (scoreDiff !== 0) return scoreDiff;
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
-}
 
 async function listPublicFeed({ tab, postType, subjectCode, search, page, pageSize, viewerContext = {} }) {
   const normalizedTab = normalizeTab(tab);
@@ -475,44 +429,113 @@ async function listPublicFeed({ tab, postType, subjectCode, search, page, pageSi
   const normalizedPage = Math.max(1, Number.isInteger(Number(page)) ? Number(page) : 1);
   const normalizedPageSize = Math.min(50, Math.max(1, Number.isInteger(Number(pageSize)) ? Number(pageSize) : 15));
   const normalizedSearch = String(search || '').trim().toLowerCase();
-  const posts = await CommunityModel.listPosts();
-  const activePosts = posts.filter((post) => post.status === 'active');
-  let filtered = activePosts;
+
+  const supabase = require('../config/supabase');
+
+  let query = supabase
+    .from('community_posts_feed_view')
+    .select('post_id', { count: 'exact' })
+    .eq('status', 'active');
 
   if (normalizedPostType) {
-    filtered = filtered.filter((post) => post.post_type === normalizedPostType);
+    query = query.eq('post_type', normalizedPostType);
   }
 
-  let hydrated = await hydratePosts(filtered, {
+  if (normalizedSubjectCode) {
+    const { data: matchingSubjects } = await supabase
+      .from('subjects')
+      .select('id')
+      .eq('code', normalizedSubjectCode);
+
+    if (matchingSubjects && matchingSubjects.length > 0) {
+      const subjectIds = matchingSubjects.map((s) => s.id);
+      const { data: junctionLinks } = await supabase
+        .from('community_post_subjects')
+        .select('post_id')
+        .in('subject_id', subjectIds);
+      const linkedPostIds = (junctionLinks || []).map((link) => link.post_id);
+
+      if (linkedPostIds.length > 0) {
+        query = query.or(`subject_id.in.(${subjectIds.join(',')}),post_id.in.(${linkedPostIds.join(',')})`);
+      } else {
+        query = query.in('subject_id', subjectIds);
+      }
+    } else {
+      return { posts: [], total: 0, page: normalizedPage, pageSize: normalizedPageSize, totalPages: 1 };
+    }
+  }
+
+  if (normalizedSearch) {
+    const { data: searchedSubjects } = await supabase
+      .from('subjects')
+      .select('id')
+      .or(`name.ilike.%${normalizedSearch}%,code.ilike.%${normalizedSearch}%`);
+
+    const searchedSubjectIds = (searchedSubjects || []).map((s) => s.id);
+    let searchedJunctionPostIds = [];
+    if (searchedSubjectIds.length > 0) {
+      const { data: searchedJunctionLinks } = await supabase
+        .from('community_post_subjects')
+        .select('post_id')
+        .in('subject_id', searchedSubjectIds);
+      searchedJunctionPostIds = (searchedJunctionLinks || []).map((link) => link.post_id);
+    }
+
+    const searchOrParts = [
+      `title.ilike.%${normalizedSearch}%`,
+      `body.ilike.%${normalizedSearch}%`,
+    ];
+    if (searchedSubjectIds.length > 0) {
+      searchOrParts.push(`subject_id.in.(${searchedSubjectIds.join(',')})`);
+    }
+    if (searchedJunctionPostIds.length > 0) {
+      searchOrParts.push(`post_id.in.(${searchedJunctionPostIds.join(',')})`);
+    }
+    query = query.or(searchOrParts.join(','));
+  }
+
+  if (normalizedTab === 'solved') {
+    query = query
+      .eq('post_type', 'question')
+      .not('solved_reply_id', 'is', null)
+      .order('updated_at', { ascending: false });
+  } else if (normalizedTab === 'unanswered') {
+    query = query
+      .eq('post_type', 'question')
+      .eq('reply_count', 0)
+      .order('created_at', { ascending: false });
+  } else if (normalizedTab === 'trending') {
+    query = query
+      .order('vote_count', { ascending: false })
+      .order('created_at', { ascending: false });
+  } else {
+    query = query.order('created_at', { ascending: false });
+  }
+
+  const start = (normalizedPage - 1) * normalizedPageSize;
+  const end = start + normalizedPageSize - 1;
+  const { data: feedIds, count: total, error } = await query.range(start, end);
+
+  if (error) throw error;
+
+  const totalPages = Math.max(1, Math.ceil((total || 0) / normalizedPageSize));
+
+  if (!feedIds || !feedIds.length) {
+    return { posts: [], total: total || 0, page: normalizedPage, pageSize: normalizedPageSize, totalPages };
+  }
+
+  const targetPostIds = feedIds.map((row) => row.post_id);
+  const postsData = await CommunityModel.findPostsByIds(targetPostIds);
+  const postsMap = new Map((postsData || []).map((p) => [p.id, p]));
+  const sortedPosts = targetPostIds.map((id) => postsMap.get(id)).filter(Boolean);
+
+  const posts_page = await hydratePosts(sortedPosts, {
     includeReplies: false,
     includeFullAttachments: false,
     viewerUserId: viewerContext.userId || null,
   });
 
-  if (normalizedSubjectCode) {
-    hydrated = hydrated.filter((post) => (post.subjects || []).some((subject) => subject.code === normalizedSubjectCode));
-  }
-
-  if (normalizedSearch) {
-    hydrated = hydrated.filter((post) => {
-      const haystack = [
-        post.title,
-        post.body,
-        post.excerpt,
-        ...(post.subjects || []).flatMap((s) => [s.code, s.name]),
-      ].filter(Boolean).join(' ').toLowerCase();
-      return haystack.includes(normalizedSearch);
-    });
-  }
-
-  const sorted = sortFeed(hydrated, normalizedTab);
-  const total = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(total / normalizedPageSize));
-  const safePage = Math.min(normalizedPage, totalPages);
-  const start = (safePage - 1) * normalizedPageSize;
-  const posts_page = sorted.slice(start, start + normalizedPageSize);
-
-  return { posts: posts_page, total, page: safePage, pageSize: normalizedPageSize, totalPages };
+  return { posts: posts_page, total: total || 0, page: normalizedPage, pageSize: normalizedPageSize, totalPages };
 }
 
 async function getPublicPostById(id, viewerContext = {}) {
@@ -540,29 +563,21 @@ async function getPublicPostById(id, viewerContext = {}) {
 }
 
 async function listPublicSubjects() {
-  const [subjects, posts] = await Promise.all([
+  const supabase = require('../config/supabase');
+  const [subjects, countsResult] = await Promise.all([
     SubjectModel.listSubjects(),
-    CommunityModel.listPosts(),
+    supabase.from('community_subject_post_counts').select('*'),
   ]);
-  const activePosts = posts.filter((post) => post.status === 'active');
-  const activePostIds = activePosts.map((post) => post.id);
-  const subjectLinks = await CommunityModel.listPostSubjectLinksByPostIds(activePostIds);
-  const counts = subjectLinks.reduce((map, link) => {
-    map.set(link.subject_id, (map.get(link.subject_id) || 0) + 1);
-    return map;
-  }, new Map());
-  const postsWithLinks = new Set(subjectLinks.map((link) => link.post_id));
 
-  activePosts.forEach((post) => {
-    if (postsWithLinks.has(post.id) || !post.subject_id) return;
-    counts.set(post.subject_id, (counts.get(post.subject_id) || 0) + 1);
-  });
+  if (countsResult.error) throw countsResult.error;
+
+  const countsMap = new Map((countsResult.data || []).map((row) => [row.subject_id, row.post_count]));
 
   return (subjects || []).map((subject) => ({
     id: subject.id,
     name: subject.name,
     code: subject.code,
-    postCount: counts.get(subject.id) || 0,
+    postCount: Number(countsMap.get(subject.id) || 0),
   }));
 }
 
@@ -1145,42 +1160,32 @@ async function resolveReport({ reportId, adminUserId, status }) {
 }
 
 async function listTopContributors(limit = 5) {
-  const posts = await CommunityModel.listPosts();
-  const activePosts = posts.filter((post) => post.status === 'active');
-  const hydratedPosts = await hydratePosts(activePosts, { includeReplies: true, includeFullAttachments: false });
-  const contributors = new Map();
+  const supabase = require('../config/supabase');
+  const { data, error } = await supabase
+    .from('community_user_stats')
+    .select('*')
+    .gt('utility_points', 0)
+    .order('utility_points', { ascending: false })
+    .order('display_name', { ascending: true })
+    .limit(Math.max(1, Number(limit) || 5));
 
-  hydratedPosts.forEach((post) => {
-    if (post.author?.id) {
-      const current = contributors.get(post.author.id) || {
-        ...post.author,
-        score: 0,
-      };
-      current.score += Math.max(0, post.voteCount);
-      contributors.set(post.author.id, current);
-    }
+  if (error) throw error;
 
-    (post.replies || []).forEach((reply) => {
-      if (!reply.author?.id) return;
-      const current = contributors.get(reply.author.id) || {
-        ...reply.author,
-        score: 0,
-      };
-      current.score += Math.max(0, reply.voteCount);
-      if (reply.isAccepted) current.score += 3;
-      contributors.set(reply.author.id, current);
-    });
-  });
-
-  return [...contributors.values()]
-    .sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName))
-    .slice(0, Math.max(1, Number(limit) || 5));
+  return (data || []).map((row) => ({
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name || displayNameFromEmail(row.email),
+    role: row.role,
+    createdAt: row.created_at,
+    postCount: Number(row.post_count || 0) + Number(row.reply_count || 0),
+    utilityPoints: Number(row.utility_points || 0),
+    score: Number(row.utility_points || 0),
+  }));
 }
 
 async function getUserCommunityProfile(userId) {
   const normalizedUserId = normalizeNumericId(userId, 'userId');
-  const allPosts = await CommunityModel.listPosts();
-  const userPosts = allPosts.filter((p) => Number(p.user_id) === normalizedUserId && p.status === 'active');
+  const userPosts = await CommunityModel.listActivePostsByUserId(normalizedUserId);
 
   const hydratedPosts = await hydratePosts(userPosts, {
     includeReplies: false,

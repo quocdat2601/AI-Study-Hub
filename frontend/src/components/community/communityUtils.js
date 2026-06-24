@@ -115,7 +115,7 @@ export function renderMarkdownBody(text, React, onImageClick) {
   const lines = text.split("\n");
   const nodes = [];
 
-  function parseInline(line, lineKey) {
+  function parseInline(line) {
     const parts = [];
     const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*|!\[([^\]]*)\]\(([^)]+)\))/g;
     let lastIndex = 0;
@@ -168,7 +168,7 @@ export function renderMarkdownBody(text, React, onImageClick) {
   }
 
   lines.forEach((line, index) => {
-    const inlineParts = parseInline(line, index);
+    const inlineParts = parseInline(line);
     const hasImage = line.match(/!\[([^\]]*)\]\(([^)]+)\)/);
 
     if (hasImage) {

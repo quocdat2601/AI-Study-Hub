@@ -13,7 +13,6 @@ const VIOLATION_CATEGORIES = [
 export default function CommunityReportModal({
   isOpen,
   target,
-  reason,
   error,
   isSubmitting,
   onReasonChange,

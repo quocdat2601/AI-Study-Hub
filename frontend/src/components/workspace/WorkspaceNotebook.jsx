@@ -76,6 +76,18 @@ export default function WorkspaceNotebook({
   const [draftColor, setDraftColor] = useState(DEFAULT_NOTE_COLOR);
   const [activeNote, setActiveNote] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(680);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -226,8 +238,6 @@ export default function WorkspaceNotebook({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [clearBrowserSelection]);
-
-  const containerWidth = containerRef.current?.clientWidth || 680;
   const activeCard = activeNote ? getNoteCardPosition(activeNote, NOTE_CARD_WIDTH, containerWidth) : null;
   const draftWithColor = draft ? { ...draft, color: draftColor } : null;
   const contextValue = {

@@ -53,7 +53,7 @@ export function PreferencesProvider({ children }) {
     if (!user) return;
     if (user.theme) setThemeState(user.theme === "dark" ? "dark" : "light");
     if (user.language) setLanguageState(user.language);
-  }, [user?.id, user?.theme, user?.language]);
+  }, [user]);
 
   const setTheme = useCallback((nextTheme) => {
     setThemeState(nextTheme === "dark" ? "dark" : "light");

@@ -59,7 +59,6 @@ function jumpToPage(page) {
 }
 
 function PdfBody({
-  currentPage,
   isPdfLoading,
   onReloadPdf,
   pdfBlobUrl,

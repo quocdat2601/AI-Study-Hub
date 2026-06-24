@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import {
@@ -309,24 +309,20 @@ export default function AdminPage() {
   const [processingAction, setProcessingAction] = useState(null);
   const { addToast } = useToast();
 
-  function showSuccess(msg) {
+  const showSuccess = useCallback((msg) => {
     addToast({ type: "success", title: "Success", message: msg });
-  }
+  }, [addToast]);
 
-  function showError(msg) {
+  const showError = useCallback((msg) => {
     addToast({ type: "error", title: "Error", message: msg });
-  }
+  }, [addToast]);
 
   const displayName = getDisplayName(user);
   const contentClass = isSidebarCollapsed
     ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
     : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
 
-  useEffect(() => {
-    loadAdminData();
-  }, []);
-
-  async function loadAdminData() {
+  const loadAdminData = useCallback(async () => {
     setIsLoading(true);
 
     try {
@@ -345,7 +341,11 @@ export default function AdminPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [showError]);
+
+  useEffect(() => {
+    loadAdminData();
+  }, [loadAdminData]);
 
   async function refreshReports() {
     try {
