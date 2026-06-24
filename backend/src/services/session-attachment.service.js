@@ -27,6 +27,18 @@ function attachmentLimitError() {
   return createError(409, `A chat session can contain at most ${MAX_ACTIVE_ATTACHMENTS} active attachments`);
 }
 
+function mapLifecycleConflict(error) {
+  const message = String(error?.message || '');
+  if (error?.code === '55000' && message.includes('cleanup is in progress')) {
+    return createError(409, 'Session attachment cleanup is in progress. Please retry shortly.');
+  }
+  if (error?.code === '55000' && message.includes('recovery window has ended')) {
+    return createError(410, 'Session attachment has been permanently purged or is no longer recoverable');
+  }
+  if (isAttachmentLimitError(error)) return attachmentLimitError();
+  return error;
+}
+
 async function requireOwnedSession(userId, sessionId) {
   const normalizedSessionId = normalizeNumericId(sessionId, 'sessionId');
   const session = await chatModel.findOwnedSession(normalizedSessionId, userId);
@@ -146,13 +158,22 @@ async function restoreDocument({ sessionId, userId, documentId }) {
   const session = await requireOwnedSession(userId, sessionId);
   const docId = normalizeNumericId(documentId, 'documentId');
   const link = await chatModel.findSessionDocumentLink(session.id, docId);
-  if (!link || !link.removed_at) {
-    throw createError(404, 'Soft-detached session attachment not found');
+  if (!link) {
+    const purgeLog = await documentModel.findSessionPurgeLog(session.id, docId);
+    throw createError(
+      purgeLog ? 410 : 404,
+      purgeLog ? 'Session attachment has been permanently purged' : 'Session attachment not found'
+    );
   }
 
-  const document = await documentModel.findActiveById(docId);
+  const document = await documentModel.findSessionDocumentForRecovery(docId, session.id)
+    || await documentModel.findActiveById(docId);
   if (!document) {
-    throw createError(410, 'Session attachment is no longer available');
+    const purgeLog = await documentModel.findSessionPurgeLog(session.id, docId);
+    throw createError(
+      purgeLog ? 410 : 404,
+      purgeLog ? 'Session attachment has been permanently purged' : 'Session attachment is no longer available'
+    );
   }
   if (document.document_scope === 'session') {
     if (
@@ -161,12 +182,22 @@ async function restoreDocument({ sessionId, userId, documentId }) {
     ) {
       throw createError(404, 'Session attachment not found');
     }
-  } else if (!await documentService.canAttachDocumentToSession(userId, docId)) {
+    try {
+      const restored = await documentModel.restoreSessionDocument({
+        id: docId,
+        userId,
+        sessionId: session.id,
+      });
+      if (!restored) throw createError(404, 'Session attachment not found');
+    } catch (error) {
+      throw mapLifecycleConflict(error);
+    }
+  } else if (!link.removed_at || !await documentService.canAttachDocumentToSession(userId, docId)) {
     throw createError(404, 'Document not found');
+  } else {
+    await assertAttachmentSlotAvailable(session.id);
+    await attachWithLimitHandling(session.id, [docId]);
   }
-
-  await assertAttachmentSlotAvailable(session.id);
-  await attachWithLimitHandling(session.id, [docId]);
 
   activityService.log({
     userId,
@@ -187,16 +218,25 @@ async function saveToLibrary({ sessionId, userId, documentId }) {
     throw createError(404, 'Session attachment not found');
   }
 
-  const document = await documentModel.findActiveSessionScopedById(docId, session.id);
+  const document = await documentModel.findSessionDocumentForRecovery(docId, session.id);
   if (!document || String(document.user_id) !== String(userId)) {
-    throw createError(404, 'Session-only document not found');
+    const purgeLog = await documentModel.findSessionPurgeLog(session.id, docId);
+    throw createError(
+      purgeLog ? 410 : 404,
+      purgeLog ? 'Session attachment has been permanently purged' : 'Session-only document not found'
+    );
   }
 
-  const converted = await documentModel.convertSessionDocumentToLibrary({
-    id: docId,
-    userId,
-    sessionId: session.id,
-  });
+  let converted;
+  try {
+    converted = await documentModel.convertSessionDocumentToLibrary({
+      id: docId,
+      userId,
+      sessionId: session.id,
+    });
+  } catch (error) {
+    throw mapLifecycleConflict(error);
+  }
   if (!converted) {
     throw createError(409, 'Document could not be saved to My Documents');
   }

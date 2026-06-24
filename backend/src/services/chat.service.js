@@ -4,6 +4,7 @@ const userModel = require('../models/user.model');
 const geminiService = require('./gemini.service');
 const activityService = require('./activity.service');
 const documentService = require('./document.service');
+const documentModel = require('../models/document.model');
 const createError = require('../utils/createError');
 
 const MAX_MESSAGE_CHARS = 4000;
@@ -56,6 +57,11 @@ function buildChatDocumentPreview(doc) {
     lifecycleStatus: doc.lifecycle_status || 'active',
     originSessionId: doc.origin_session_id || null,
     expiresAt: doc.expires_at || null,
+    expiredAt: doc.expired_at || null,
+    purgeAfter: doc.purge_after || null,
+    purgeClaimedAt: doc.purge_claimed_at || null,
+    removedAt: doc.attachment_removed_at || null,
+    canRestore: doc.can_restore !== false,
   };
 }
 
@@ -67,7 +73,7 @@ function cleanSessionTitle(title, fallback = 'New chat') {
   return cleaned;
 }
 
-function buildSessionPayload(session, documents, messages, canWrite) {
+function buildSessionPayload(session, documents, messages, canWrite, recoverableDocuments = []) {
   return {
     session: {
       id: session.id,
@@ -78,6 +84,7 @@ function buildSessionPayload(session, documents, messages, canWrite) {
       primaryDocumentId: session.primary_document_id,
     },
     documents: documents.map(buildChatDocumentPreview),
+    recoverableDocuments: recoverableDocuments.map(buildChatDocumentPreview),
     messages,
     canWrite,
   };
@@ -290,15 +297,42 @@ async function getMessages({ sessionId, userId }) {
   if (!session) {
     throw createError(404, 'Chat session not found');
   }
+  const isOwner = String(session.user_id) === String(userId);
 
-  const [messages, documents, writableSession] = await Promise.all([
+  const [messages, documents] = await Promise.all([
     chatModel.getMessages(session.id),
     chatModel.listSessionDocuments(session.id),
-    canWriteChatSession(userId, session.id),
   ]);
+  const recoverableCandidates = isOwner
+    ? await chatModel.listRecoverableSessionDocuments(session.id, userId)
+    : [];
+  const recoverableAccess = await Promise.all(recoverableCandidates.map(async (document) => (
+    document.document_scope === 'session'
+      ? document
+      : documentService.canAttachDocumentToSession(userId, document.id)
+  )));
+  const recoverableDocuments = recoverableCandidates.filter((_, index) => recoverableAccess[index]);
 
-  const documentsWithThumbnails = await withDocumentPreviews(documents);
-  return buildSessionPayload(session, documentsWithThumbnails, messages, Boolean(writableSession));
+  const sessionDocumentIds = documents
+    .filter((document) => document.document_scope === 'session')
+    .map((document) => document.id);
+  const touched = await documentModel.touchSessionDocuments(sessionDocumentIds);
+  const expiryById = new Map(touched.map((row) => [Number(row.document_id), row.expires_at]));
+  const refreshedDocuments = documents.map((document) => ({
+    ...document,
+    expires_at: expiryById.get(Number(document.id)) || document.expires_at,
+  }));
+  const [documentsWithThumbnails, recoverableWithThumbnails] = await Promise.all([
+    withDocumentPreviews(refreshedDocuments),
+    withDocumentPreviews(recoverableDocuments),
+  ]);
+  return buildSessionPayload(
+    session,
+    documentsWithThumbnails,
+    messages,
+    isOwner,
+    recoverableWithThumbnails
+  );
 }
 
 async function sendMessage({ sessionId, userId, content }) {

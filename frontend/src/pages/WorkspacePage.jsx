@@ -37,6 +37,7 @@ import {
   mergePendingHistory,
   reconcilePersistedAsk,
 } from "../utils/chatMessages.js";
+import { normalizeAttachmentPayload } from "../utils/chatAttachments.js";
 
 const DEFAULT_GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -167,7 +168,7 @@ export default function WorkspacePage() {
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState("");
   const [attachments, setAttachments] = useState([]);
-  const [removedAttachmentsBySession, setRemovedAttachmentsBySession] = useState({});
+  const [recoverableAttachmentsBySession, setRecoverableAttachmentsBySession] = useState({});
   const [attachmentAction, setAttachmentAction] = useState(null);
   const [attachmentError, setAttachmentError] = useState("");
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(0);
@@ -187,7 +188,7 @@ export default function WorkspacePage() {
   const geminiModels = modelStatus?.gemini?.models || availableModels.filter((model) => model.startsWith("gemini-"));
   const ollamaModels = modelStatus?.ollama?.allowedModels || availableModels.filter((model) => model.startsWith("qwen"));
   const isOllamaModel = (selectedModel || usage?.model || "").startsWith("qwen") || usage?.provider === "ollama";
-  const removedAttachments = removedAttachmentsBySession[String(sessionId || "")] || [];
+  const recoverableAttachments = recoverableAttachmentsBySession[String(sessionId || "")] || [];
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
@@ -422,7 +423,10 @@ export default function WorkspacePage() {
         )
         : monotonicHistory;
       if (pendingCompleted) clearPendingResponse(session.id);
-      const nextAttachments = payload.documents || [];
+      const {
+        activeAttachments: nextAttachments,
+        recoverableAttachments: nextRecoverableAttachments,
+      } = normalizeAttachmentPayload(payload);
       const restoredModel = findLatestMessageModel(nextMessages);
       cacheDocumentChat(docId, {
         sessionId: session.id,
@@ -436,11 +440,9 @@ export default function WorkspacePage() {
       setSessionId(session.id);
       setMessages(nextMessages);
       setAttachments(nextAttachments);
-      setRemovedAttachmentsBySession((current) => ({
+      setRecoverableAttachmentsBySession((current) => ({
         ...current,
-        [String(session.id)]: (current[String(session.id)] || []).filter((removed) => (
-          !nextAttachments.some((active) => Number(active.id) === Number(removed.id))
-        )),
+        [String(session.id)]: nextRecoverableAttachments,
       }));
       if (restoredModel) {
         setSelectedModel(restoredModel);
@@ -696,10 +698,17 @@ export default function WorkspacePage() {
     if (!payloadSessionId || Number(sessionIdRef.current) !== Number(payloadSessionId)) return false;
     if (Number(payload?.session?.primaryDocumentId) !== Number(docId)) return false;
     const nextMessages = (payload.messages || []).map(mapStoredMessage);
-    const nextAttachments = payload.documents || [];
+    const {
+      activeAttachments: nextAttachments,
+      recoverableAttachments: nextRecoverableAttachments,
+    } = normalizeAttachmentPayload(payload);
     const restoredModel = findLatestMessageModel(nextMessages);
     setMessages(nextMessages);
     setAttachments(nextAttachments);
+    setRecoverableAttachmentsBySession((current) => ({
+      ...current,
+      [String(payloadSessionId)]: nextRecoverableAttachments,
+    }));
     cacheDocumentChat(docId, {
       sessionId: payloadSessionId,
       messages: nextMessages,
@@ -870,18 +879,19 @@ export default function WorkspacePage() {
     if (Number(payloadSessionId) !== Number(targetSessionId)) return false;
     if (Number(sessionIdRef.current) !== Number(targetSessionId)) return false;
 
-    const nextAttachments = payload.documents || [];
+    const {
+      activeAttachments: nextAttachments,
+      recoverableAttachments: nextRecoverableAttachments,
+    } = normalizeAttachmentPayload(payload);
     setAttachments(nextAttachments);
     setSessions((current) => current.map((item) => (
       Number(item.id) === Number(targetSessionId)
         ? { ...item, attachmentCount: nextAttachments.length, updatedAt: new Date().toISOString() }
         : item
     )));
-    setRemovedAttachmentsBySession((current) => ({
+    setRecoverableAttachmentsBySession((current) => ({
       ...current,
-      [String(targetSessionId)]: (current[String(targetSessionId)] || []).filter((removed) => (
-        !nextAttachments.some((active) => Number(active.id) === Number(removed.id))
-      )),
+      [String(targetSessionId)]: nextRecoverableAttachments,
     }));
     return true;
   }
@@ -976,15 +986,7 @@ export default function WorkspacePage() {
       setAttachmentError("");
       const payload = await detachChatDocument(targetSessionId, attachment.id, { signal: controller.signal });
       if (String(getWorkspaceCache().selectedId || "") !== String(targetDocumentId || "")) return false;
-      if (!applyAttachmentPayload(payload, targetSessionId)) return false;
-      setRemovedAttachmentsBySession((current) => ({
-        ...current,
-        [String(targetSessionId)]: [
-          ...(current[String(targetSessionId)] || []).filter((item) => Number(item.id) !== Number(attachment.id)),
-          { ...attachment, removed: true },
-        ],
-      }));
-      return true;
+      return applyAttachmentPayload(payload, targetSessionId);
     } catch (err) {
       if (err.code === "ERR_CANCELED") return false;
       setAttachmentError(attachmentFailureMessage(err, "Could not remove this file."));
@@ -1012,10 +1014,12 @@ export default function WorkspacePage() {
     } catch (err) {
       if (err.code === "ERR_CANCELED") return false;
       if (err.response?.status === 410) {
-        setRemovedAttachmentsBySession((current) => ({
+        setRecoverableAttachmentsBySession((current) => ({
           ...current,
           [String(targetSessionId)]: (current[String(targetSessionId)] || []).map((item) => (
-            Number(item.id) === Number(attachment.id) ? { ...item, lifecycleStatus: "expired" } : item
+            Number(item.id) === Number(attachment.id)
+              ? { ...item, lifecycleStatus: "purged", canRestore: false }
+              : item
           )),
         }));
       }
@@ -1410,7 +1414,7 @@ export default function WorkspacePage() {
         onSelectedModelChange={setSelectedModel}
         onUploadAttachment={handleUploadAttachment}
         question={question}
-        removedAttachments={removedAttachments}
+        recoverableAttachments={recoverableAttachments}
         selectedDocument={selectedDocument}
         selectedModel={selectedModel}
         sessionId={sessionId}

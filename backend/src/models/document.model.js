@@ -128,28 +128,57 @@ class DocumentModel {
   }
 
   static async convertSessionDocumentToLibrary({ id, userId, sessionId }) {
+    const { data, error } = await supabase.rpc('convert_session_document_to_library', {
+      p_document_id: Number(id),
+      p_session_id: Number(sessionId),
+      p_user_id: userId,
+    });
+    if (error) throw error;
+    if (!data?.length) return null;
+    return this.findAnyById(id);
+  }
+
+  static async touchSessionDocuments(documentIds) {
+    const ids = [...new Set((documentIds || []).map(Number).filter(Number.isInteger))];
+    if (!ids.length) return [];
+    const { data, error } = await supabase.rpc('touch_session_documents', {
+      p_document_ids: ids,
+      p_accessed_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async restoreSessionDocument({ id, userId, sessionId }) {
+    const { data, error } = await supabase.rpc('restore_session_document', {
+      p_document_id: Number(id),
+      p_session_id: Number(sessionId),
+      p_user_id: userId,
+    });
+    if (error) throw error;
+    return data?.[0] || null;
+  }
+
+  static async findSessionDocumentForRecovery(id, sessionId) {
     const { data, error } = await supabase
       .from('documents')
-      .update({
-        document_scope: 'library',
-        origin_session_id: null,
-        lifecycle_status: 'active',
-        last_accessed_at: new Date().toISOString(),
-        expires_at: null,
-        expired_at: null,
-        purge_after: null,
-        is_public: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('user_id', userId)
-      .eq('origin_session_id', sessionId)
-      .eq('document_scope', 'session')
-      .eq('lifecycle_status', 'active')
-      .is('deleted_at', null)
       .select(DOCUMENT_SELECT)
+      .eq('id', Number(id))
+      .eq('document_scope', 'session')
+      .eq('origin_session_id', Number(sessionId))
+      .is('deleted_at', null)
       .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
 
+  static async findSessionPurgeLog(sessionId, documentId) {
+    const { data, error } = await supabase
+      .from('session_document_purge_log')
+      .select('document_id, purged_at')
+      .eq('session_id', Number(sessionId))
+      .eq('document_id', Number(documentId))
+      .maybeSingle();
     if (error) throw error;
     return data;
   }

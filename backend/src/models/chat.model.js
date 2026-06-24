@@ -129,6 +129,7 @@ class ChatModel {
           extracted_text,
           created_at,
           updated_at,
+          deleted_at,
           is_public,
           view_count,
           thumbnail_path,
@@ -142,6 +143,9 @@ class ChatModel {
           expires_at,
           expired_at,
           purge_after,
+          purge_claimed_at,
+          purge_attempts,
+          last_cleanup_error,
           subjects (name, code),
           cloud_files (storage_path, mime_type, size_bytes)
         )
@@ -170,6 +174,90 @@ class ChatModel {
 
     if (error) throw error;
     return count || 0;
+  }
+
+  static classifyRecoverableSessionDocuments(rows, sessionId, ownerUserId, now = Date.now()) {
+    return (rows || []).flatMap((row) => {
+      const document = row.documents;
+      if (!document || document.deleted_at || document.lifecycle_status === 'purging') return [];
+
+      const removed = Boolean(row.removed_at);
+      if (document.document_scope === 'library') {
+        if (!removed || document.lifecycle_status !== 'active') return [];
+        return [{
+          ...document,
+          attachment_removed_at: row.removed_at,
+          can_restore: true,
+        }];
+      }
+
+      if (
+        document.document_scope !== 'session'
+        || Number(document.origin_session_id) !== Number(sessionId)
+        || String(document.user_id) !== String(ownerUserId)
+      ) return [];
+
+      const expiresAt = document.expires_at
+        ? new Date(document.expires_at).getTime()
+        : null;
+      const timeExpired = expiresAt !== null && expiresAt <= now;
+      const expired = document.lifecycle_status === 'expired' || timeExpired;
+      const recoveryDeadline = document.purge_after
+        ? new Date(document.purge_after).getTime()
+        : timeExpired
+          ? expiresAt + (7 * 24 * 60 * 60 * 1000)
+          : null;
+      const recoveryOpen = !expired
+        || (Number.isFinite(recoveryDeadline) && recoveryDeadline > now);
+
+      if ((!removed && !expired) || !recoveryOpen) return [];
+      return [{
+        ...document,
+        lifecycle_status: expired ? 'expired' : document.lifecycle_status,
+        attachment_removed_at: row.removed_at,
+        can_restore: true,
+      }];
+    });
+  }
+
+  static async listRecoverableSessionDocuments(sessionId, ownerUserId) {
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .select(`
+        added_at,
+        removed_at,
+        documents (
+          id,
+          title,
+          user_id,
+          subject_id,
+          status,
+          extraction_status,
+          created_at,
+          updated_at,
+          deleted_at,
+          is_public,
+          thumbnail_path,
+          thumbnail_status,
+          document_scope,
+          origin_session_id,
+          lifecycle_status,
+          last_accessed_at,
+          expires_at,
+          expired_at,
+          purge_after,
+          purge_claimed_at,
+          purge_attempts,
+          last_cleanup_error,
+          subjects (name, code),
+          cloud_files (storage_path, mime_type, size_bytes)
+        )
+      `)
+      .eq('session_id', sessionId)
+      .order('added_at', { ascending: true });
+    if (error) throw error;
+
+    return this.classifyRecoverableSessionDocuments(data, sessionId, ownerUserId);
   }
 
   static async findActiveSessionDocument(sessionId, docId) {

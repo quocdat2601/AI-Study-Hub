@@ -746,6 +746,9 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
   if (!relevantChunks.length) {
     throw createError(400, 'No ownership-valid document context is available for this question');
   }
+  await documentModel.touchSessionDocuments(
+    [...new Set(sources.map((source) => Number(source.documentId)).filter(Number.isInteger))]
+  );
   const estimatedTokens = estimatePromptTokens({
     question: cleanedQuestion,
     chunks: relevantChunks,

@@ -5,6 +5,10 @@ const documentService = require('../services/document.service');
 const SCHEDULE = '0 2 * * *';
 
 function startTrashCleanupJob() {
+  if (String(process.env.IN_PROCESS_CLEANUP_ENABLED || '').toLowerCase() === 'false') {
+    console.log('[trash-cleanup] in-process scheduling disabled');
+    return null;
+  }
   cron.schedule(SCHEDULE, async () => {
     try {
       const result = await documentService.purgeExpiredTrash();
@@ -16,6 +20,7 @@ function startTrashCleanupJob() {
     }
   });
   console.log(`[trash-cleanup] scheduled "${SCHEDULE}" (daily 02:00)`);
+  return true;
 }
 
 module.exports = startTrashCleanupJob;

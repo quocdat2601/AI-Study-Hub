@@ -382,7 +382,7 @@ export default function AIChatPanel({
   onSelectedModelChange,
   onUploadAttachment,
   question,
-  removedAttachments,
+  recoverableAttachments,
   selectedDocument,
   selectedModel,
   sessionId,
@@ -452,7 +452,7 @@ export default function AIChatPanel({
         onSave={onSaveAttachment}
         onUpload={onUploadAttachment}
         primaryDocumentId={selectedDocument?.id}
-        removedAttachments={removedAttachments}
+        recoverableAttachments={recoverableAttachments}
         sessionId={sessionId}
         uploadProgress={attachmentUploadProgress}
       />

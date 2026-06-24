@@ -34,3 +34,24 @@ If the API is behind a reverse proxy, disable response buffering for this route 
 ## Temporary Files
 
 OCR and thumbnail rendering use `os.tmpdir()` and clean up their work directories. Keep `/tmp` writable in the container. Uploads are in-memory with a 50MB file limit, so provision enough memory for concurrent uploads and OCR jobs.
+
+## Session Attachment Cleanup
+
+Session-only attachments use a sliding 30-day expiry and a seven-day recovery window. Apply migration `020_session_document_cleanup.sql` before enabling cleanup.
+
+For local development, the API schedules cleanup hourly by default. Set `SESSION_LIFECYCLE_CRON` to override the schedule or `IN_PROCESS_CLEANUP_ENABLED=false` to disable all in-process cleanup jobs.
+
+For Render, keep `IN_PROCESS_CLEANUP_ENABLED=false` on the web service and create a Cron Job from the same Docker image:
+
+```bash
+npm run lifecycle:cleanup
+```
+
+Recommended schedule: `17 * * * *` UTC. Copy the backend Supabase and storage environment variables to the Cron Job. Before enabling writes, inspect a dry run:
+
+```bash
+npm run lifecycle:cleanup -- --dry-run
+npm run lifecycle:cleanup -- --batch-size=10 --max-batches=1
+```
+
+The job is safe to overlap: database row locks, claim tokens, leases, and the storage cleanup queue prevent duplicate purges. Per-document failures remain retryable; only a job-wide failure exits nonzero.

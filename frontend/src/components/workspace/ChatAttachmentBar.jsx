@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { UPLOAD_DOC_ACCEPT_ATTR } from "../../services/uploadDocApi.js";
+import { getRecoverableAttachmentPresentation } from "../../utils/chatAttachments.js";
 import { BookmarkIcon, ClockIcon, FileTextIcon, PlusIcon, RefreshIcon, UploadIcon, XIcon } from "./WorkspaceIcons.jsx";
 
 const MAX_ATTACHMENTS = 10;
@@ -9,44 +10,83 @@ function isExpired(document) {
     || (document?.expiresAt && new Date(document.expiresAt).getTime() <= Date.now());
 }
 
+function formatRecoveryDeadline(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
+}
+
 function actionMatches(action, type, documentId) {
   return action?.type === type
     && (documentId === undefined || Number(action.documentId) === Number(documentId));
 }
 
-function AttachmentCard({ attachment, action, onRemove, onRestore, onSave, primaryDocumentId, removed = false }) {
+function AttachmentCard({ attachment, action, onRemove, onRestore, onSave, primaryDocumentId, recoverable = false }) {
   const expired = isExpired(attachment);
+  const recovery = getRecoverableAttachmentPresentation(attachment);
+  const isPurging = recovery.isPurging;
+  const isPurged = attachment.lifecycleStatus === "purged";
+  const canRestore = recovery.showRestore && !isPurged;
   const isRemoving = actionMatches(action, "remove", attachment.id);
   const isRestoring = actionMatches(action, "restore", attachment.id);
   const isSaving = actionMatches(action, "save", attachment.id);
   const isTemporary = attachment.documentScope === "session";
-  const isPrimary = !removed && Number(attachment.id) === Number(primaryDocumentId);
+  const isPrimary = !recoverable && Number(attachment.id) === Number(primaryDocumentId);
 
   return (
-    <div className={`flex min-w-[210px] max-w-[260px] items-center gap-2 rounded-lg border px-2.5 py-2 ${removed ? "border-slate-200 bg-slate-50 opacity-80" : "border-indigo-100 bg-indigo-50/60"}`}>
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${removed ? "bg-slate-200 text-slate-500" : "bg-white text-indigo-600"}`}>
+    <div className={`flex min-w-[220px] max-w-[300px] items-center gap-2 rounded-lg border px-2.5 py-2 ${recoverable ? "border-amber-200 bg-amber-50/70" : "border-indigo-100 bg-indigo-50/60"}`}>
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${recoverable ? "bg-white text-amber-600" : "bg-white text-indigo-600"}`}>
         <FileTextIcon size={14} />
       </span>
       <div className="min-w-0 flex-1">
         <p className="m-0 truncate text-[11px] font-bold text-slate-800" title={attachment.title}>{attachment.title}</p>
         <div className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-slate-500">
-          <span>{expired ? "Expired" : removed ? "Removed" : isPrimary ? "Current" : isTemporary ? "Temporary" : "My Documents"}</span>
-          {!removed && attachment.extractionStatus === "pending" ? <span className="text-amber-600">Processing</span> : null}
+          <span>
+            {isPurged
+              ? "Permanently removed"
+              : isPurging
+                ? "Cleanup in progress"
+                : expired
+                  ? `Expired${formatRecoveryDeadline(attachment.purgeAfter) ? ` - recover by ${formatRecoveryDeadline(attachment.purgeAfter)}` : ""}`
+                  : recoverable
+                    ? recovery.statusLabel
+                    : isPrimary
+                      ? "Current"
+                      : isTemporary
+                        ? "Temporary"
+                        : "My Documents"}
+          </span>
+          {!recoverable && attachment.extractionStatus === "pending" ? <span className="text-amber-600">Processing</span> : null}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        {removed ? (
-          <button
-            aria-label={`Restore ${attachment.title}`}
-            className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[10px] font-bold text-indigo-600 hover:bg-white disabled:opacity-50"
-            disabled={expired || isRestoring}
-            onClick={() => onRestore(attachment)}
-            title={expired ? "This attachment has expired" : "Restore attachment"}
-            type="button"
-          >
-            {isRestoring ? <ClockIcon size={12} /> : <RefreshIcon size={12} />}
-            Restore
-          </button>
+        {recoverable ? (
+          <>
+            {isTemporary && !isPurged ? (
+              <button
+                aria-label={`Save ${attachment.title} to My Documents`}
+                className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[10px] font-bold text-indigo-600 hover:bg-white disabled:opacity-50"
+                disabled={isSaving || isRestoring || isPurging}
+                onClick={() => onSave(attachment)}
+                title="Save to My Documents"
+                type="button"
+              >
+                {isSaving ? <ClockIcon size={12} /> : <BookmarkIcon size={12} />}
+                Save
+              </button>
+            ) : null}
+            <button
+              aria-label={`Restore ${attachment.title}`}
+              className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[10px] font-bold text-indigo-600 hover:bg-white disabled:opacity-50"
+              disabled={!canRestore || isRestoring || isSaving}
+              onClick={() => onRestore(attachment)}
+              title={isPurged ? "This attachment was permanently removed" : isPurging ? "Cleanup is in progress" : "Restore attachment"}
+              type="button"
+            >
+              {isRestoring ? <ClockIcon size={12} /> : <RefreshIcon size={12} />}
+              Restore
+            </button>
+          </>
         ) : (
           <>
             {isTemporary ? (
@@ -92,24 +132,27 @@ export default function ChatAttachmentBar({
   onSave,
   onUpload,
   primaryDocumentId,
-  removedAttachments = [],
+  recoverableAttachments = [],
   sessionId,
   uploadProgress,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const fileInputRef = useRef(null);
-  const activeIds = useMemo(
-    () => new Set(activeAttachments.map((attachment) => Number(attachment.id))),
-    [activeAttachments]
+  const attachedIds = useMemo(
+    () => new Set(
+      [...activeAttachments, ...recoverableAttachments]
+        .map((attachment) => Number(attachment.id))
+    ),
+    [activeAttachments, recoverableAttachments]
   );
   const choices = useMemo(() => {
     const term = search.trim().toLowerCase();
     return availableDocuments.filter((document) => (
-      !activeIds.has(Number(document.id))
+      !attachedIds.has(Number(document.id))
       && (!term || String(document.title || "").toLowerCase().includes(term))
     ));
-  }, [activeIds, availableDocuments, search]);
+  }, [attachedIds, availableDocuments, search]);
   const atLimit = activeAttachments.length >= MAX_ATTACHMENTS;
   const isUploading = action?.type === "upload";
   const isBusy = Boolean(action);
@@ -151,14 +194,25 @@ export default function ChatAttachmentBar({
 
       {isLoading ? (
         <div className="mt-2 h-11 animate-pulse rounded-lg bg-slate-100" />
-      ) : activeAttachments.length || removedAttachments.length ? (
-        <div className="workspace-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
-          {activeAttachments.map((attachment) => (
-            <AttachmentCard attachment={attachment} action={action} key={attachment.id} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} />
-          ))}
-          {removedAttachments.map((attachment) => (
-            <AttachmentCard attachment={attachment} action={action} key={`removed-${attachment.id}`} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} removed />
-          ))}
+      ) : activeAttachments.length || recoverableAttachments.length ? (
+        <div className="mt-2 space-y-2">
+          {activeAttachments.length ? (
+            <div className="workspace-scrollbar flex gap-2 overflow-x-auto pb-1">
+              {activeAttachments.map((attachment) => (
+                <AttachmentCard attachment={attachment} action={action} key={attachment.id} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} />
+              ))}
+            </div>
+          ) : null}
+          {recoverableAttachments.length ? (
+            <div>
+              <p className="m-0 mb-1 text-[10px] font-bold uppercase text-amber-700">Recoverable</p>
+              <div className="workspace-scrollbar flex gap-2 overflow-x-auto pb-1">
+                {recoverableAttachments.map((attachment) => (
+                  <AttachmentCard attachment={attachment} action={action} key={`recoverable-${attachment.id}`} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} recoverable />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="m-0 mt-1 text-[10px] text-slate-400">No files attached to this chat.</p>
