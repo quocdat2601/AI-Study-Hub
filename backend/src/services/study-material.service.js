@@ -80,43 +80,46 @@ class StudyMaterialService {
 
     if (materialType === 'flashcard') {
       systemPrompt = `You are an expert study assistant. Generate exactly 10 flashcard pairs from the provided document content.
+You MUST generate all text (front, back) in the same language as the provided document content (e.g. if the document is in English, output in English; if in Vietnamese, output in Vietnamese). Never output in Chinese or other languages unless the source document is in that language.
 You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON array should have this exact format:
 [
-  {"front": "Question 1 in Vietnamese", "back": "Answer 1 in Vietnamese"},
-  {"front": "Question 2 in Vietnamese", "back": "Answer 2 in Vietnamese"}
+  {"front": "Question/Term 1", "back": "Answer/Definition 1"},
+  {"front": "Question/Term 2", "back": "Answer/Definition 2"}
 ]`;
-      userPrompt += `Generate 10 flashcards from the text above. Return JSON only.`;
+      userPrompt += `Generate 10 flashcards from the text above in the document's language. Return JSON only.`;
     } else if (materialType === 'quiz') {
       systemPrompt = `You are an expert study assistant. Generate exactly 5 multiple choice questions (MCQs) from the provided document content.
+You MUST generate all text (question, options, explanation) in the same language as the provided document content (e.g. if the document is in English, output in English; if in Vietnamese, output in Vietnamese). Never output in Chinese or other languages unless the source document is in that language.
 You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON array should have this exact format:
 [
   {
-    "question": "Question text in Vietnamese",
-    "options": ["A key definition or fact", "A distractor option", "Another distractor", "Third distractor"],
-    "answer": "A choice label (exactly matching one of the options)",
-    "explanation": "Brief explanation why the answer is correct in Vietnamese"
+    "question": "Question text based on the document",
+    "options": ["Correct option", "Distractor option 1", "Distractor option 2", "Distractor option 3"],
+    "answer": "The correct option (exactly matching one of the options)",
+    "explanation": "Brief explanation why the answer is correct"
   }
 ]`;
-      userPrompt += `Generate 5 multiple choice questions from the text above. Return JSON only.`;
+      userPrompt += `Generate 5 multiple choice questions from the text above in the document's language. Return JSON only.`;
     } else if (materialType === 'mindmap') {
-      systemPrompt = `You are an expert study assistant. Generate a hierarchical mind map structure tóm tắt (summarizing) the key concepts in the provided document content.
+      systemPrompt = `You are an expert study assistant. Generate a hierarchical mind map structure summarizing the key concepts in the provided document content.
+You MUST generate all text (labels) in the same language as the provided document content (e.g. if the document is in English, output in English; if in Vietnamese, output in Vietnamese). Never output in Chinese or other languages unless the source document is in that language.
 You MUST output ONLY a valid JSON object, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON object should have this exact format:
 {
-  "label": "Main Topic in Vietnamese",
+  "label": "Main Topic",
   "children": [
     {
-      "label": "Subtopic 1 in Vietnamese",
+      "label": "Subtopic 1",
       "children": [
-        { "label": "Key detail 1 in Vietnamese", "children": [] },
-        { "label": "Key detail 2 in Vietnamese", "children": [] }
+        { "label": "Key detail 1", "children": [] },
+        { "label": "Key detail 2", "children": [] }
       ]
     }
   ]
 }`;
-      userPrompt += `Generate a hierarchical mind map JSON structure from the text above. Return JSON only.`;
+      userPrompt += `Generate a hierarchical mind map JSON structure from the text above in the document's language. Return JSON only.`;
     }
 
     // Estimate prompt tokens (characters / 4)
