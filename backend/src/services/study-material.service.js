@@ -103,14 +103,15 @@ class StudyMaterialService {
 
     if (materialType === 'flashcard') {
       systemPrompt = `You are an expert study assistant. Generate exactly 10 flashcard pairs from the provided document content.
-You MUST generate all text (front, back) in Vietnamese. If the source document is in English or another language, translate the key concepts and facts into Vietnamese. Never output in Chinese or any language other than Vietnamese.
+Each flashcard MUST consist of a direct question on the front ("front") ending with a question mark (?), and its corresponding answer on the back ("back").
+You MUST generate all text in Vietnamese. If the source document is in English or another language, translate the key concepts and facts into Vietnamese. Never output in Chinese or any language other than Vietnamese.
 You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON array should have this exact format:
 [
-  {"front": "Câu hỏi hoặc thuật ngữ bằng tiếng Việt", "back": "Câu trả lời hoặc định nghĩa bằng tiếng Việt"},
-  {"front": "Câu hỏi hoặc thuật ngữ khác bằng tiếng Việt", "back": "Câu trả lời hoặc định nghĩa khác bằng tiếng Việt"}
+  {"front": "Câu hỏi trích xuất từ tài liệu bằng tiếng Việt?", "back": "Câu trả lời tương ứng bằng tiếng Việt"},
+  {"front": "Câu hỏi khác trích xuất từ tài liệu bằng tiếng Việt?", "back": "Câu trả lời tương ứng khác bằng tiếng Việt"}
 ]`;
-      userPrompt += `Generate 10 flashcards from the text above in Vietnamese. Return JSON only.`;
+      userPrompt += `Generate 10 flashcards from the text above in Vietnamese, ensuring each front is a question ending in a question mark. Return JSON only.`;
     } else if (materialType === 'quiz') {
       systemPrompt = `You are an expert study assistant. Generate exactly 5 multiple choice questions (MCQs) from the provided document content.
 You MUST generate all text (question, options, explanation) in Vietnamese. If the source document is in English or another language, translate the questions, options, and explanations into Vietnamese. Never output in Chinese or any language other than Vietnamese.
