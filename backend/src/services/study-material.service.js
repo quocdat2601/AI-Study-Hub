@@ -80,46 +80,46 @@ class StudyMaterialService {
 
     if (materialType === 'flashcard') {
       systemPrompt = `You are an expert study assistant. Generate exactly 10 flashcard pairs from the provided document content.
-You MUST generate all text (front, back) in the same language as the provided document content (e.g. if the document is in English, output in English; if in Vietnamese, output in Vietnamese). Never output in Chinese or other languages unless the source document is in that language.
+You MUST generate all text (front, back) in Vietnamese. If the source document is in English or another language, translate the key concepts and facts into Vietnamese. Never output in Chinese or any language other than Vietnamese.
 You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON array should have this exact format:
 [
-  {"front": "Question/Term 1", "back": "Answer/Definition 1"},
-  {"front": "Question/Term 2", "back": "Answer/Definition 2"}
+  {"front": "Câu hỏi hoặc thuật ngữ bằng tiếng Việt", "back": "Câu trả lời hoặc định nghĩa bằng tiếng Việt"},
+  {"front": "Câu hỏi hoặc thuật ngữ khác bằng tiếng Việt", "back": "Câu trả lời hoặc định nghĩa khác bằng tiếng Việt"}
 ]`;
-      userPrompt += `Generate 10 flashcards from the text above in the document's language. Return JSON only.`;
+      userPrompt += `Generate 10 flashcards from the text above in Vietnamese. Return JSON only.`;
     } else if (materialType === 'quiz') {
       systemPrompt = `You are an expert study assistant. Generate exactly 5 multiple choice questions (MCQs) from the provided document content.
-You MUST generate all text (question, options, explanation) in the same language as the provided document content (e.g. if the document is in English, output in English; if in Vietnamese, output in Vietnamese). Never output in Chinese or other languages unless the source document is in that language.
+You MUST generate all text (question, options, explanation) in Vietnamese. If the source document is in English or another language, translate the questions, options, and explanations into Vietnamese. Never output in Chinese or any language other than Vietnamese.
 You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON array should have this exact format:
 [
   {
-    "question": "Question text based on the document",
-    "options": ["Correct option", "Distractor option 1", "Distractor option 2", "Distractor option 3"],
-    "answer": "The correct option (exactly matching one of the options)",
-    "explanation": "Brief explanation why the answer is correct"
+    "question": "Câu hỏi trắc nghiệm bằng tiếng Việt",
+    "options": ["Lựa chọn đúng bằng tiếng Việt", "Lựa chọn sai 1 bằng tiếng Việt", "Lựa chọn sai 2 bằng tiếng Việt", "Lựa chọn sai 3 bằng tiếng Việt"],
+    "answer": "Lựa chọn đúng (phải khớp hoàn toàn với một trong các lựa chọn ở trên)",
+    "explanation": "Giải thích chi tiết lý do tại sao lựa chọn đó đúng bằng tiếng Việt"
   }
 ]`;
-      userPrompt += `Generate 5 multiple choice questions from the text above in the document's language. Return JSON only.`;
+      userPrompt += `Generate 5 multiple choice questions from the text above in Vietnamese. Return JSON only.`;
     } else if (materialType === 'mindmap') {
       systemPrompt = `You are an expert study assistant. Generate a hierarchical mind map structure summarizing the key concepts in the provided document content.
-You MUST generate all text (labels) in the same language as the provided document content (e.g. if the document is in English, output in English; if in Vietnamese, output in Vietnamese). Never output in Chinese or other languages unless the source document is in that language.
+You MUST generate all text (labels) in Vietnamese. If the source document is in English or another language, translate all labels into Vietnamese. Never output in Chinese or any language other than Vietnamese.
 You MUST output ONLY a valid JSON object, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
 The JSON object should have this exact format:
 {
-  "label": "Main Topic",
+  "label": "Chủ đề chính bằng tiếng Việt",
   "children": [
     {
-      "label": "Subtopic 1",
+      "label": "Nhánh con 1 bằng tiếng Việt",
       "children": [
-        { "label": "Key detail 1", "children": [] },
-        { "label": "Key detail 2", "children": [] }
+        { "label": "Chi tiết chính 1 bằng tiếng Việt", "children": [] },
+        { "label": "Chi tiết chính 2 bằng tiếng Việt", "children": [] }
       ]
     }
   ]
 }`;
-      userPrompt += `Generate a hierarchical mind map JSON structure from the text above in the document's language. Return JSON only.`;
+      userPrompt += `Generate a hierarchical mind map JSON structure from the text above in Vietnamese. Return JSON only.`;
     }
 
     // Estimate prompt tokens (characters / 4)
