@@ -82,7 +82,7 @@ function MindmapNode({ node, depth = 0 }) {
   );
 }
 
-export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, className = "" }) {
+export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, className = "" }) {
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -258,7 +258,26 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                         {content[currentCardIndex]?.back}
                       </p>
                     </div>
-                    <span className="text-center text-[11px] font-medium text-indigo-300">Chạm để quay lại câu hỏi</span>
+                    <div className="flex items-center justify-between text-[11px] font-medium text-indigo-300">
+                      {onAskQuestion ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const frontText = content[currentCardIndex]?.front || "";
+                            const backText = content[currentCardIndex]?.back || "";
+                            const promptText = `Tôi đang xem lại các thẻ thông tin dựa trên tài liệu nguồn và muốn hiểu sâu hơn về một trong những thẻ này.\n\nNội dung ở mặt trước: "${frontText}"\nCâu trả lời ở mặt sau: "${backText}"\n\nHãy giải thích chủ đề này chi tiết hơn.`;
+                            onAskQuestion(promptText);
+                          }}
+                          className="flex items-center gap-1.5 rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-1.5 text-[11px] font-bold text-indigo-200 hover:bg-indigo-950/80 hover:text-white transition cursor-pointer"
+                        >
+                          <svg className="stroke-current" width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          </svg>
+                          Giải thích
+                        </button>
+                      ) : <span />}
+                      <span>Chạm để quay lại câu hỏi</span>
+                    </div>
                   </div>
                 </div>
               </div>

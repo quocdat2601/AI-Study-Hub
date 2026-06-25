@@ -1104,9 +1104,10 @@ export default function WorkspacePage() {
     }
   }
 
-  async function handleAsk(event) {
-    event.preventDefault();
-    const cleanedQuestion = question.trim();
+  async function handleAsk(event, customQuestion) {
+    if (event) event.preventDefault();
+    const questionToAsk = (typeof customQuestion === "string" ? customQuestion : question) || "";
+    const cleanedQuestion = questionToAsk.trim();
     if (!selectedDocument || !cleanedQuestion || isAsking) return;
 
     const userMessage = buildUserMessage(cleanedQuestion);
@@ -1148,7 +1149,9 @@ export default function WorkspacePage() {
       return nextMessages;
     });
     if (targetSessionId) scheduleSessionRevalidation(targetSessionId, targetDocumentId);
-    setQuestion("");
+    if (!customQuestion) {
+      setQuestion("");
+    }
     setError("");
 
     try {
@@ -1458,6 +1461,10 @@ export default function WorkspacePage() {
             selectedModel={selectedModel}
             className="flex-1 min-h-0 w-full"
             width={null}
+            onAskQuestion={(questionText) => {
+              setRightActiveTab("chat");
+              handleAsk(null, questionText);
+            }}
           />
         )}
       </div>
