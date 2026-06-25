@@ -9,10 +9,33 @@ const createError = require('../utils/createError');
 
 function cleanAndParseJson(text) {
   let cleaned = String(text || '').trim();
-  // Strip code block markers if the model includes them
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
-  cleaned = cleaned.replace(/```$/, '');
-  cleaned = cleaned.trim();
+
+  // Find first and last brackets or braces to isolate the JSON payload
+  const firstBracket = cleaned.indexOf('[');
+  const firstBrace = cleaned.indexOf('{');
+  
+  let startIdx = -1;
+  let endIdx = -1;
+  
+  if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+    // Looks like a JSON Array
+    startIdx = firstBracket;
+    endIdx = cleaned.lastIndexOf(']');
+  } else if (firstBrace !== -1) {
+    // Looks like a JSON Object
+    startIdx = firstBrace;
+    endIdx = cleaned.lastIndexOf('}');
+  }
+
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    cleaned = cleaned.slice(startIdx, endIdx + 1);
+  } else {
+    // Fallback: Strip standard code blocks
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/```$/, '');
+    cleaned = cleaned.trim();
+  }
+
   try {
     return JSON.parse(cleaned);
   } catch (err) {
