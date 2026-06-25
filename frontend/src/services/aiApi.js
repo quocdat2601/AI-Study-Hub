@@ -117,3 +117,18 @@ export async function getAiModelStatus() {
   const response = await api.get("/ai/models/status");
   return response.data;
 }
+
+export async function getStudyMaterials(docId) {
+  const response = await api.get("/ai/materials", { params: { docId } });
+  return response.data;
+}
+
+export async function generateStudyMaterial(docId, materialType, model) {
+  const response = await api.post("/ai/materials/generate", { docId, materialType, model });
+  return response.data;
+}
+
+export async function deleteStudyMaterial(id) {
+  const response = await api.delete(`/ai/materials/${id}`);
+  return response.data;
+}

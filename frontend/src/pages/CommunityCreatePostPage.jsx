@@ -64,7 +64,7 @@ export default function CommunityCreatePostPage() {
         const [communityData, documentData, sessionData] = await Promise.all([
           getCommunityHome({ limit: 1 }),
           isAuthenticated ? listDocuments() : Promise.resolve([]),
-          isAuthenticated ? listChatSessions() : Promise.resolve([]),
+          isAuthenticated ? listChatSessions().catch(() => []) : Promise.resolve([]),
         ]);
 
         if (!isMounted) return;

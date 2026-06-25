@@ -25,6 +25,9 @@ async function getFeed(req, res, next) {
       tab: req.query.tab,
       postType: req.query.postType,
       subjectCode: req.query.subject,
+      search: req.query.search,
+      page: req.query.page,
+      pageSize: req.query.pageSize,
       limit: req.query.limit,
       viewerContext,
     }));
