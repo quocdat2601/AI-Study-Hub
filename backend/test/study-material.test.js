@@ -70,3 +70,54 @@ test('StudyMaterialService generates and saves flashcards successfully', async (
   assert.equal(result.content.length, 2);
   assert.equal(result.content[0].front, 'Flashcard 1 Q');
 });
+
+test('StudyMaterialService robustly parses JSON wrapped in conversational text and codeblocks', async (t) => {
+  const docId = 456;
+  const userId = 'user-xyz';
+
+  t.mock.method(documentService, 'canUseDocumentInChat', async () => {
+    return {
+      id: docId,
+      user_id: userId,
+      title: 'Another Doc',
+      extracted_text: 'This is a document with sufficient length about study materials generation. We need enough characters to satisfy the usefulness check.',
+      extraction_status: 'ready'
+    };
+  });
+
+  t.mock.method(aiUsageService, 'resolveModel', () => {
+    return { provider: 'gemini', model: 'gemini-2.5-flash' };
+  });
+
+  t.mock.method(aiUsageService, 'assertQuota', async () => {});
+  t.mock.method(aiUsageService, 'logGeminiRequest', async () => {});
+
+  t.mock.method(geminiService, 'queryDocumentChunks', async () => {
+    return {
+      text: `Sure, here are your flashcards:
+\`\`\`json
+[
+  { "front": "Câu hỏi robust", "back": "Trả lời robust" }
+]
+\`\`\`
+I hope this helps!`,
+      usageMetadata: { promptTokens: 15, completionTokens: 25, totalTokens: 40 },
+    };
+  });
+
+  t.mock.method(StudyMaterialModel, 'create', async (material) => {
+    return { id: 'material-uuid-456', ...material };
+  });
+
+  const result = await StudyMaterialService.generateMaterial({
+    docId,
+    userId,
+    materialType: 'flashcard',
+    model: 'gemini-2.5-flash',
+  });
+
+  assert.equal(result.id, 'material-uuid-456');
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].front, 'Câu hỏi robust');
+  assert.equal(result.content[0].back, 'Trả lời robust');
+});

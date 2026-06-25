@@ -9,10 +9,33 @@ const createError = require('../utils/createError');
 
 function cleanAndParseJson(text) {
   let cleaned = String(text || '').trim();
-  // Strip code block markers if the model includes them
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
-  cleaned = cleaned.replace(/```$/, '');
-  cleaned = cleaned.trim();
+
+  // Find first and last brackets or braces to isolate the JSON payload
+  const firstBracket = cleaned.indexOf('[');
+  const firstBrace = cleaned.indexOf('{');
+  
+  let startIdx = -1;
+  let endIdx = -1;
+  
+  if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+    // Looks like a JSON Array
+    startIdx = firstBracket;
+    endIdx = cleaned.lastIndexOf(']');
+  } else if (firstBrace !== -1) {
+    // Looks like a JSON Object
+    startIdx = firstBrace;
+    endIdx = cleaned.lastIndexOf('}');
+  }
+
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    cleaned = cleaned.slice(startIdx, endIdx + 1);
+  } else {
+    // Fallback: Strip standard code blocks
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/```$/, '');
+    cleaned = cleaned.trim();
+  }
+
   try {
     return JSON.parse(cleaned);
   } catch (err) {
@@ -79,44 +102,66 @@ class StudyMaterialService {
     let userPrompt = `Document content:\n${truncatedText}\n\n`;
 
     if (materialType === 'flashcard') {
-      systemPrompt = `You are an expert study assistant. Generate exactly 10 flashcard pairs from the provided document content.
-You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
-The JSON array should have this exact format:
+      systemPrompt = `Bạn là trợ lý học tập chuyên nghiệp. Tạo đúng 10 thẻ ghi nhớ (flashcard) từ nội dung tài liệu bên dưới.
+
+QUY TẮC BẮT BUỘC:
+1. NGÔN NGỮ: Toàn bộ nội dung phải bằng tiếng Việt. Tuyệt đối không dùng tiếng Anh, tiếng Trung hay ngôn ngữ khác.
+2. MẶT TRƯỚC (front): Phải là một câu hỏi ngắn gọn, rõ ràng, kết thúc bằng dấu chấm hỏi (?). Tối đa 20 từ.
+3. MẶT SAU (back): Câu trả lời trực tiếp, ngắn gọn. Tối đa 40 từ. Không dùng câu mở đầu như "Đây là..." hay "Câu trả lời là...".
+4. Mỗi thẻ phải kiểm tra một khái niệm quan trọng, định nghĩa, hoặc sự kiện cụ thể từ tài liệu.
+5. Chỉ trả về JSON array thuần túy, không có markdown, không có backtick.
+
+VÍ DỤ FORMAT:
 [
-  {"front": "Question 1 in Vietnamese", "back": "Answer 1 in Vietnamese"},
-  {"front": "Question 2 in Vietnamese", "back": "Answer 2 in Vietnamese"}
+  {"front": "Định nghĩa của [khái niệm X] là gì?", "back": "Là [định nghĩa ngắn gọn bằng tiếng Việt]."},
+  {"front": "[Y] được sử dụng để làm gì?", "back": "[Y] dùng để [mục đích chính]."}
 ]`;
-      userPrompt += `Generate 10 flashcards from the text above. Return JSON only.`;
+      userPrompt += `Generate 10 flashcards from the text above in Vietnamese. Return JSON only.`;
     } else if (materialType === 'quiz') {
-      systemPrompt = `You are an expert study assistant. Generate exactly 5 multiple choice questions (MCQs) from the provided document content.
-You MUST output ONLY a valid JSON array of objects, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
-The JSON array should have this exact format:
+      systemPrompt = `Bạn là trợ lý học tập chuyên nghiệp. Tạo đúng 5 câu hỏi trắc nghiệm từ nội dung tài liệu.
+
+QUY TẮC BẮT BUỘC:
+1. NGÔN NGỮ: Toàn bộ phải bằng tiếng Việt.
+2. Mỗi câu có đúng 4 lựa chọn (A, B, C, D).
+3. Trường "answer" phải là chuỗi KHỚP HOÀN TOÀN với một phần tử trong mảng "options".
+4. "explanation" giải thích ngắn gọn tại sao đáp án đúng (tối đa 50 từ).
+5. Chỉ trả về JSON array thuần túy, không có markdown.
+
+FORMAT:
 [
   {
-    "question": "Question text in Vietnamese",
-    "options": ["A key definition or fact", "A distractor option", "Another distractor", "Third distractor"],
-    "answer": "A choice label (exactly matching one of the options)",
-    "explanation": "Brief explanation why the answer is correct in Vietnamese"
+    "question": "Câu hỏi trắc nghiệm?",
+    "options": ["Đáp án đúng", "Sai 1", "Sai 2", "Sai 3"],
+    "answer": "Đáp án đúng",
+    "explanation": "Giải thích ngắn gọn."
   }
 ]`;
-      userPrompt += `Generate 5 multiple choice questions from the text above. Return JSON only.`;
+      userPrompt += `Generate 5 multiple choice questions from the text above in Vietnamese. Return JSON only.`;
     } else if (materialType === 'mindmap') {
-      systemPrompt = `You are an expert study assistant. Generate a hierarchical mind map structure tóm tắt (summarizing) the key concepts in the provided document content.
-You MUST output ONLY a valid JSON object, with no markdown formatting, no backticks, no code block wrapper, and no introductory or concluding text.
-The JSON object should have this exact format:
+      systemPrompt = `Bạn là trợ lý học tập chuyên nghiệp. Tạo một cấu trúc sơ đồ tư duy (mind map) phân cấp tóm tắt các khái niệm chính trong tài liệu.
+
+QUY TẮC BẮT BUỘC:
+1. NGÔN NGỮ: Toàn bộ phải bằng tiếng Việt.
+2. GIỚI HẠN ĐỘ SÂU: Chỉ tối đa 3 cấp (root → nhánh → lá). Không tạo nhánh sâu hơn.
+3. Mỗi nút (label) tối đa 6 từ.
+4. Root có 4-6 nhánh con trực tiếp.
+5. Mỗi nhánh có 2-4 lá.
+6. Chỉ trả về JSON object thuần túy, không có markdown.
+
+FORMAT:
 {
-  "label": "Main Topic in Vietnamese",
+  "label": "Chủ đề chính",
   "children": [
     {
-      "label": "Subtopic 1 in Vietnamese",
+      "label": "Nhánh con 1",
       "children": [
-        { "label": "Key detail 1 in Vietnamese", "children": [] },
-        { "label": "Key detail 2 in Vietnamese", "children": [] }
+        { "label": "Chi tiết chính 1", "children": [] },
+        { "label": "Chi tiết chính 2", "children": [] }
       ]
     }
   ]
 }`;
-      userPrompt += `Generate a hierarchical mind map JSON structure from the text above. Return JSON only.`;
+      userPrompt += `Generate a hierarchical mind map JSON structure from the text above in Vietnamese. Return JSON only.`;
     }
 
     // Estimate prompt tokens (characters / 4)
@@ -191,6 +236,17 @@ The JSON object should have this exact format:
     }
     if (materialType === 'quiz' && (!Array.isArray(content) || content.length === 0)) {
       throw createError(500, 'AI did not return a valid quiz list');
+    }
+    if (materialType === 'quiz') {
+      content.forEach((q, i) => {
+        const match = (q.options || []).find(
+          opt => opt.trim().toLowerCase() === (q.answer || '').trim().toLowerCase()
+        );
+        if (!match) {
+          console.warn(`Quiz Q${i+1}: answer "${q.answer}" not found in options. Defaulting to first option.`);
+          q.answer = q.options?.[0] || q.answer;
+        }
+      });
     }
     if (materialType === 'mindmap' && (!content.label)) {
       throw createError(500, 'AI did not return a valid mind map structure');

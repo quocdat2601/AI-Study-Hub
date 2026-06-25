@@ -1084,14 +1084,14 @@ export default function WorkspacePage() {
         const nextDocuments = current.map((doc) => (
           Number(doc.id) === Number(selectedDocument.id)
             ? {
-                ...doc,
-                ...updatedDocument,
-                extracted_text: updatedDocument.extracted_text ?? doc.extracted_text,
-                extraction_status: updatedDocument.extraction_status ?? "ready",
-                extraction_error: updatedDocument.extraction_error ?? null,
-                extraction_metadata: updatedDocument.extraction_metadata ?? doc.extraction_metadata,
-                status: updatedDocument.status ?? "indexed",
-              }
+              ...doc,
+              ...updatedDocument,
+              extracted_text: updatedDocument.extracted_text ?? doc.extracted_text,
+              extraction_status: updatedDocument.extraction_status ?? "ready",
+              extraction_error: updatedDocument.extraction_error ?? null,
+              extraction_metadata: updatedDocument.extraction_metadata ?? doc.extraction_metadata,
+              status: updatedDocument.status ?? "indexed",
+            }
             : doc
         ));
         cacheWorkspaceState({ documents: nextDocuments });
@@ -1104,9 +1104,10 @@ export default function WorkspacePage() {
     }
   }
 
-  async function handleAsk(event) {
-    event.preventDefault();
-    const cleanedQuestion = question.trim();
+  async function handleAsk(event, customQuestion) {
+    if (event) event.preventDefault();
+    const questionToAsk = (typeof customQuestion === "string" ? customQuestion : question) || "";
+    const cleanedQuestion = questionToAsk.trim();
     if (!selectedDocument || !cleanedQuestion || isAsking) return;
 
     const userMessage = buildUserMessage(cleanedQuestion);
@@ -1148,7 +1149,9 @@ export default function WorkspacePage() {
       return nextMessages;
     });
     if (targetSessionId) scheduleSessionRevalidation(targetSessionId, targetDocumentId);
-    setQuestion("");
+    if (!customQuestion) {
+      setQuestion("");
+    }
     setError("");
 
     try {
@@ -1185,34 +1188,34 @@ export default function WorkspacePage() {
           },
         })
         : askDocumentStream(selectedDocument.id, {
-        question: cleanedQuestion,
-        mode: answerMode,
-        model: activeModel,
-        signal: streamController.signal,
-        onStatus: (status) => {
-          if (!isCurrentRequest()) return;
-          setMessages((current) => {
-            const nextMessages = current.map((message) => (
-              message.id === streamAssistantId
-                ? { ...message, streamStatus: status }
-                : message
-            ));
-            cacheSessionMessages(targetSessionId, nextMessages);
-            return nextMessages;
-          });
-        },
-        onToken: (text) => {
-          if (!isCurrentRequest()) return;
-          setMessages((current) => {
-            const nextMessages = current.map((message) => (
-              message.id === streamAssistantId
-                ? { ...message, content: `${message.content || ""}${text}`, streamStatus: "" }
-                : message
-            ));
-            cacheSessionMessages(targetSessionId, nextMessages);
-            return nextMessages;
-          });
-        },
+          question: cleanedQuestion,
+          mode: answerMode,
+          model: activeModel,
+          signal: streamController.signal,
+          onStatus: (status) => {
+            if (!isCurrentRequest()) return;
+            setMessages((current) => {
+              const nextMessages = current.map((message) => (
+                message.id === streamAssistantId
+                  ? { ...message, streamStatus: status }
+                  : message
+              ));
+              cacheSessionMessages(targetSessionId, nextMessages);
+              return nextMessages;
+            });
+          },
+          onToken: (text) => {
+            if (!isCurrentRequest()) return;
+            setMessages((current) => {
+              const nextMessages = current.map((message) => (
+                message.id === streamAssistantId
+                  ? { ...message, content: `${message.content || ""}${text}`, streamStatus: "" }
+                  : message
+              ));
+              cacheSessionMessages(targetSessionId, nextMessages);
+              return nextMessages;
+            });
+          },
         });
       const result = await streamRequest;
       const persistedUser = result.messages?.user ? mapStoredMessage(result.messages.user) : null;
@@ -1238,7 +1241,7 @@ export default function WorkspacePage() {
         cacheWorkspaceState({ usage: result.usage });
         setUsage(result.usage);
       } else {
-        refreshUsage(activeModel).catch(() => {});
+        refreshUsage(activeModel).catch(() => { });
       }
       setSessions((current) => current.map((item) => (
         Number(item.id) === Number(nextSessionId)
@@ -1348,119 +1351,121 @@ export default function WorkspacePage() {
   return (
     <div className="flex h-[calc(100dvh-65px)] flex-col overflow-hidden bg-[#eceef1] text-slate-800">
       <main className="workspace-theme flex min-h-0 flex-1 gap-2 overflow-hidden bg-[#eceef1] p-2 text-sm leading-relaxed text-slate-800">
-      <DocumentSidebar
-        collapsed={sidebarCollapsed}
-        documents={documents}
-        isLoadingDocs={isLoadingDocs}
-        onSelectDocument={selectDocument}
-        onToggleCollapse={toggleSidebarCollapsed}
-        selectedId={selectedId}
-        width={sidebarWidth}
-      />
+        <DocumentSidebar
+          collapsed={sidebarCollapsed}
+          documents={documents}
+          isLoadingDocs={isLoadingDocs}
+          onSelectDocument={selectDocument}
+          onToggleCollapse={toggleSidebarCollapsed}
+          selectedId={selectedId}
+          width={sidebarWidth}
+        />
 
-      {!sidebarCollapsed ? <WorkspaceResizeHandle label="Resize document sidebar" onMouseDown={onResizeSidebar} /> : null}
+        {!sidebarCollapsed ? <WorkspaceResizeHandle label="Resize document sidebar" onMouseDown={onResizeSidebar} /> : null}
 
-      <DocumentViewer
-        changeZoom={changeZoom}
-        className="min-w-0 flex-1"
-        currentPage={currentPage}
-        isPdfLoading={isPdfLoading}
-        isProcessing={isProcessing}
-        onReloadPdf={() => selectedDocument && loadPdfPreview(selectedDocument.id)}
-        onReprocess={handleProcess}
-        pdfBlobUrl={pdfBlobUrl}
-        pdfLoadError={pdfLoadError}
-        processResult={processResult}
-        selectedDocument={selectedDocument}
-        setCurrentPage={setCurrentPage}
-        setTotalPages={setTotalPages}
-        setViewMode={setViewMode}
-        totalPages={totalPages}
-        viewMode={viewMode}
-        zoom={zoom}
-      />
+        <DocumentViewer
+          changeZoom={changeZoom}
+          className="min-w-0 flex-1"
+          currentPage={currentPage}
+          isPdfLoading={isPdfLoading}
+          isProcessing={isProcessing}
+          onReloadPdf={() => selectedDocument && loadPdfPreview(selectedDocument.id)}
+          onReprocess={handleProcess}
+          pdfBlobUrl={pdfBlobUrl}
+          pdfLoadError={pdfLoadError}
+          processResult={processResult}
+          selectedDocument={selectedDocument}
+          setCurrentPage={setCurrentPage}
+          setTotalPages={setTotalPages}
+          setViewMode={setViewMode}
+          totalPages={totalPages}
+          viewMode={viewMode}
+          zoom={zoom}
+        />
 
-      <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} />
+        <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} />
 
-      <div className="flex h-full flex-col min-h-0 shrink-0 gap-2" style={{ width: chatWidth }}>
-        {/* Modern Segmented Tab Switched Control */}
-        <div className="flex shrink-0 items-center justify-start border border-slate-200/60 bg-slate-50/80 p-1 rounded-xl gap-1">
-          <button
-            onClick={() => setRightActiveTab("chat")}
-            className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${
-              rightActiveTab === "chat"
-                ? "bg-white text-indigo-600 shadow-sm"
-                : "bg-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Trò chuyện AI
-          </button>
-          <button
-            onClick={() => setRightActiveTab("studio")}
-            className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${
-              rightActiveTab === "studio"
-                ? "bg-white text-indigo-600 shadow-sm"
-                : "bg-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Notebook Studio
-          </button>
+        <div className="flex h-full flex-col min-h-0 shrink-0 gap-2" style={{ width: chatWidth }}>
+          {/* Modern Segmented Tab Switched Control */}
+          <div className="flex shrink-0 items-center justify-start border border-slate-200/60 bg-slate-50/80 p-1 rounded-xl gap-1">
+            <button
+              onClick={() => setRightActiveTab("chat")}
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${rightActiveTab === "chat"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "bg-transparent text-slate-500 hover:text-slate-800"
+                }`}
+            >
+              Trò chuyện AI
+            </button>
+            <button
+              onClick={() => setRightActiveTab("studio")}
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${rightActiveTab === "studio"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "bg-transparent text-slate-500 hover:text-slate-800"
+                }`}
+            >
+              Studio
+            </button>
+          </div>
+
+          {rightActiveTab === "chat" ? (
+            <AIChatPanel
+              attachmentAction={attachmentAction}
+              attachmentError={attachmentError}
+              attachmentUploadProgress={attachmentUploadProgress}
+              attachments={attachments}
+              availableDocuments={documents}
+              answerMode={answerMode}
+              chatScrollRef={chatScrollRef}
+              className="flex-1 min-h-0 w-full"
+              error={error}
+              geminiModels={geminiModels}
+              isAsking={isAsking}
+              isLoadingMessages={isLoadingMessages}
+              isLoadingSessions={isLoadingSessions}
+              isLoadingUsage={isLoadingUsage}
+              isOllamaModel={isOllamaModel}
+              messages={messages}
+              ollamaModels={ollamaModels}
+              onAnswerModeChange={setAnswerMode}
+              onAttachDocument={handleAttachExisting}
+              onCancelAttachmentUpload={handleCancelAttachmentUpload}
+              onAsk={handleAsk}
+              onChatScroll={handleChatScroll}
+              onQuestionChange={setQuestion}
+              onCreateSession={handleCreateSession}
+              onDeleteSession={handleDeleteSession}
+              onRemoveAttachment={handleRemoveAttachment}
+              onRestoreAttachment={handleRestoreAttachment}
+              onSaveAttachment={handleSaveAttachment}
+              onRenameSession={handleRenameSession}
+              onSelectSession={handleSelectSession}
+              onSelectedModelChange={setSelectedModel}
+              onUploadAttachment={handleUploadAttachment}
+              question={question}
+              recoverableAttachments={recoverableAttachments}
+              selectedDocument={selectedDocument}
+              selectedModel={selectedModel}
+              sessionId={sessionId}
+              sessionAction={sessionAction}
+              sessionError={sessionError}
+              sessions={sessions}
+              usage={usage}
+              width={null}
+            />
+          ) : (
+            <WorkspaceStudioPanel
+              selectedDocument={selectedDocument}
+              selectedModel={selectedModel}
+              className="flex-1 min-h-0 w-full"
+              width={null}
+              onAskQuestion={(questionText) => {
+                setRightActiveTab("chat");
+                handleAsk(null, questionText);
+              }}
+            />
+          )}
         </div>
-
-        {rightActiveTab === "chat" ? (
-          <AIChatPanel
-            attachmentAction={attachmentAction}
-            attachmentError={attachmentError}
-            attachmentUploadProgress={attachmentUploadProgress}
-            attachments={attachments}
-            availableDocuments={documents}
-            answerMode={answerMode}
-            chatScrollRef={chatScrollRef}
-            className="flex-1 min-h-0 w-full"
-            error={error}
-            geminiModels={geminiModels}
-            isAsking={isAsking}
-            isLoadingMessages={isLoadingMessages}
-            isLoadingSessions={isLoadingSessions}
-            isLoadingUsage={isLoadingUsage}
-            isOllamaModel={isOllamaModel}
-            messages={messages}
-            ollamaModels={ollamaModels}
-            onAnswerModeChange={setAnswerMode}
-            onAttachDocument={handleAttachExisting}
-            onCancelAttachmentUpload={handleCancelAttachmentUpload}
-            onAsk={handleAsk}
-            onChatScroll={handleChatScroll}
-            onQuestionChange={setQuestion}
-            onCreateSession={handleCreateSession}
-            onDeleteSession={handleDeleteSession}
-            onRemoveAttachment={handleRemoveAttachment}
-            onRestoreAttachment={handleRestoreAttachment}
-            onSaveAttachment={handleSaveAttachment}
-            onRenameSession={handleRenameSession}
-            onSelectSession={handleSelectSession}
-            onSelectedModelChange={setSelectedModel}
-            onUploadAttachment={handleUploadAttachment}
-            question={question}
-            recoverableAttachments={recoverableAttachments}
-            selectedDocument={selectedDocument}
-            selectedModel={selectedModel}
-            sessionId={sessionId}
-            sessionAction={sessionAction}
-            sessionError={sessionError}
-            sessions={sessions}
-            usage={usage}
-            width={null}
-          />
-        ) : (
-          <WorkspaceStudioPanel
-            selectedDocument={selectedDocument}
-            selectedModel={selectedModel}
-            className="flex-1 min-h-0 w-full"
-            width={null}
-          />
-        )}
-      </div>
       </main>
     </div>
   );

@@ -82,7 +82,7 @@ function MindmapNode({ node, depth = 0 }) {
   );
 }
 
-export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, className = "" }) {
+export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, className = "" }) {
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,6 +93,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
   // Flashcards state
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [cardOrder, setCardOrder] = useState([]);
+  const [knownCards, setKnownCards] = useState(new Set());
 
   // Quiz state
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
@@ -141,6 +143,10 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
       // Reset views
       setCurrentCardIndex(0);
       setIsFlipped(false);
+      if (type === "flashcard" && saved.content) {
+        setCardOrder([...Array(saved.content.length).keys()]);
+        setKnownCards(new Set());
+      }
       setCurrentQuizIndex(0);
       setSelectedAnswers({});
       setQuizScore(null);
@@ -170,6 +176,10 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
     setActiveMaterial(material);
     setCurrentCardIndex(0);
     setIsFlipped(false);
+    if (material && material.material_type === "flashcard" && material.content) {
+      setCardOrder([...Array(material.content.length).keys()]);
+      setKnownCards(new Set());
+    }
     setCurrentQuizIndex(0);
     setSelectedAnswers({});
     setQuizScore(null);
@@ -191,7 +201,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
       // Calculate score
       let correctCount = 0;
       activeMaterial.content.forEach((q, idx) => {
-        if (selectedAnswers[idx] === q.answer) {
+        const normalize = (s) => String(s || "").trim().toLowerCase();
+        if (normalize(selectedAnswers[idx]) === normalize(q.answer)) {
           correctCount++;
         }
       });
@@ -228,81 +239,169 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
 
         {/* Content Views */}
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          {material_type === "flashcard" && (
-            <div className="flex h-full flex-col items-center justify-between gap-6 pb-6">
-              {/* Card 3D container */}
-              <div
-                className="group relative h-64 w-full cursor-pointer perspective-1000"
-                onClick={() => setIsFlipped(!isFlipped)}
-              >
+          {material_type === "flashcard" && (() => {
+            const cardLength = content?.length || 0;
+            const activeCardIndex = (cardOrder.length === cardLength && cardOrder[currentCardIndex] !== undefined)
+              ? cardOrder[currentCardIndex]
+              : currentCardIndex;
+
+            return (
+              <div className="flex h-full flex-col items-center justify-between gap-6 pb-6">
+                {/* Card 3D container */}
                 <div
-                  className={`relative h-full w-full rounded-2xl shadow-md transition-all duration-500 transform-style-3d ${isFlipped ? "rotate-y-180" : ""
-                    }`}
+                  className="group relative h-64 w-full cursor-pointer perspective-1000"
+                  onClick={() => setIsFlipped(!isFlipped)}
                 >
-                  {/* Front Side */}
-                  <div className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-indigo-100 bg-white p-6 backface-hidden">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mặt Trước (Front)</span>
-                    <div className="flex flex-1 items-center justify-center py-4">
-                      <p className="m-0 text-center text-base font-semibold leading-relaxed text-slate-800">
-                        {content[currentCardIndex]?.front}
-                      </p>
-                    </div>
-                    <span className="text-center text-[11px] font-medium text-indigo-500">Chạm để xem câu trả lời</span>
-                  </div>
-
-                  {/* Back Side */}
-                  <div className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-indigo-100 bg-indigo-900 p-6 backface-hidden rotate-y-180">
-                    <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Mặt Sau (Back)</span>
-                    <div className="flex flex-1 items-center justify-center py-4">
-                      <p className="m-0 text-center text-base leading-relaxed text-white">
-                        {content[currentCardIndex]?.back}
-                      </p>
-                    </div>
-                    <span className="text-center text-[11px] font-medium text-indigo-300">Chạm để quay lại câu hỏi</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress & Navigation */}
-              <div className="w-full text-center">
-                <div className="mb-2 flex items-center justify-between text-xs text-slate-500 px-1 font-medium">
-                  <span>Thẻ {currentCardIndex + 1} / {content.length}</span>
-                  <span>{Math.round(((currentCardIndex + 1) / content.length) * 100)}% hoàn thành</span>
-                </div>
-                <div className="mb-4 h-1.5 w-full rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-indigo-600 transition-all duration-300"
-                    style={{ width: `${((currentCardIndex + 1) / content.length) * 100}%` }}
-                  />
+                    className={`card-flip-inner ${isFlipped ? "is-flipped" : ""}`}
+                  >
+                    {/* Front Side */}
+                    <div className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-indigo-100 bg-white p-6 backface-hidden">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mặt Trước (Front)</span>
+                      <div className="flex flex-1 items-center justify-center py-4">
+                        <p className="m-0 text-center text-base font-semibold leading-relaxed text-slate-800">
+                          {content[activeCardIndex]?.front}
+                        </p>
+                      </div>
+                      <span className="text-center text-[11px] font-medium text-indigo-500">Chạm để xem câu trả lời</span>
+                    </div>
+
+                    {/* Back Side */}
+                    <div className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-indigo-100 bg-indigo-900 p-6 backface-hidden rotate-y-180">
+                      <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Mặt Sau (Back)</span>
+                      <div className="flex flex-1 items-center justify-center py-4">
+                        <p className="m-0 text-center text-base leading-relaxed text-white">
+                          {content[activeCardIndex]?.back}
+                        </p>
+                      </div>
+
+                      {/* Self-Assessment Row */}
+                      <div className="flex items-center justify-center gap-3 my-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsFlipped(false);
+                            if (currentCardIndex < content.length - 1) {
+                              setTimeout(() => {
+                                setCurrentCardIndex((i) => i + 1);
+                              }, 280);
+                            }
+                          }}
+                          className="rounded-lg border border-red-700 bg-red-950/30 px-3 py-1.5 text-[11px] font-bold text-red-300 hover:bg-red-950/60 transition cursor-pointer"
+                        >
+                          ✗ Chưa biết
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setKnownCards((prev) => {
+                              const next = new Set(prev);
+                              next.add(activeCardIndex);
+                              return next;
+                            });
+                            setIsFlipped(false);
+                            if (currentCardIndex < content.length - 1) {
+                              setTimeout(() => {
+                                setCurrentCardIndex((i) => i + 1);
+                              }, 280);
+                            }
+                          }}
+                          className="rounded-lg border border-emerald-700 bg-emerald-950/30 px-3 py-1.5 text-[11px] font-bold text-emerald-300 hover:bg-emerald-950/60 transition cursor-pointer"
+                        >
+                          ✓ Đã biết
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] font-medium text-indigo-300">
+                        {onAskQuestion ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const frontText = content[activeCardIndex]?.front || "";
+                              const backText = content[activeCardIndex]?.back || "";
+                              const promptText = `Tôi đang xem lại các thẻ thông tin dựa trên tài liệu nguồn và muốn hiểu sâu hơn về một trong những thẻ này.\n\nNội dung ở mặt trước: "${frontText}"\nCâu trả lời ở mặt sau: "${backText}"\n\nHãy giải thích chủ đề này chi tiết hơn.`;
+                              onAskQuestion(promptText);
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-1.5 text-[11px] font-bold text-indigo-200 hover:bg-indigo-950/80 hover:text-white transition cursor-pointer"
+                          >
+                            <svg className="stroke-current" width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                            Giải thích
+                          </button>
+                        ) : <span />}
+                        <span>Chạm để quay lại câu hỏi</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-center gap-3">
-                  <button
-                    disabled={currentCardIndex === 0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentCardIndex(currentCardIndex - 1);
-                      setIsFlipped(false);
-                    }}
-                    className="flex h-9 w-16 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                  >
-                    Trước
-                  </button>
-                  <button
-                    disabled={currentCardIndex === content.length - 1}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentCardIndex(currentCardIndex + 1);
-                      setIsFlipped(false);
-                    }}
-                    className="flex h-9 w-16 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                  >
-                    Sau
-                  </button>
+                {/* Progress & Navigation */}
+                <div className="w-full text-center">
+                  <div className="mb-2 flex items-center justify-between text-xs text-slate-500 px-1 font-medium">
+                    <span>Thẻ {currentCardIndex + 1} / {content.length} (Đã biết: {knownCards.size})</span>
+                    <span>{Math.round(((currentCardIndex + 1) / content.length) * 100)}% hoàn thành</span>
+                  </div>
+                  <div className="mb-4 h-1.5 w-full rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-indigo-600 transition-all duration-300"
+                      style={{ width: `${((currentCardIndex + 1) / content.length) * 100}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      disabled={currentCardIndex === 0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isFlipped) {
+                          setIsFlipped(false);
+                          setTimeout(() => {
+                            setCurrentCardIndex(currentCardIndex - 1);
+                          }, 280);
+                        } else {
+                          setCurrentCardIndex(currentCardIndex - 1);
+                        }
+                      }}
+                      className="flex h-9 w-16 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const shuffled = [...Array(content.length).keys()].sort(() => Math.random() - 0.5);
+                        setCardOrder(shuffled);
+                        setCurrentCardIndex(0);
+                        setIsFlipped(false);
+                        setKnownCards(new Set());
+                      }}
+                      className="flex h-9 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      🔀 Trộn thẻ
+                    </button>
+                    <button
+                      disabled={currentCardIndex === content.length - 1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isFlipped) {
+                          setIsFlipped(false);
+                          setTimeout(() => {
+                            setCurrentCardIndex(currentCardIndex + 1);
+                          }, 280);
+                        } else {
+                          setCurrentCardIndex(currentCardIndex + 1);
+                        }
+                      }}
+                      className="flex h-9 w-16 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Sau
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {material_type === "quiz" && (
             <div className="flex h-full flex-col justify-between pb-6">
@@ -338,7 +437,10 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                   {/* Progress info */}
                   <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
                     <span>Câu hỏi {currentQuizIndex + 1} / {content.length}</span>
-                    <span>Điểm hiện tại: {Object.entries(selectedAnswers).filter(([idx, ans]) => ans === content[Number(idx)].answer).length} đúng</span>
+                    <span>Điểm hiện tại: {Object.entries(selectedAnswers).filter(([idx, ans]) => {
+                      const normalize = (s) => String(s || "").trim().toLowerCase();
+                      return normalize(ans) === normalize(content[Number(idx)].answer);
+                    }).length} đúng</span>
                   </div>
 
                   <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -351,8 +453,9 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                   <div className="grid gap-2">
                     {content[currentQuizIndex]?.options.map((opt, oIdx) => {
                       const isAnswered = selectedAnswers[currentQuizIndex] !== undefined;
-                      const isSelected = selectedAnswers[currentQuizIndex] === opt;
-                      const isCorrect = content[currentQuizIndex]?.answer === opt;
+                      const normalize = (s) => String(s || "").trim().toLowerCase();
+                      const isSelected = normalize(selectedAnswers[currentQuizIndex]) === normalize(opt);
+                      const isCorrect = normalize(content[currentQuizIndex]?.answer) === normalize(opt);
 
                       let btnStyle = "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50";
                       if (isAnswered) {
@@ -408,7 +511,9 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
           {material_type === "mindmap" && (
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <div className="overflow-x-auto">
-                <MindmapNode node={content} />
+                <div style={{ minWidth: '320px' }}>
+                  <MindmapNode node={content} />
+                </div>
               </div>
             </div>
           )}
