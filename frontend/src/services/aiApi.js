@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase.js";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export async function processDocumentForAi(id) {
-  const response = await api.post(`/ai/documents/${id}/process`);
+  const response = await api.post(`/ai/documents/${id}/process`, {}, { timeout: 90000 });
   return response.data;
 }
 
@@ -124,7 +124,7 @@ export async function getStudyMaterials(docId) {
 }
 
 export async function generateStudyMaterial(docId, materialType, model) {
-  const response = await api.post("/ai/materials/generate", { docId, materialType, model });
+  const response = await api.post("/ai/materials/generate", { docId, materialType, model }, { timeout: 90000 });
   return response.data;
 }
 
