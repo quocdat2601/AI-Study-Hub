@@ -1,4 +1,6 @@
 const documentModel = require('../models/document.model');
+const chatModel = require('../models/chat.model');
+const chatSnapshotModel = require('../models/chat-snapshot.model');
 
 const tagModel = require('../models/tag.model');
 
@@ -7,6 +9,7 @@ const userModel = require('../models/user.model');
 const notificationModel = require('../models/notification.model');
 
 const supabaseService = require('./supabase.service');
+const documentThumbnailService = require('./document-thumbnail.service');
 
 const activityService = require('./activity.service');
 
@@ -20,7 +23,7 @@ function mapDocument(doc) {
 
 
 
-  const { document_tags: documentTags, ...rest } = doc;
+  const { document_tags: documentTags, thumbnail_path: _thumbnailPath, ...rest } = doc;
 
   return {
 
@@ -107,7 +110,8 @@ async function canReadDocument(userId, id) {
 }
 
 async function canUseDocumentInChat(userId, id) {
-  return canReadDocument(userId, id);
+  const libraryDocument = await canReadDocument(userId, id);
+  return libraryDocument || documentModel.findOwnedSharedById(id, userId);
 }
 
 async function canAttachDocumentToSession(userId, id) {
@@ -125,14 +129,44 @@ async function canEditDocument(userId, id) {
 
 async function addThumbnailUrls(documents) {
   return Promise.all((documents || []).map(async (doc) => {
-    if (!doc.thumbnail_path || doc.thumbnail_status !== 'ready') {
+    let thumbnail = await documentThumbnailService.resolveReadyThumbnail(doc);
+    if (
+      !thumbnail
+      && doc.cloud_files?.storage_path
+      && documentThumbnailService.isSupportedThumbnailMimeType(doc.cloud_files?.mime_type)
+    ) {
+      try {
+        const buffer = await supabaseService.downloadFile(doc.cloud_files.storage_path);
+        const generated = await documentThumbnailService.ensureThumbnailForDocument({
+          document: doc,
+          buffer,
+          mimeType: doc.cloud_files.mime_type,
+        });
+        if (generated?.status === 'ready') {
+          thumbnail = {
+            path: generated.path,
+            status: 'ready',
+            error: null,
+            generatedAt: generated.generatedAt || null,
+          };
+        }
+      } catch (error) {
+        console.warn(`Thumbnail resolution failed for document ${doc.id}:`, error.message);
+      }
+    }
+
+    if (!thumbnail?.path || thumbnail.status !== 'ready') {
       return { ...doc, thumbnailUrl: null };
     }
 
     try {
       return {
         ...doc,
-        thumbnailUrl: await supabaseService.getSignedUrl(doc.thumbnail_path),
+        thumbnail_path: thumbnail.path,
+        thumbnail_status: thumbnail.status,
+        thumbnail_error: thumbnail.error || null,
+        thumbnail_generated_at: thumbnail.generatedAt || null,
+        thumbnailUrl: await supabaseService.getSignedUrl(thumbnail.path),
       };
     } catch {
       return { ...doc, thumbnailUrl: null };
@@ -179,11 +213,17 @@ async function getDocumentById({ id, userId }) {
 
 }
 
+async function getWorkspaceDocumentById({ id, userId }) {
+  const libraryDocument = await getDocumentById({ id, userId });
+  return libraryDocument || documentModel.findOwnedSharedById(id, userId);
+}
+
 
 
 async function getSignedUrl({ id, userId }) {
 
-  const doc = await documentModel.findAccessibleById(id, userId);
+  const doc = await documentModel.findAccessibleById(id, userId)
+    || await documentModel.findOwnedSharedById(id, userId);
 
   if (!doc || !doc.cloud_files) {
 
@@ -274,6 +314,10 @@ async function updateDocument({ document, title, subjectId, tags }) {
 
 
 async function deleteDocument({ document, userId }) {
+  const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId });
+  if (!importedSessionId && await chatModel.countActiveSessionsByPrimaryDocument(document.id)) {
+    throw createError(409, 'This document is the primary document of an active chat session. Keep the chat or delete the session first.');
+  }
 
   const storagePath = document.cloud_files?.storage_path;
 
@@ -285,7 +329,7 @@ async function deleteDocument({ document, userId }) {
 
 
 
-  if (fileId) {
+  if (fileId && await documentModel.countDocumentsByFileId(fileId) === 0) {
 
     await documentModel.deleteCloudFile(fileId);
 
@@ -327,6 +371,25 @@ async function deleteDocument({ document, userId }) {
 
   return { message: 'Document deleted successfully' };
 
+}
+
+async function deleteImportedForkForPrimaryDocument({ document, userId }) {
+  const provenance = await chatSnapshotModel.findOwnedImportByLibraryDocument(document.id, userId);
+  const sessionId = provenance?.chat_snapshot_imports?.fork_session_id;
+  if (!sessionId) return null;
+  const session = await chatModel.findOwnedSession(sessionId, userId);
+  if (!session || Number(session.primary_document_id) !== Number(document.id)) return null;
+
+  await chatModel.softRemoveAllSessionDocuments(session.id, userId);
+  await chatModel.softDeleteOwnedSession(session.id, userId);
+  activityService.log({
+    userId,
+    action: 'chat.snapshot.imported_session.delete_with_primary_document',
+    targetType: 'chat_session',
+    targetId: session.id,
+    metadata: { documentId: document.id },
+  });
+  return session.id;
 }
 
 
@@ -516,6 +579,10 @@ async function softDeleteDocument({ document, userId }) {
   if (document.user_id !== userId) {
     throw createError(403, 'You can only delete your own documents');
   }
+  const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId });
+  if (!importedSessionId && await chatModel.countActiveSessionsByPrimaryDocument(document.id)) {
+    throw createError(409, 'This document is the primary document of an active chat session. Keep the chat or delete the session first.');
+  }
   await documentModel.softDelete(document.id);
 
   activityService.log({
@@ -526,7 +593,14 @@ async function softDeleteDocument({ document, userId }) {
     metadata: { title: document.title },
   });
 
-  return { message: 'Document moved to trash' };
+  return {
+    message: importedSessionId
+      ? 'Document and imported chat session moved to trash'
+      : 'Document moved to trash',
+    documentDeleted: true,
+    sessionDeleted: Boolean(importedSessionId),
+    sessionId: importedSessionId,
+  };
 }
 
 // Danh sách thùng rác của user
@@ -683,6 +757,7 @@ module.exports = {
   mapDocument,
   listDocuments,
   getDocumentById,
+  getWorkspaceDocumentById,
   getSignedUrl,
   addThumbnailUrls,
   buildPublicDocumentPreview,
@@ -693,6 +768,7 @@ module.exports = {
   updateVisibility,
   updateDocument,
   deleteDocument,
+  deleteImportedForkForPrimaryDocument,
   softDeleteDocument,
   listTrash,
   restoreDocument,

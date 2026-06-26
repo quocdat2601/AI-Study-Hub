@@ -182,16 +182,20 @@ export default function DocumentsPage() {
   }
 
   async function handleDelete(doc) {
-    const ok = window.confirm(`Delete "${doc.title}"? This cannot be undone.`);
+    const ok = window.confirm(
+      `Delete "${doc.title}"? If this is the primary document of an imported chat, the imported chat session and its history will also be deleted. The original shared snapshot and owner conversation are not affected.`
+    );
     if (!ok) return;
 
     setActionError("");
     try {
-      await deleteDocument(doc.id);
+      const result = await deleteDocument(doc.id);
       addToast({
         type: "success",
-        title: "Document deleted",
-        message: `"${doc.title}" was removed.`,
+        title: result.sessionDeleted ? "Document and imported chat deleted" : "Document deleted",
+        message: result.sessionDeleted
+          ? `"${doc.title}" and its imported chat history were removed.`
+          : `"${doc.title}" was removed.`,
       });
       reload();
     } catch (err) {

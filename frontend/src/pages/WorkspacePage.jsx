@@ -13,6 +13,7 @@ import {
   getChatSessionMessages,
   getOrCreateDocumentChatSession,
   listChatSessions,
+  listSharedDocuments as listSharedWorkspaceDocuments,
   renameChatSession,
   restoreChatDocument,
   saveChatDocumentToLibrary,
@@ -51,6 +52,16 @@ const DEFAULT_OLLAMA_MODELS = [
 ];
 const DEFAULT_MODELS = [...DEFAULT_GEMINI_MODELS, ...DEFAULT_OLLAMA_MODELS];
 const MAX_CHAT_ATTACHMENTS = 10;
+const snapshotSharingEnabled = String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true";
+
+async function loadWorkspaceDocuments() {
+  const [libraryDocuments, sharedPayload] = await Promise.all([
+    listDocuments(),
+    snapshotSharingEnabled ? listSharedWorkspaceDocuments() : Promise.resolve({ documents: [] }),
+  ]);
+  const byId = new Map([...(libraryDocuments || []), ...(sharedPayload.documents || [])].map((document) => [Number(document.id), document]));
+  return [...byId.values()];
+}
 
 function buildUserMessage(content) {
   return {
@@ -267,7 +278,7 @@ export default function WorkspacePage() {
           setIsLoadingDocs(true);
         }
         setError("");
-        const data = await listDocuments();
+        const data = await loadWorkspaceDocuments();
         if (!isMounted) return;
         const nextDocuments = data || [];
         cacheWorkspaceState({ documents: nextDocuments });
@@ -1046,7 +1057,7 @@ export default function WorkspacePage() {
       if (String(getWorkspaceCache().selectedId || "") !== String(targetDocumentId || "")) return false;
       if (!applyAttachmentPayload(payload, targetSessionId)) return false;
 
-      const nextDocuments = await listDocuments();
+      const nextDocuments = await loadWorkspaceDocuments();
       setDocuments(nextDocuments || []);
       cacheWorkspaceState({ documents: nextDocuments || [] });
       return true;

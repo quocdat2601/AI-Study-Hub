@@ -23,34 +23,28 @@ import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 import WorkspacePage from "./pages/WorkspacePage.jsx";
 import PublicDocumentsCatalogPage from "./pages/PublicDocumentsCatalogPage.jsx";
 import PublicDocumentDetailPage from "./pages/PublicDocumentDetailPage.jsx";
+import SharedChatSnapshotPage from "./pages/SharedChatSnapshotPage.jsx";
+import SharedPage from "./pages/SharedPage.jsx";
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isSharedChatPreview = location.pathname.startsWith("/shared/chat/");
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library", "/admin"];
+  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library", "/admin", "/shared"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
     && !dashboardShellRoutes.includes(location.pathname)
-    && !location.pathname.startsWith("/public-documents");
+    && !location.pathname.startsWith("/public-documents")
+    && !isSharedChatPreview;
 
   async function handleLogout() {
     await logout();
     navigate("/login", { replace: true });
   }
 
-  return (
-    <>
-      {shouldShowAppNav ? (
-        <LandingHeader
-          isAuthenticated={isAuthenticated}
-          isLoading={isLoading}
-          onLogout={handleLogout}
-          workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
-        />
-      ) : null}
-
-      <Routes>
+  const routes = (
+    <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route
@@ -143,8 +137,28 @@ function AppRoutes() {
         />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/shared/chat/:token" element={<SharedChatSnapshotPage />} />
+        <Route path="/shared" element={<ProtectedRoute><SharedPage /></ProtectedRoute>} />
       </Routes>
-    </>
+  );
+
+  if (isSharedChatPreview) {
+    return routes;
+  }
+
+  return (
+    <UploadDocProvider>
+      {shouldShowAppNav ? (
+        <LandingHeader
+          isAuthenticated={isAuthenticated}
+          isLoading={isLoading}
+          onLogout={handleLogout}
+          workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
+        />
+      ) : null}
+
+      {routes}
+    </UploadDocProvider>
   );
 }
 
@@ -154,9 +168,7 @@ export default function App() {
       <PreferencesProvider>
         <ToastProvider>
           <BrowserRouter>
-            <UploadDocProvider>
-              <AppRoutes />
-            </UploadDocProvider>
+            <AppRoutes />
           </BrowserRouter>
         </ToastProvider>
       </PreferencesProvider>

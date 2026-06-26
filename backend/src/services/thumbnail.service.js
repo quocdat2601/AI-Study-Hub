@@ -101,7 +101,8 @@ async function generateThumbnailFromBuffer(buffer, mimeType) {
   }
 }
 
-function createThumbnailStoragePath({ userId, documentId }) {
+function createThumbnailStoragePath({ userId, documentId, fileId }) {
+  if (fileId) return `thumbnails/files/${fileId}.png`;
   return `thumbnails/user-${userId}/${documentId}.png`;
 }
 

@@ -230,6 +230,8 @@ class ChatModel {
           id,
           title,
           user_id,
+          file_id,
+          file_id,
           subject_id,
           status,
           extraction_status,
@@ -397,6 +399,46 @@ class ChatModel {
 
     if (error) throw error;
     return data;
+  }
+
+  static async softRemoveAllSessionDocuments(sessionId, removedBy) {
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .update({ removed_at: new Date().toISOString(), removed_by: removedBy || null })
+      .eq('session_id', Number(sessionId))
+      .is('removed_at', null)
+      .select('doc_id');
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async updateOwnedSessionPrimaryDocument(sessionId, userId, primaryDocumentId) {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .update({
+        primary_document_id: Number(primaryDocumentId),
+        updated_at: now,
+        last_activity_at: now,
+      })
+      .eq('id', Number(sessionId))
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async countActiveSessionsByPrimaryDocument(documentId) {
+    const { count, error } = await supabase
+      .from('chat_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('primary_document_id', Number(documentId))
+      .is('deleted_at', null);
+    if (error) throw error;
+    return count || 0;
   }
 
   static async softDeleteOwnedSession(sessionId, userId) {

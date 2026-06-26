@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon, XIcon } from "./WorkspaceIcons.jsx";
+import ChatShareModal from "./ChatShareModal.jsx";
+
+const snapshotSharingEnabled = String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true";
 
 function formatActivity(value) {
   if (!value) return "No activity yet";
@@ -29,6 +32,7 @@ export default function ChatSessionMenu({
   const [editingId, setEditingId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [shareSessionId, setShareSessionId] = useState(null);
   const activeSession = sessions.find((session) => Number(session.id) === Number(activeSessionId));
 
   async function submitRename(event) {
@@ -74,6 +78,15 @@ export default function ChatSessionMenu({
         >
           <PlusIcon size={14} />
         </button>
+        {snapshotSharingEnabled && activeSessionId ? (
+          <button
+            className="h-7 rounded-md border border-indigo-200 bg-white px-2 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50"
+            onClick={() => setShareSessionId(activeSessionId)}
+            type="button"
+          >
+            Share
+          </button>
+        ) : null}
       </div>
 
       {isOpen ? (
@@ -178,6 +191,7 @@ export default function ChatSessionMenu({
           </div>
         </div>
       ) : null}
+      {shareSessionId ? <ChatShareModal onClose={() => setShareSessionId(null)} sessionId={shareSessionId} /> : null}
     </div>
   );
 }

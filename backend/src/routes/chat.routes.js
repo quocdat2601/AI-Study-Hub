@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const chatController = require('../controllers/chat.controller');
+const snapshotController = require('../controllers/chat-snapshot.controller');
 const verifyToken = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
@@ -95,5 +96,20 @@ router.post('/sessions/:sessionId/shares/users', chatController.shareSessionWith
 router.delete('/sessions/:sessionId/shares/users/:userId', chatController.removeUserShare);
 router.post('/sessions/:sessionId/public-link', chatController.createPublicLink);
 router.delete('/sessions/:sessionId/public-link', chatController.revokePublicLink);
+
+router.get('/sessions/:sessionId/share-options', snapshotController.getShareOptions);
+router.post('/sessions/:sessionId/snapshots', snapshotController.createSnapshot);
+router.get('/shared-links', snapshotController.listOwnedLinks);
+router.patch('/shared-links/:linkId/access', snapshotController.updateLinkAccess);
+router.delete('/shared-links/:linkId', snapshotController.disableLink);
+router.post('/shared-snapshots/:token/open', snapshotController.registerRecipientOpen);
+router.get('/received-shared-links', snapshotController.listReceivedLinks);
+router.delete('/received-shared-links/:recipientId', snapshotController.removeReceivedLink);
+router.post('/shared-snapshots/:token/import', snapshotController.importSnapshot);
+router.get('/shared-snapshots/:token/documents/:snapshotDocumentId/download', snapshotController.downloadSnapshotDocument);
+router.get('/shared-chats', snapshotController.listSharedChats);
+router.get('/shared-documents', snapshotController.listSharedDocuments);
+router.get('/shared-documents/:documentId/download', snapshotController.downloadSharedDocument);
+router.post('/shared-documents/:documentId/save-to-library', snapshotController.saveSharedDocument);
 
 module.exports = router;

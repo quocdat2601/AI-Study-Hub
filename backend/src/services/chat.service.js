@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const chatModel = require('../models/chat.model');
 const userModel = require('../models/user.model');
 const geminiService = require('./gemini.service');
@@ -8,7 +7,6 @@ const documentModel = require('../models/document.model');
 const createError = require('../utils/createError');
 
 const MAX_MESSAGE_CHARS = 4000;
-const PUBLIC_CHAT_TOKEN_BYTES = 24;
 const MAX_CONTEXT_CHARS = 16000;
 const MAX_SESSION_TITLE_CHARS = 120;
 
@@ -29,14 +27,6 @@ function normalizeNumericId(value, fieldName) {
     throw createError(400, `${fieldName} is invalid`);
   }
   return numericValue;
-}
-
-function hashPublicToken(token) {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
-
-function createPublicToken() {
-  return crypto.randomBytes(PUBLIC_CHAT_TOKEN_BYTES).toString('base64url');
 }
 
 function buildChatDocumentPreview(doc) {
@@ -428,30 +418,8 @@ async function removeUserShare({ sessionId, ownerUserId, sharedToUserId }) {
   return { message: 'Chat share revoked' };
 }
 
-async function createPublicLink({ sessionId, ownerUserId }) {
-  const session = await canWriteChatSession(ownerUserId, sessionId);
-  if (!session) {
-    throw createError(404, 'Chat session not found');
-  }
-
-  const token = createPublicToken();
-  await chatModel.upsertPublicLink(session.id, hashPublicToken(token), ownerUserId);
-
-  activityService.log({
-    userId: ownerUserId,
-    action: 'chat.share.public.create',
-    targetType: 'chat_session',
-    targetId: session.id,
-  });
-
-  return {
-    message: 'Public chat link created',
-    publicLink: {
-      token,
-      path: `/api/public/chat-shares/${token}`,
-      readOnly: true,
-    },
-  };
+async function createPublicLink() {
+  throw createError(410, 'Live chat links are disabled. Create an immutable snapshot instead.');
 }
 
 async function revokePublicLink({ sessionId, ownerUserId }) {
@@ -471,29 +439,8 @@ async function revokePublicLink({ sessionId, ownerUserId }) {
   return { message: 'Public chat link revoked' };
 }
 
-async function getPublicChatShare(token) {
-  const normalizedToken = String(token || '').trim();
-  if (!normalizedToken) {
-    throw createError(404, 'Public chat share not found');
-  }
-
-  const publicLink = await chatModel.findActivePublicLinkByTokenHash(hashPublicToken(normalizedToken));
-  if (!publicLink) {
-    throw createError(404, 'Public chat share not found');
-  }
-
-  const session = await chatModel.findSessionById(publicLink.session_id);
-  if (!session) {
-    throw createError(404, 'Public chat share not found');
-  }
-
-  const [messages, documents] = await Promise.all([
-    chatModel.getMessages(session.id),
-    chatModel.listSessionDocuments(session.id),
-  ]);
-
-  const documentsWithThumbnails = await withDocumentPreviews(documents);
-  return buildSessionPayload(session, documentsWithThumbnails, messages, false);
+async function getPublicChatShare() {
+  throw createError(410, 'This legacy live-chat link is no longer available');
 }
 
 module.exports = {
