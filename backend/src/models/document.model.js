@@ -577,6 +577,27 @@ class DocumentModel {
     return data || [];
   }
 
+  static async claimSessionDocumentProcessing({ documentId, sessionId, userId, claimToken, staleSeconds = 900 }) {
+    const { data, error } = await supabase.rpc('claim_session_document_processing', {
+      p_document_id: Number(documentId),
+      p_session_id: Number(sessionId),
+      p_user_id: userId,
+      p_claim_token: claimToken,
+      p_stale_seconds: Number(staleSeconds),
+    });
+    if (error) throw error;
+    return Boolean(data);
+  }
+
+  static async releaseSessionDocumentProcessing({ documentId, claimToken }) {
+    const { data, error } = await supabase.rpc('release_session_document_processing', {
+      p_document_id: Number(documentId),
+      p_claim_token: claimToken,
+    });
+    if (error) throw error;
+    return Boolean(data);
+  }
+
   static async findReadyThumbnailByFileId(fileId) {
     if (!fileId) return null;
     const { data, error } = await supabase

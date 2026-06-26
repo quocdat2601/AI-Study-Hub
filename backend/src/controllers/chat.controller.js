@@ -148,6 +148,19 @@ async function uploadSessionDocument(req, res, next) {
       title: req.body.title,
       subjectId: req.body.subjectId,
       tags: req.body.tags,
+      uploadRequestId: req.body.uploadRequestId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function reprocessSessionDocument(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.reprocessSessionDocument({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      documentId: req.params.documentId,
     }));
   } catch (err) {
     next(err);
@@ -204,6 +217,7 @@ module.exports = {
   revokePublicLink,
   attachExistingDocument,
   uploadSessionDocument,
+  reprocessSessionDocument,
   softDetachDocument,
   restoreDocument,
   saveDocumentToLibrary,

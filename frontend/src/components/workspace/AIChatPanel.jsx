@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import ChatAttachmentBar from "./ChatAttachmentBar.jsx";
 import ChatSessionMenu from "./ChatSessionMenu.jsx";
 import { MODEL_LABELS } from "./workspaceDisplay.js";
-import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CopyIcon, SparklesIcon } from "./WorkspaceIcons.jsx";
+import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CopyIcon, SparklesIcon, UploadIcon } from "./WorkspaceIcons.jsx";
 
 const SUGGESTED_QUESTIONS = [
   "Summarize this document",
@@ -310,6 +310,7 @@ function CompactInput({
   answerMode,
   geminiModels,
   isAsking,
+  isAttachmentQueueBlocking,
   isLoadingMessages,
   ollamaModels,
   onAnswerModeChange,
@@ -324,7 +325,7 @@ function CompactInput({
       <div className="rounded-2xl border border-slate-200 bg-white p-2 transition focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
         <textarea
           className="min-h-14 w-full resize-none border-0 bg-transparent px-2 py-1 text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400"
-          disabled={!selectedDocument || isAsking || isLoadingMessages}
+          disabled={!selectedDocument || isAsking || isLoadingMessages || isAttachmentQueueBlocking}
           onChange={(event) => onQuestionChange(event.target.value)}
           placeholder={selectedDocument ? "Ask any question..." : "Select a document first"}
           value={question}
@@ -342,7 +343,7 @@ function CompactInput({
           <button
             aria-label="Send question"
             className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border-0 bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!selectedDocument || !question.trim() || isAsking || isLoadingMessages}
+            disabled={!selectedDocument || !question.trim() || isAsking || isLoadingMessages || isAttachmentQueueBlocking}
             type="submit"
           >
             {isAsking ? <ClockIcon size={15} /> : <ArrowUpIcon size={15} />}
@@ -357,6 +358,7 @@ export default function AIChatPanel({
   attachmentAction,
   attachmentError,
   attachmentUploadProgress,
+  attachmentQueueItems = [],
   attachments,
   availableDocuments,
   answerMode,
@@ -365,6 +367,7 @@ export default function AIChatPanel({
   error,
   geminiModels,
   isAsking,
+  isAttachmentQueueBlocking,
   isLoadingMessages,
   isLoadingUsage,
   isOllamaModel,
@@ -373,11 +376,14 @@ export default function AIChatPanel({
   onAnswerModeChange,
   onAttachDocument,
   onCancelAttachmentUpload,
+  onDropFiles,
   onAsk,
   onChatScroll,
   onQuestionChange,
   onRemoveAttachment,
+  onRemoveQueuedAttachment,
   onRestoreAttachment,
+  onRetryQueuedAttachment,
   onSaveAttachment,
   onSelectedModelChange,
   onUploadAttachment,
@@ -396,12 +402,48 @@ export default function AIChatPanel({
   onSelectSession,
   usage,
   width,
+  dragDropAttachmentsEnabled = false,
 }) {
   const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
+  const [dragDepth, setDragDepth] = useState(0);
+  const isDropActive = dragDropAttachmentsEnabled && dragDepth > 0;
+
+  function hasFiles(event) {
+    return Array.from(event.dataTransfer?.types || []).includes("Files");
+  }
+
+  function handleDragEnter(event) {
+    if (!dragDropAttachmentsEnabled || !hasFiles(event)) return;
+    event.preventDefault();
+    setDragDepth((depth) => depth + 1);
+  }
+
+  function handleDragOver(event) {
+    if (!dragDropAttachmentsEnabled || !hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave(event) {
+    if (!dragDropAttachmentsEnabled || !hasFiles(event)) return;
+    event.preventDefault();
+    setDragDepth((depth) => Math.max(0, depth - 1));
+  }
+
+  function handleDrop(event) {
+    if (!dragDropAttachmentsEnabled || !hasFiles(event)) return;
+    event.preventDefault();
+    setDragDepth(0);
+    onDropFiles?.(event.dataTransfer.files);
+  }
 
   return (
     <aside
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm ${className}`}
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm ${className}`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       style={width ? { width } : undefined}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4">
@@ -442,16 +484,20 @@ export default function AIChatPanel({
       <ChatAttachmentBar
         action={attachmentAction}
         activeAttachments={attachments}
+        dragDropAttachmentsEnabled={dragDropAttachmentsEnabled}
         availableDocuments={availableDocuments}
         error={attachmentError}
         isLoading={isLoadingMessages}
         onAttach={onAttachDocument}
         onCancelUpload={onCancelAttachmentUpload}
         onRemove={onRemoveAttachment}
+        onRemoveQueued={onRemoveQueuedAttachment}
         onRestore={onRestoreAttachment}
+        onRetryQueued={onRetryQueuedAttachment}
         onSave={onSaveAttachment}
         onUpload={onUploadAttachment}
         primaryDocumentId={selectedDocument?.id}
+        pendingItems={attachmentQueueItems}
         recoverableAttachments={recoverableAttachments}
         sessionId={sessionId}
         uploadProgress={attachmentUploadProgress}
@@ -480,6 +526,7 @@ export default function AIChatPanel({
         answerMode={answerMode}
         geminiModels={geminiModels}
         isAsking={isAsking}
+        isAttachmentQueueBlocking={isAttachmentQueueBlocking}
         isLoadingMessages={isLoadingMessages}
         ollamaModels={ollamaModels}
         onAnswerModeChange={onAnswerModeChange}
@@ -489,6 +536,15 @@ export default function AIChatPanel({
         question={question}
         selectedDocument={selectedDocument}
       />
+      {isDropActive ? (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-5 backdrop-blur-[1px]">
+          <div className="flex max-w-xs flex-col items-center rounded-2xl border border-indigo-200 bg-white/95 px-7 py-6 text-center shadow-[0_20px_50px_rgba(15,23,42,0.2)]">
+            <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><UploadIcon size={21} /></span>
+            <p className="m-0 text-sm font-bold text-slate-900">Drop files to add them to this chat</p>
+            <p className="m-0 mt-1 text-xs leading-relaxed text-slate-500">PDF, DOCX, TXT, and supported images</p>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }

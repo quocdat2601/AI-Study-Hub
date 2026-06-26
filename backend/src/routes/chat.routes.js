@@ -44,6 +44,7 @@ router.post(
   chatController.uploadSessionDocument
 );
 router.delete('/sessions/:sessionId/documents/:documentId', chatController.softDetachDocument);
+router.post('/sessions/:sessionId/documents/:documentId/reprocess', chatController.reprocessSessionDocument);
 router.post('/sessions/:sessionId/documents/:documentId/restore', chatController.restoreDocument);
 router.post('/sessions/:sessionId/documents/:documentId/save-to-library', chatController.saveDocumentToLibrary);
 

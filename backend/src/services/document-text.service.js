@@ -9,6 +9,7 @@ const MIME_TYPES = {
   JPEG: 'image/jpeg',
   TIFF: 'image/tiff',
   BMP: 'image/bmp',
+  TXT: 'text/plain',
 };
 
 const MIN_READABLE_CHARS = 50;
@@ -144,13 +145,20 @@ async function extractTextFromBuffer(buffer, mimeType) {
     });
   }
 
+  if (mimeType === MIME_TYPES.TXT) {
+    return buildExtractionResult(buffer.toString('utf8'), {
+      extractionMethod: 'plain-text',
+      fallbackFromPdfParse: false,
+    });
+  }
+
   if (IMAGE_MIME_TYPES.has(mimeType)) {
     return extractImageText(buffer, mimeType);
   }
 
   const err = new Error('Unsupported document type');
   err.statusCode = 400;
-  err.publicMessage = 'Only PDF, DOCX, PNG, JPEG, TIFF, and BMP files are accepted';
+  err.publicMessage = 'Only PDF, DOCX, TXT, PNG, JPEG, TIFF, and BMP files are accepted';
   throw err;
 }
 

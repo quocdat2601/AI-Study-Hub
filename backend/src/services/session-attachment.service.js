@@ -6,9 +6,12 @@ const documentModel = require('../models/document.model');
 const documentService = require('./document.service');
 const uploadDocService = require('./uploadDoc.service');
 const createError = require('../utils/createError');
+const documentChunkModel = require('../models/document-chunk.model');
+const crypto = require('crypto');
 
 const SESSION_DOCUMENT_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_ACTIVE_ATTACHMENTS = 10;
+const MAX_SESSION_DOCUMENTS = 20;
+const MAX_ADDITIONAL_ATTACHMENTS = 19;
 
 function normalizeNumericId(value, fieldName) {
   const numericValue = Number(value);
@@ -20,11 +23,20 @@ function normalizeNumericId(value, fieldName) {
 
 function isAttachmentLimitError(error) {
   return error?.code === '23514'
-    && String(error?.message || '').includes('10 active attachments');
+    && String(error?.message || '').includes('20 active documents');
 }
 
 function attachmentLimitError() {
-  return createError(409, `A chat session can contain at most ${MAX_ACTIVE_ATTACHMENTS} active attachments`);
+  return createError(409, `A chat session can contain at most ${MAX_SESSION_DOCUMENTS} active documents (1 primary document and ${MAX_ADDITIONAL_ATTACHMENTS} attachments)`);
+}
+
+function normalizeUploadRequestId(value) {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) {
+    throw createError(400, 'uploadRequestId must be a UUID');
+  }
+  return normalized;
 }
 
 function mapLifecycleConflict(error) {
@@ -50,14 +62,14 @@ async function requireOwnedSession(userId, sessionId) {
 
 async function assertAttachmentSlotAvailable(sessionId) {
   const count = await chatModel.countActiveSessionDocuments(sessionId);
-  if (count >= MAX_ACTIVE_ATTACHMENTS) {
+  if (count >= MAX_SESSION_DOCUMENTS) {
     throw attachmentLimitError();
   }
 }
 
-async function attachWithLimitHandling(sessionId, docIds) {
+async function attachWithLimitHandling(sessionId, docIds, options) {
   try {
-    return await chatModel.attachDocuments(sessionId, docIds);
+    return await chatModel.attachDocuments(sessionId, docIds, options);
   } catch (error) {
     if (isAttachmentLimitError(error)) throw attachmentLimitError();
     throw error;
@@ -66,6 +78,48 @@ async function attachWithLimitHandling(sessionId, docIds) {
 
 async function getUpdatedSessionPayload(sessionId, userId) {
   return chatService.getMessages({ sessionId, userId });
+}
+
+async function attachmentProcessing(document, sessionId, processingError = null) {
+  const chunkCount = document ? await documentChunkModel.countByDocumentId(document.id) : 0;
+  const extractionStatus = document?.extraction_status || 'failed';
+  const usableForChat = extractionStatus === 'ready' && chunkCount > 0;
+  return {
+    documentId: document?.id || null,
+    extractionStatus,
+    indexingStatus: usableForChat ? 'ready' : processingError ? 'failed' : 'pending',
+    usableForChat,
+    processingError: processingError || null,
+  };
+}
+
+async function processSessionDocument({ document, session, userId }) {
+  const claimToken = crypto.randomUUID();
+  const claimed = await documentModel.claimSessionDocumentProcessing({
+    documentId: document.id,
+    sessionId: session.id,
+    userId,
+    claimToken,
+  });
+  if (!claimed) throw createError(409, 'This attachment is already processing. Please retry shortly.');
+
+  try {
+    await aiService.processDocument({
+      id: document.id,
+      userId,
+      allowSessionScoped: true,
+      sessionId: session.id,
+    });
+    const refreshed = await documentModel.findActiveSessionScopedById(document.id, session.id);
+    return attachmentProcessing(refreshed || document, session.id);
+  } catch (error) {
+    const refreshed = await documentModel.findActiveSessionScopedById(document.id, session.id).catch(() => document);
+    return attachmentProcessing(refreshed || document, session.id, error.message);
+  } finally {
+    await documentModel.releaseSessionDocumentProcessing({ documentId: document.id, claimToken }).catch((error) => {
+      console.error(`Session attachment ${document.id} processing claim release failed:`, error.message);
+    });
+  }
 }
 
 async function attachExistingDocument({ sessionId, userId, documentId }) {
@@ -93,36 +147,51 @@ async function attachExistingDocument({ sessionId, userId, documentId }) {
   return getUpdatedSessionPayload(session.id, userId);
 }
 
-async function uploadSessionDocument({ sessionId, userId, file, title, subjectId, tags }) {
+async function uploadSessionDocument({ sessionId, userId, file, title, subjectId, tags, uploadRequestId }) {
   const session = await requireOwnedSession(userId, sessionId);
+  const requestId = normalizeUploadRequestId(uploadRequestId);
+  const existingLink = await chatModel.findSessionDocumentByUploadRequestId(session.id, requestId);
+  if (existingLink) {
+    const existingDocument = await documentModel.findActiveSessionScopedById(existingLink.doc_id, session.id);
+    return {
+      ...(await getUpdatedSessionPayload(session.id, userId)),
+      attachmentProcessing: await attachmentProcessing(existingDocument, session.id),
+    };
+  }
   await assertAttachmentSlotAvailable(session.id);
 
   const expiresAt = new Date(Date.now() + SESSION_DOCUMENT_LIFETIME_MS).toISOString();
-  const result = await uploadDocService.upload({
-    userId,
-    file,
-    title,
-    subjectId,
-    tags,
-    isPublic: false,
-    documentScope: 'session',
-    originSessionId: session.id,
-    expiresAt,
-    afterDocumentCreated: async (document) => {
-      await attachWithLimitHandling(session.id, [document.id]);
-    },
-  });
-
+  let result;
   try {
-    await aiService.processDocument({
-      id: result.document.id,
+    result = await uploadDocService.upload({
       userId,
-      allowSessionScoped: true,
-      sessionId: session.id,
+      file,
+      title,
+      subjectId,
+      tags,
+      isPublic: false,
+      documentScope: 'session',
+      originSessionId: session.id,
+      expiresAt,
+      afterDocumentCreated: async (document) => {
+        await attachWithLimitHandling(session.id, [document.id], { uploadRequestId: requestId });
+      },
     });
   } catch (error) {
-    console.warn(`Session attachment ${result.document.id} indexing skipped:`, error.message);
+    if (error?.code === '23505' && requestId) {
+      const concurrentLink = await chatModel.findSessionDocumentByUploadRequestId(session.id, requestId);
+      if (concurrentLink) {
+        const concurrentDocument = await documentModel.findActiveSessionScopedById(concurrentLink.doc_id, session.id);
+        return {
+          ...(await getUpdatedSessionPayload(session.id, userId)),
+          attachmentProcessing: await attachmentProcessing(concurrentDocument, session.id),
+        };
+      }
+    }
+    throw error;
   }
+
+  const processing = await processSessionDocument({ document: result.document, session, userId });
 
   activityService.log({
     userId,
@@ -132,7 +201,19 @@ async function uploadSessionDocument({ sessionId, userId, file, title, subjectId
     metadata: { documentId: result.document.id },
   });
 
-  return getUpdatedSessionPayload(session.id, userId);
+  return { ...(await getUpdatedSessionPayload(session.id, userId)), attachmentProcessing: processing };
+}
+
+async function reprocessSessionDocument({ sessionId, userId, documentId }) {
+  const session = await requireOwnedSession(userId, sessionId);
+  const docId = normalizeNumericId(documentId, 'documentId');
+  const link = await chatModel.findActiveSessionDocument(session.id, docId);
+  const document = await documentModel.findActiveSessionScopedById(docId, session.id);
+  if (!link || !document || String(document.user_id) !== String(userId)) {
+    throw createError(404, 'Active session attachment not found');
+  }
+  const processing = await processSessionDocument({ document, session, userId });
+  return { ...(await getUpdatedSessionPayload(session.id, userId)), attachmentProcessing: processing };
 }
 
 async function softDetachDocument({ sessionId, userId, documentId }) {
@@ -255,6 +336,7 @@ async function saveToLibrary({ sessionId, userId, documentId }) {
 module.exports = {
   attachExistingDocument,
   uploadSessionDocument,
+  reprocessSessionDocument,
   softDetachDocument,
   restoreDocument,
   saveToLibrary,

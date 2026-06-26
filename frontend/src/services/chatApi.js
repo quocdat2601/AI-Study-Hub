@@ -49,10 +49,11 @@ export async function attachChatDocument(sessionId, documentId, { signal } = {})
   return response.data;
 }
 
-export async function uploadChatDocument(sessionId, file, { onProgress, signal } = {}) {
+export async function uploadChatDocument(sessionId, file, { onProgress, signal, uploadRequestId } = {}) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("title", file.name);
+  if (uploadRequestId) formData.append("uploadRequestId", uploadRequestId);
 
   const response = await api.post(`/chat/sessions/${sessionId}/documents/upload`, formData, {
     signal,
@@ -77,6 +78,11 @@ export async function restoreChatDocument(sessionId, documentId, { signal } = {}
 
 export async function saveChatDocumentToLibrary(sessionId, documentId, { signal } = {}) {
   const response = await api.post(`/chat/sessions/${sessionId}/documents/${documentId}/save-to-library`, null, { signal });
+  return response.data;
+}
+
+export async function reprocessChatDocument(sessionId, documentId, { signal } = {}) {
+  const response = await api.post(`/chat/sessions/${sessionId}/documents/${documentId}/reprocess`, null, { signal });
   return response.data;
 }
 

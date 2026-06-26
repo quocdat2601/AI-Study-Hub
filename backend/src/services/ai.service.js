@@ -70,10 +70,12 @@ async function extractTextFromStorage(doc) {
   }
 
   const canExtractFromStorage = mimeType === documentTextService.MIME_TYPES.PDF
+    || mimeType === documentTextService.MIME_TYPES.DOCX
+    || mimeType === documentTextService.MIME_TYPES.TXT
     || documentTextService.IMAGE_MIME_TYPES.has(mimeType);
 
   if (!canExtractFromStorage) {
-    throw createError(400, 'Only PDF and image OCR processing is supported in this temporary workspace');
+    throw createError(400, 'This document type cannot be processed for AI');
   }
 
   const buffer = await supabaseService.downloadFile(storagePath);

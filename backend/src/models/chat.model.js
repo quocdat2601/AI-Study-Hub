@@ -90,7 +90,7 @@ class ChatModel {
     return data;
   }
 
-  static async attachDocuments(sessionId, docIds) {
+  static async attachDocuments(sessionId, docIds, { uploadRequestId = null } = {}) {
     if (!docIds.length) return [];
 
     const rows = docIds.map((docId) => ({
@@ -99,6 +99,7 @@ class ChatModel {
       added_at: new Date().toISOString(),
       removed_at: null,
       removed_by: null,
+      upload_request_id: uploadRequestId,
     }));
 
     const { data, error } = await supabase
@@ -158,7 +159,7 @@ class ChatModel {
 
     const now = Date.now();
     return (data || [])
-      .map((row) => row.documents)
+      .map((row) => row.documents ? { ...row.documents, upload_request_id: row.upload_request_id } : null)
       .filter((document) => {
         if (!document || document.deleted_at || document.lifecycle_status !== 'active') return false;
         return !document.expires_at || new Date(document.expires_at).getTime() > now;
@@ -226,6 +227,7 @@ class ChatModel {
       .select(`
         added_at,
         removed_at,
+        upload_request_id,
         documents (
           id,
           title,
@@ -410,6 +412,18 @@ class ChatModel {
       .select('doc_id');
     if (error) throw error;
     return data || [];
+  }
+
+  static async findSessionDocumentByUploadRequestId(sessionId, uploadRequestId) {
+    if (!uploadRequestId) return null;
+    const { data, error } = await supabase
+      .from('chat_session_documents')
+      .select('session_id, doc_id, removed_at, upload_request_id')
+      .eq('session_id', Number(sessionId))
+      .eq('upload_request_id', uploadRequestId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
   }
 
   static async updateOwnedSessionPrimaryDocument(sessionId, userId, primaryDocumentId) {
