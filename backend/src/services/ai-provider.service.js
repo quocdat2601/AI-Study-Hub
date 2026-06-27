@@ -3,6 +3,21 @@ const geminiService = require('./gemini.service');
 const ollamaService = require('./ollama.service');
 const chatContextService = require('./chat-context.service');
 
+function logImagePromptDebug({ provider, model, imageQuestionType, systemPrompt, userPrompt }) {
+  if (process.env.NODE_ENV === 'production' || !imageQuestionType) return;
+  const imageSection = systemPrompt
+    .split('\n\n')
+    .find((section) => section.includes('OCR-extracted text') || section.includes('visual-image question'))
+    || '';
+  console.info('[image-ocr-debug] provider-prompt', {
+    provider,
+    model,
+    imageQuestionType,
+    imageInstruction: imageSection,
+    hasOcrContextLabel: userPrompt.includes('Retrieved OCR text chunks'),
+  });
+}
+
 function buildModeInstruction(mode, { provider } = {}) {
   const languageInstruction = [
     'Answer in the same language as the current user question.',
@@ -73,6 +88,7 @@ function buildRagPrompts({
   retrievalQuery,
   overviewContext,
   overviewIntent,
+  imageQuestionType,
   provider,
 }) {
   const context = (chunks || [])
@@ -126,6 +142,20 @@ function buildRagPrompts({
       'Do not cite the overview itself. The application only cites real chunks.',
     ].join('\n')
     : '';
+  const imageInstruction = imageQuestionType === 'image_text_question'
+    ? [
+      'The following evidence is OCR-extracted text from the user\'s attached image.',
+      'Answer what text appears in the image using this OCR evidence.',
+      'Do not claim that you cannot inspect the image.',
+      'If OCR text is incomplete, state only which parts are unclear.',
+      'Do not describe visual objects, layout, charts, or non-text content unless the OCR chunks explicitly contain that text.',
+    ].join('\n')
+    : imageQuestionType === 'image_visual_question'
+      ? [
+        'This is a visual-image question, but this endpoint only receives text chunks.',
+        'Do not pretend to inspect the image visually.',
+      ].join('\n')
+      : '';
   const systemPrompt = [
     "You are AI Study Hub's study assistant.",
     buildModeInstruction(mode, { provider }),
@@ -137,6 +167,7 @@ function buildRagPrompts({
     comparisonInstruction,
     multiDocumentInstruction,
     overviewInstruction,
+    imageInstruction,
   ].filter(Boolean).join('\n\n');
   const userPrompt = [
     historyText ? `Recent conversation context:\n${historyText}` : '',
@@ -144,7 +175,9 @@ function buildRagPrompts({
     retrievalQuery ? `Current retrieval topic (do not broaden it):\n${retrievalQuery}` : '',
     `Selected document titles:\n${selectedTitles.join('\n') || 'Untitled document'}`,
     overviewContext ? `Persisted document overview context:\n${overviewContext}` : '',
-    `Retrieved source chunks:\n${context || 'No source chunks were available.'}`,
+    imageQuestionType === 'image_text_question'
+      ? `Retrieved OCR text chunks:\n${context || 'No OCR text chunks were available.'}`
+      : `Retrieved source chunks:\n${context || 'No source chunks were available.'}`,
     `Current user question:\n${question}`,
   ].filter(Boolean).join('\n\n');
 
@@ -154,6 +187,13 @@ function buildRagPrompts({
 async function generateAnswer(options) {
   const { provider, model, question, documentTitle, chunks, mode } = options;
   const prompts = buildRagPrompts(options);
+  logImagePromptDebug({
+    provider,
+    model,
+    imageQuestionType: options.imageQuestionType,
+    systemPrompt: prompts.systemPrompt,
+    userPrompt: prompts.userPrompt,
+  });
 
   if (provider === 'ollama') {
     const result = await ollamaService.generateChat({
@@ -189,6 +229,13 @@ async function generateAnswer(options) {
 async function* streamAnswer(options) {
   const { provider, model, question, documentTitle, chunks, mode } = options;
   const prompts = buildRagPrompts(options);
+  logImagePromptDebug({
+    provider,
+    model,
+    imageQuestionType: options.imageQuestionType,
+    systemPrompt: prompts.systemPrompt,
+    userPrompt: prompts.userPrompt,
+  });
 
   if (provider === 'ollama') {
     yield* ollamaService.streamChat({

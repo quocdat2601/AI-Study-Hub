@@ -93,6 +93,15 @@ async function generateChat({ model, systemPrompt, userPrompt, messages, format,
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
+  if (process.env.NODE_ENV !== 'production' && String(systemPrompt || '').includes('OCR-extracted text')) {
+    console.info('[image-ocr-debug] ollama-payload', {
+      model,
+      stream: false,
+      roles: payloadMessages.map((message) => message.role),
+      hasOcrSystemInstruction: true,
+      hasOcrUserContext: payloadMessages.some((message) => String(message.content || '').includes('Retrieved OCR text chunks')),
+    });
+  }
 
   const data = await fetchJson('/api/chat', {
     method: 'POST',
@@ -124,6 +133,15 @@ async function* streamChat({ model, systemPrompt, userPrompt, messages }) {
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
+  if (process.env.NODE_ENV !== 'production' && String(systemPrompt || '').includes('OCR-extracted text')) {
+    console.info('[image-ocr-debug] ollama-payload', {
+      model,
+      stream: true,
+      roles: payloadMessages.map((message) => message.role),
+      hasOcrSystemInstruction: true,
+      hasOcrUserContext: payloadMessages.some((message) => String(message.content || '').includes('Retrieved OCR text chunks')),
+    });
+  }
 
   const url = `${aiProviders.ollama.baseUrl}/api/chat`;
   const request = (signal) => fetch(url, {

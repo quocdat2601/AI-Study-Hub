@@ -90,3 +90,25 @@ test('a file-level thumbnail repairs stale shared metadata without selecting a d
     thumbnail: { path: 'thumbnails/files/91.png', status: 'ready', error: null },
   }]);
 });
+
+test('image documents fall back to signed original file preview when no thumbnail exists', async (t) => {
+  t.mock.method(documentModel, 'findReadyThumbnailByFileId', async () => null);
+  t.mock.method(supabaseService, 'fileExists', async () => false);
+  t.mock.method(documentThumbnailService, 'isSupportedThumbnailMimeType', () => false);
+  t.mock.method(supabaseService, 'getSignedUrl', async (path) => `signed:${path}`);
+
+  const [document] = await documentService.addThumbnailUrls([{
+    id: 40,
+    file_id: 101,
+    title: 'pasted-image.png',
+    document_scope: 'session',
+    thumbnail_path: null,
+    thumbnail_status: 'pending',
+    cloud_files: {
+      mime_type: 'image/png',
+      storage_path: 'chat/session-1/pasted-image.png',
+    },
+  }]);
+
+  assert.equal(document.thumbnailUrl, 'signed:chat/session-1/pasted-image.png');
+});

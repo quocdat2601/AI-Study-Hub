@@ -5,6 +5,132 @@ import { BookmarkIcon, ClockIcon, FileTextIcon, PlusIcon, RefreshIcon, UploadIco
 
 const MAX_ATTACHMENTS = 20;
 
+function isImageAttachment(attachment) {
+  const fileType = String(attachment?.fileType || attachment?.file_type || "").toUpperCase();
+  const title = String(attachment?.title || "");
+  return fileType === "IMAGE"
+    || Boolean(attachment?.thumbnailUrl && /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(title))
+    || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(title);
+}
+
+function fileTypeLabelFromTitle(title, fallback = "FILE") {
+  const lower = String(title || "").toLowerCase();
+  if (lower.endsWith(".pdf")) return "PDF";
+  if (lower.endsWith(".docx")) return "DOCX";
+  if (lower.endsWith(".txt")) return "TXT";
+  if (/\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(lower)) return "IMG";
+  return fallback;
+}
+
+function activeFileTypeLabel(attachment) {
+  if (isImageAttachment(attachment)) return "IMG";
+  const fileType = String(attachment?.fileType || "").toUpperCase();
+  if (["PDF", "DOCX", "TXT"].includes(fileType)) return fileType;
+  return fileTypeLabelFromTitle(attachment?.title, fileType || "FILE");
+}
+
+function typeBadgeClass(label) {
+  if (label === "PDF") return "border-red-100 bg-red-50 text-red-600";
+  if (label === "DOCX") return "border-blue-100 bg-blue-50 text-blue-600";
+  if (label === "TXT") return "border-emerald-100 bg-emerald-50 text-emerald-700";
+  if (label === "IMG") return "border-violet-100 bg-violet-50 text-violet-700";
+  return "border-slate-100 bg-slate-50 text-slate-500";
+}
+
+function FileTypeBadge({ label }) {
+  return (
+    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-[9px] font-black ${typeBadgeClass(label)}`}>
+      {label}
+    </span>
+  );
+}
+
+function ImageThumb({ alt, onOpen, src }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return <FileTypeBadge label="IMG" />;
+  return (
+    <button
+      aria-label={`Preview ${alt}`}
+      className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 p-0 transition hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+      onClick={onOpen}
+      type="button"
+    >
+      <img
+        alt=""
+        className="h-full w-full object-cover"
+        loading="lazy"
+        onError={() => setFailed(true)}
+        src={src}
+      />
+    </button>
+  );
+}
+
+function ImageLightbox({ image, onClose }) {
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!image) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const previousActive = document.activeElement;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab") {
+        const focusable = Array.from(document.querySelectorAll("[data-image-lightbox] button"));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActive?.focus?.();
+    };
+  }, [image, onClose]);
+
+  if (!image) return null;
+
+  return (
+    <div
+      aria-modal="true"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 p-4"
+      data-image-lightbox
+      role="dialog"
+    >
+      <button aria-label="Close image preview" className="absolute inset-0 cursor-default" onClick={onClose} type="button" />
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <p className="m-0 min-w-0 truncate text-sm font-bold text-slate-800" title={image.title}>{image.title}</p>
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            onClick={onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            <XIcon size={14} />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-100 p-3">
+          <img alt={image.title} className="max-h-[78vh] max-w-full object-contain" src={image.url} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function isExpired(document) {
   return document?.lifecycleStatus === "expired"
     || (document?.expiresAt && new Date(document.expiresAt).getTime() <= Date.now());
@@ -21,7 +147,7 @@ function actionMatches(action, type, documentId) {
     && (documentId === undefined || Number(action.documentId) === Number(documentId));
 }
 
-function AttachmentCard({ attachment, action, onDeleteRecoverable, onRemove, onRestore, onSave, primaryDocumentId, recoverable = false }) {
+function AttachmentCard({ attachment, action, onDeleteRecoverable, onOpenImage, onRemove, onRestore, onSave, primaryDocumentId, recoverable = false }) {
   const expired = isExpired(attachment);
   const recovery = getRecoverableAttachmentPresentation(attachment);
   const isPurging = recovery.isPurging;
@@ -33,12 +159,16 @@ function AttachmentCard({ attachment, action, onDeleteRecoverable, onRemove, onR
   const isDeleting = actionMatches(action, "delete-recoverable", attachment.id);
   const isTemporary = attachment.documentScope === "session";
   const isPrimary = !recoverable && Number(attachment.id) === Number(primaryDocumentId);
+  const fileLabel = activeFileTypeLabel(attachment);
+  const imageUrl = isImageAttachment(attachment) ? attachment.thumbnailUrl : null;
 
   return (
     <div className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 ${recoverable ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-white"}`}>
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${recoverable ? "bg-white text-amber-600" : "bg-white text-indigo-600"}`}>
-        <FileTextIcon size={14} />
-      </span>
+      {imageUrl ? (
+        <ImageThumb alt={attachment.title} onOpen={() => onOpenImage({ title: attachment.title, url: imageUrl })} src={imageUrl} />
+      ) : (
+        <FileTypeBadge label={fileLabel} />
+      )}
       <div className="min-w-0 flex-1">
         <p className="m-0 truncate text-xs font-bold text-slate-800" title={attachment.title}>{attachment.title}</p>
         <div className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-slate-500">
@@ -131,9 +261,11 @@ function AttachmentCard({ attachment, action, onDeleteRecoverable, onRemove, onR
   );
 }
 
-function PendingAttachmentCard({ item, onRemove, onRetry }) {
+function PendingAttachmentCard({ item, onOpenImage, onRemove, onRetry, previewUrl }) {
   const busy = ["queued", "uploading", "processing"].includes(item.status);
   const failed = item.status === "failed";
+  const isImage = item.file?.type?.startsWith("image/");
+  const labelName = getUploadDocFileLabel(item.file);
   const label = item.status === "queued"
     ? "Queued"
     : item.status === "uploading"
@@ -143,10 +275,14 @@ function PendingAttachmentCard({ item, onRemove, onRetry }) {
         : failed ? "Failed - not included in your next question" : "Ready";
   return (
     <div className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 ${failed ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white text-indigo-600"><FileTextIcon size={14} /></span>
+      {isImage && previewUrl ? (
+        <ImageThumb alt={item.file.name} onOpen={() => onOpenImage({ title: item.file.name, url: previewUrl })} src={previewUrl} />
+      ) : (
+        <FileTypeBadge label={labelName} />
+      )}
       <div className="min-w-0 flex-1">
         <p className="m-0 truncate text-xs font-bold text-slate-800" title={item.file.name}>{item.file.name}</p>
-        <p className={failed ? "m-0.5 text-[10px] font-semibold text-red-700" : "m-0.5 text-[10px] font-semibold text-slate-500"}>{getUploadDocFileLabel(item.file)} - {label}</p>
+        <p className={failed ? "m-0.5 text-[10px] font-semibold text-red-700" : "m-0.5 text-[10px] font-semibold text-slate-500"}>{labelName} - {label}</p>
         {busy ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-white"><span className="block h-full bg-indigo-600 transition-[width]" style={{ width: `${Math.max(5, item.progress || 0)}%` }} /></div> : null}
         {failed && item.error ? <p className="m-0.5 truncate text-[10px] text-red-600" title={item.error}>{item.error}</p> : null}
       </div>
@@ -185,8 +321,11 @@ export default function ChatAttachmentBar({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState(null);
+  const [pendingPreviewUrls, setPendingPreviewUrls] = useState({});
   const [search, setSearch] = useState("");
   const fileInputRef = useRef(null);
+  const pendingPreviewUrlsRef = useRef(pendingPreviewUrls);
   const attachedIds = useMemo(
     () => new Set(
       [...activeAttachments, ...recoverableAttachments]
@@ -219,6 +358,37 @@ export default function ChatAttachmentBar({
   const summaryText = totalVisibleCount
     ? `${totalVisibleCount} file${totalVisibleCount === 1 ? "" : "s"}${uploadingCount ? ` - Uploading ${uploadingCount}` : failedCount ? ` - ${failedCount} failed` : ""}`
     : "No files";
+
+  useEffect(() => {
+    pendingPreviewUrlsRef.current = pendingPreviewUrls;
+  }, [pendingPreviewUrls]);
+
+  useEffect(() => {
+    const imageItems = pendingItems.filter((item) => item.file?.type?.startsWith("image/"));
+    const nextIds = new Set(imageItems.map((item) => item.id));
+
+    setPendingPreviewUrls((current) => {
+      let changed = false;
+      const next = {};
+      for (const item of imageItems) {
+        next[item.id] = current[item.id] || URL.createObjectURL(item.file);
+        if (!current[item.id]) changed = true;
+      }
+      for (const [id, url] of Object.entries(current)) {
+        if (!nextIds.has(id)) {
+          URL.revokeObjectURL(url);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [pendingItems]);
+
+  useEffect(() => () => {
+    for (const url of Object.values(pendingPreviewUrlsRef.current)) {
+      URL.revokeObjectURL(url);
+    }
+  }, []);
 
   useEffect(() => {
     setIsOpen(false);
@@ -394,13 +564,22 @@ export default function ChatAttachmentBar({
 
             <div className="workspace-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
               {isLoading ? <div className="h-14 animate-pulse rounded-xl bg-slate-100" /> : null}
-              {pendingItems.map((item) => <PendingAttachmentCard item={item} key={item.id} onRemove={onRemoveQueued} onRetry={onRetryQueued} />)}
+              {pendingItems.map((item) => (
+                <PendingAttachmentCard
+                  item={item}
+                  key={item.id}
+                  onOpenImage={setLightboxImage}
+                  onRemove={onRemoveQueued}
+                  onRetry={onRetryQueued}
+                  previewUrl={pendingPreviewUrls[item.id]}
+                />
+              ))}
               {activeAttachments.map((attachment) => (
-                <AttachmentCard attachment={attachment} action={action} key={attachment.id} onDeleteRecoverable={deleteRecoverableAttachment} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} />
+                <AttachmentCard attachment={attachment} action={action} key={attachment.id} onDeleteRecoverable={deleteRecoverableAttachment} onOpenImage={setLightboxImage} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} />
               ))}
               {recoverableAttachments.length ? <p className="m-0 pt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">Recoverable</p> : null}
               {recoverableAttachments.map((attachment) => (
-                <AttachmentCard attachment={attachment} action={action} key={`recoverable-${attachment.id}`} onDeleteRecoverable={deleteRecoverableAttachment} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} recoverable />
+                <AttachmentCard attachment={attachment} action={action} key={`recoverable-${attachment.id}`} onDeleteRecoverable={deleteRecoverableAttachment} onOpenImage={setLightboxImage} onRemove={onRemove} onRestore={onRestore} onSave={onSave} primaryDocumentId={primaryDocumentId} recoverable />
               ))}
               {!isLoading && !pendingItems.length && !activeAttachments.length && !recoverableAttachments.length ? (
                 <p className="m-0 rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">No files attached to this chat.</p>
@@ -428,6 +607,7 @@ export default function ChatAttachmentBar({
           </div>
         </div>
       ) : null}
+      <ImageLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />
     </>
   );
 }

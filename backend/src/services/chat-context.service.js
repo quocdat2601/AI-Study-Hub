@@ -143,6 +143,7 @@ function normalizeComparable(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[đĐ]/g, 'd')
+    .replace(/[đĐ]/g, 'd')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
@@ -158,6 +159,12 @@ const DOCUMENT_REFERENCE_STOP_WORDS = new Set([
 
 const PRIMARY_DOCUMENT_ALIAS_PATTERN = /\b(primary document|main document|primary file|main file)\b|tai lieu chinh|file chinh/iu;
 const CONTEXTUAL_DOCUMENT_PATTERN = /\b(this file|this attachment|current file|current attachment)\b|file nay|tep nay|tai lieu nay|tep dinh kem nay/iu;
+const IMAGE_REFERENCE_PATTERN = /\b(image|photo|screenshot|picture|attached image|latest image|last image|anh|hinh|hinh anh|anh vua gui|hinh toi vua gui|anh toi vua gui)\b/iu;
+const LATEST_IMAGE_REFERENCE_PATTERN = /\b(latest image|last image|attached image|this image|the image|anh vua gui|hinh vua gui|hinh toi vua gui|anh toi vua gui|anh nay|hinh nay)\b/iu;
+const IMAGE_TEXT_QUESTION_PATTERN = /\b(?:what does (?:the )?(?:image|photo|screenshot) say|read (?:the )?(?:text|content)|text in (?:the )?(?:image|photo|screenshot)|written on (?:the )?(?:image|photo|screenshot)|image text|screenshot text|anh viet gi|hinh viet gi|hinh anh viet gi|anh co chu gi|hinh co chu gi|doc noi dung trong anh|doc chu trong anh|chu trong anh|noi dung trong anh|viet gi o tren do)\b/iu;
+const IMAGE_VISUAL_QUESTION_PATTERN = /\b(?:what is in (?:the )?(?:image|photo|screenshot)|describe (?:the )?(?:image|photo|screenshot|layout)|what objects?|object|layout|diagram|chart|graph|visual|picture show|anh co vat gi|hinh co vat gi|trong anh co gi|trong hinh co gi|mo ta bo cuc|bo cuc hinh|bieu do(?:\s+\w+){0,4}\s+the hien gi|so do(?:\s+\w+){0,4}\s+the hien gi)\b/iu;
+const IMAGE_TEXT_VERB_PATTERN = /\b(viet|chu|doc|text|say|read|written|transcribe|ocr)\b/iu;
+const IMAGE_VISUAL_VERB_PATTERN = /\b(vat|object|objects|bo cuc|layout|mo ta|describe|bieu do|chart|graph|diagram|visual)\b/iu;
 
 function getStorageFileName(document) {
   const storagePath = String(document?.cloud_files?.storage_path || '');
@@ -302,6 +309,75 @@ function buildAmbiguousScope(matches, reason = 'ambiguous_document_reference') {
   };
 }
 
+function isImageDocument(document) {
+  const mimeType = String(document?.cloud_files?.mime_type || document?.mime_type || '').toLowerCase();
+  const title = String(document?.title || '');
+  return mimeType.startsWith('image/')
+    || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/iu.test(title)
+    || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/iu.test(getStorageFileName(document));
+}
+
+function classifyImageQuestion(question) {
+  const normalized = normalizeComparable(question);
+  const mentionsImage = IMAGE_REFERENCE_PATTERN.test(normalized);
+  if (
+    IMAGE_TEXT_QUESTION_PATTERN.test(normalized)
+    || (mentionsImage && IMAGE_TEXT_VERB_PATTERN.test(normalized))
+  ) {
+    return 'image_text_question';
+  }
+  if (
+    IMAGE_VISUAL_QUESTION_PATTERN.test(normalized)
+    || (mentionsImage && IMAGE_VISUAL_VERB_PATTERN.test(normalized))
+  ) {
+    return 'image_visual_question';
+  }
+  return null;
+}
+
+function resolveLatestImageScope({ question, documents, primaryDocumentId, focusedDocumentId }) {
+  const normalizedQuestion = normalizeComparable(question);
+  if (!IMAGE_REFERENCE_PATTERN.test(normalizedQuestion)) return null;
+
+  const imageDocuments = (documents || []).filter(isImageDocument);
+  if (!imageDocuments.length) return null;
+
+  const availableIds = new Set((documents || []).map((document) => Number(document.id)));
+  if (focusedDocumentId != null && availableIds.has(Number(focusedDocumentId))) {
+    const focused = (documents || []).find((document) => Number(document.id) === Number(focusedDocumentId));
+    if (isImageDocument(focused)) {
+      return {
+        type: 'explicit_single',
+        documentIds: [Number(focused.id)],
+        matchingDocuments: [],
+        reason: 'focused_image_reference',
+      };
+    }
+  }
+
+  const nonPrimaryImages = imageDocuments.filter((document) => Number(document.id) !== Number(primaryDocumentId));
+  const candidates = nonPrimaryImages.length ? nonPrimaryImages : imageDocuments;
+
+  if (LATEST_IMAGE_REFERENCE_PATTERN.test(normalizedQuestion) || candidates.length === 1) {
+    const latest = candidates.slice().sort((a, b) => (
+      new Date(b.created_at || b.updated_at || 0).getTime()
+      - new Date(a.created_at || a.updated_at || 0).getTime()
+      || Number(b.id) - Number(a.id)
+    ))[0];
+    return {
+      type: 'explicit_single',
+      documentIds: [Number(latest.id)],
+      matchingDocuments: [],
+      reason: 'latest_image_reference',
+    };
+  }
+
+  return buildAmbiguousScope(
+    candidates.map((document) => ({ id: document.id, document })),
+    'ambiguous_image_reference'
+  );
+}
+
 function resolveContextualDocumentScope({ question, documents, primaryDocumentId, focusedDocumentId }) {
   const normalizedQuestion = normalizeComparable(question);
   if (!CONTEXTUAL_DOCUMENT_PATTERN.test(normalizedQuestion)) return null;
@@ -360,14 +436,6 @@ function resolveDocumentScope({
       };
   }
 
-  const contextual = resolveContextualDocumentScope({
-    question,
-    documents: availableDocuments,
-    primaryDocumentId,
-    focusedDocumentId,
-  });
-  if (contextual) return contextual;
-
   const { matches, kind: matchKind } = matchesByPriority(question, availableDocuments);
   if (matches.length > MAX_EXPLICIT_COMPARISON_DOCUMENTS) {
     return buildAmbiguousScope(matches, 'too_many_document_matches');
@@ -391,6 +459,23 @@ function resolveDocumentScope({
       reason: 'named_document',
     };
   }
+
+  const imageContextual = resolveLatestImageScope({
+    question,
+    documents: availableDocuments,
+    primaryDocumentId,
+    focusedDocumentId,
+  });
+  if (imageContextual) return imageContextual;
+
+  const contextual = resolveContextualDocumentScope({
+    question,
+    documents: availableDocuments,
+    primaryDocumentId,
+    focusedDocumentId,
+  });
+  if (contextual) return contextual;
+
   if (intent === 'comparison') {
     return {
       type: 'comparison',
@@ -547,5 +632,8 @@ module.exports = {
   detectResponseConstraints,
   getRecentConversation,
   normalizeComparable,
+  resolveDocumentScope,
+  isImageDocument,
+  classifyImageQuestion,
   stripStudioMetaFromDisplay,
 };

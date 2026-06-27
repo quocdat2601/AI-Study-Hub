@@ -72,6 +72,7 @@ function buildUserMessage(content) {
     id: `user-${Date.now()}`,
     role: "user",
     content,
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -86,6 +87,7 @@ function buildAssistantMessage(data) {
     model: data.model,
     usedRag: Boolean(data.usedRag),
     needsProcessing: Boolean(data.needsProcessing),
+    createdAt: data.createdAt || data.created_at || new Date().toISOString(),
   };
 }
 
@@ -104,6 +106,7 @@ function mapStoredMessage(message) {
     id: message.id || `${message.role}-${message.created_at}`,
     role: message.role,
     content: rawContent,
+    createdAt: message.created_at || message.createdAt || null,
     sources: metadata.sources || [],
     mode: metadata.mode || "stored",
     provider: metadata.provider,

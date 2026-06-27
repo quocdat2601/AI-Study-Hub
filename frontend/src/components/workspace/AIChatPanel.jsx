@@ -92,28 +92,81 @@ function SourceList({ sources }) {
   ));
   if (!validSources.length) return null;
 
+  const { groupedSources, totalChunks } = React.useMemo(() => {
+    const groups = new Map();
+    const seen = new Set();
+    const docOrder = [];
+    let count = 0;
+
+    for (const source of validSources) {
+      const docId = source.documentId;
+      const uniqueId = `${docId}-${source.chunkId ?? source.id ?? source.chunkIndex}`;
+      
+      if (seen.has(uniqueId)) continue;
+      seen.add(uniqueId);
+      count++;
+
+      if (!groups.has(docId)) {
+        groups.set(docId, {
+          documentId: docId,
+          title: source.documentTitle || "Document",
+          chunks: []
+        });
+        docOrder.push(docId);
+      }
+      
+      groups.get(docId).chunks.push(source);
+    }
+
+    const result = docOrder.map(docId => {
+      const group = groups.get(docId);
+      group.chunks.sort((a, b) => Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0));
+      return group;
+    });
+
+    return { groupedSources: result, totalChunks: count };
+  }, [validSources]);
+
+  if (!totalChunks) return null;
+
   return (
     <details className="mt-2 rounded-xl border border-slate-200 bg-white/80 p-2 text-xs text-slate-600">
       <summary className="cursor-pointer list-none font-bold text-slate-600 marker:hidden">
         <span className="mr-1 text-slate-400">+</span>
-        Sources ({validSources.length})
+        Retrieved sources ({totalChunks})
       </summary>
       <div className="mt-2 grid max-h-36 gap-1.5 overflow-y-auto pr-1">
-        {validSources.map((source) => {
-          const pageStart = source.pageStart ?? source.pageNumber;
-          const pageEnd = source.pageEnd ?? source.pageNumber;
-          const pageLabel = pageStart == null
-            ? ""
-            : pageStart === pageEnd ? ` - Page ${pageStart}` : ` - Pages ${pageStart}-${pageEnd}`;
+        {groupedSources.map((group) => {
+          const isSingleDoc = groupedSources.length === 1;
           return (
-            <details className="group rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1.5" key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}>
-              <summary className="cursor-pointer list-none font-semibold text-slate-700 marker:hidden">
-                <span className="mr-1 text-slate-400 group-open:hidden">+</span>
-                <span className="mr-1 hidden text-slate-400 group-open:inline">-</span>
-                {source.documentTitle || "Document"}{pageLabel} - Chunk {Number(source.chunkIndex || 0) + 1}
-                {source.score ? <span className="ml-2 font-medium text-slate-400">{Number(source.score).toFixed(2)}</span> : null}
+            <details key={group.documentId} open={isSingleDoc} className="group/doc rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+              <summary className="cursor-pointer list-none font-semibold text-slate-700 marker:hidden flex items-center">
+                <span className="mr-1 text-slate-400 group-open/doc:hidden">+</span>
+                <span className="mr-1 hidden text-slate-400 group-open/doc:inline">-</span>
+                <span className="truncate" title={group.title}>{group.title}</span>
+                <span className="ml-1 shrink-0 font-normal text-slate-500">— {group.chunks.length} chunk{group.chunks.length !== 1 ? 's' : ''}</span>
               </summary>
-              <p className="mt-1.5 line-clamp-4 select-text whitespace-pre-wrap leading-relaxed text-slate-500">{source.content}</p>
+              <div className="mt-1.5 grid gap-1 border-l-2 border-slate-100 pl-2.5">
+                {group.chunks.map((source) => {
+                  const pageStart = source.pageStart ?? source.pageNumber;
+                  const pageEnd = source.pageEnd ?? source.pageNumber;
+                  const pageLabel = pageStart == null
+                    ? ""
+                    : pageStart === pageEnd ? ` · Page ${pageStart}` : ` · Pages ${pageStart}-${pageEnd}`;
+                  const scoreLabel = source.score ? ` · ${Number(source.score).toFixed(2)}` : "";
+
+                  return (
+                    <details className="group/chunk rounded border border-transparent hover:bg-slate-100 px-1 py-0.5" key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}>
+                      <summary className="cursor-pointer list-none font-medium text-slate-600 marker:hidden">
+                        <span className="mr-1 text-slate-300 group-open/chunk:hidden">+</span>
+                        <span className="mr-1 hidden text-slate-300 group-open/chunk:inline">-</span>
+                        Chunk {Number(source.chunkIndex || 0) + 1}{pageLabel}{scoreLabel}
+                      </summary>
+                      <p className="mt-1 line-clamp-4 select-text whitespace-pre-wrap text-slate-500">{source.content}</p>
+                    </details>
+                  );
+                })}
+              </div>
             </details>
           );
         })}
@@ -138,6 +191,20 @@ function ModelBadge({ message }) {
   return null;
 }
 
+function formatMessageTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return time;
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
+}
+
 function MessageBubble({ message }) {
   async function copyAnswer() {
     try {
@@ -149,10 +216,13 @@ function MessageBubble({ message }) {
 
   if (message.role === "user") {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end">
         <div className="workspace-selectable max-w-[78%] select-text rounded-2xl rounded-tr-md bg-indigo-600 px-3.5 py-2 text-sm leading-relaxed text-white shadow-sm">
           <p className="m-0 select-text whitespace-pre-wrap break-words">{message.content}</p>
         </div>
+        {formatMessageTime(message.createdAt) ? (
+          <span className="mt-0.5 px-1 text-[10px] font-medium text-slate-400">{formatMessageTime(message.createdAt)}</span>
+        ) : null}
       </div>
     );
   }
@@ -167,16 +237,21 @@ function MessageBubble({ message }) {
           <div className="m-0 select-text break-words">{renderMarkdownBody(content, React)}</div>
           <SourceList sources={message.sources} />
         </div>
-        {message.content ? (
-          <button
-            className="mt-1 flex cursor-pointer items-center gap-1 border-0 bg-transparent px-1 py-0.5 text-[11px] font-medium text-slate-400 transition hover:text-slate-600"
-            onClick={copyAnswer}
-            type="button"
-          >
-            <CopyIcon size={12} />
-            Copy
-          </button>
-        ) : null}
+        <div className="mt-1 flex items-center gap-2 px-1">
+          {formatMessageTime(message.createdAt) ? (
+            <span className="text-[10px] font-medium text-slate-400">{formatMessageTime(message.createdAt)}</span>
+          ) : null}
+          {message.content ? (
+            <button
+              className="flex cursor-pointer items-center gap-1 border-0 bg-transparent px-0 py-0.5 text-[11px] font-medium text-slate-400 transition hover:text-slate-600"
+              onClick={copyAnswer}
+              type="button"
+            >
+              <CopyIcon size={12} />
+              Copy
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -320,7 +395,50 @@ function CompactInput({
   onSelectedModelChange,
   question,
   selectedDocument,
+  onDropFiles,
 }) {
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items || !items.length) return;
+
+    const files = [];
+    let hasText = false;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type === 'text/plain') {
+        hasText = true;
+      }
+    }
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          if (['image/png', 'image/jpeg', 'image/tiff', 'image/bmp'].includes(file.type)) {
+            const ext = file.type.split('/')[1];
+            const safeName = `pasted-image-${dateStr}${items.length > 1 ? '-' + i : ''}.${ext}`;
+            const renamedFile = new File([file], safeName, { type: file.type });
+            files.push(renamedFile);
+          }
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      if (!hasText) {
+        e.preventDefault();
+      }
+      if (onDropFiles) {
+        onDropFiles(files);
+      }
+    }
+  };
+
   return (
     <form className="flex-none border-t border-slate-200 bg-white p-2.5" onSubmit={onAsk}>
       <div className="rounded-2xl border border-slate-200 bg-white p-2 transition focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100">
@@ -328,6 +446,7 @@ function CompactInput({
           className="min-h-14 w-full resize-none border-0 bg-transparent px-2 py-1 text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400"
           disabled={!selectedDocument || isAsking || isLoadingMessages || isAttachmentQueueBlocking}
           onChange={(event) => onQuestionChange(event.target.value)}
+          onPaste={handlePaste}
           placeholder={selectedDocument ? "Ask any question..." : "Select a document first"}
           value={question}
         />
@@ -544,6 +663,7 @@ export default function AIChatPanel({
         onSelectedModelChange={onSelectedModelChange}
         question={question}
         selectedDocument={selectedDocument}
+        onDropFiles={onDropFiles}
       />
       {isDropActive ? (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-5 backdrop-blur-[1px]">

@@ -26,6 +26,12 @@ const EXPLICIT_SCOPE_CANDIDATE_LIMIT = 6;
 const GENERAL_SCOPE_CANDIDATE_LIMIT = 12;
 const VECTOR_SCORE_WEIGHT = 0.7;
 const KEYWORD_SCORE_WEIGHT = 0.3;
+const IMAGE_OCR_LIMITATION_ANSWER = 'Tôi chưa đọc được nội dung chữ từ hình ảnh này. Hiện hệ thống chỉ hỗ trợ OCR văn bản trong ảnh và chưa thể phân tích vật thể hoặc nội dung hình ảnh không có chữ.';
+
+function logImageOcrDebug(label, payload = {}) {
+  if (process.env.NODE_ENV === 'production') return;
+  console.info(`[image-ocr-debug] ${label}`, payload);
+}
 
 function normalizeNumericId(value, fieldName) {
   const numericValue = Number(value);
@@ -62,6 +68,10 @@ function normalizeAnswerMode(mode) {
 
 function getMimeType(doc) {
   return doc.cloud_files?.mime_type || '';
+}
+
+function isImageDocument(doc) {
+  return chatContextService.isImageDocument(doc);
 }
 
 function estimatePromptTokens({
@@ -377,6 +387,71 @@ function buildAmbiguousDocumentAnswer(question, matches = []) {
     : `I am not sure which document you mean. Please ask using one specific document name:\n${titles}`;
 }
 
+function buildImageOcrLimitationAnswer(question) {
+  const normalized = chatContextService.normalizeComparable(question);
+  const likelyVietnamese = /\b(anh|hinh|hinh anh|vua gui|trong)\b/iu.test(normalized);
+  return likelyVietnamese
+    ? IMAGE_OCR_LIMITATION_ANSWER
+    : 'I could not read text from this image yet. This system currently supports OCR text in images, but it cannot analyze objects, layout, diagrams, screenshots, or non-text visual content.';
+}
+
+function buildImageVisualLimitationAnswer(question) {
+  const normalized = chatContextService.normalizeComparable(question);
+  const likelyVietnamese = /\b(anh|hinh|bo cuc|bieu do|vat|trong)\b/iu.test(normalized);
+  return likelyVietnamese
+    ? 'Hiện hệ thống chưa hỗ trợ phân tích trực quan hình ảnh như vật thể, bố cục, biểu đồ hoặc nội dung không có chữ. Mình chỉ có thể trả lời dựa trên văn bản OCR đọc được trong ảnh.'
+    : 'Visual image understanding is not implemented yet. I can only answer from OCR text extracted from the image, not objects, layout, charts, diagrams, or non-text visual content.';
+}
+
+async function saveSystemAskResponse({
+  answer,
+  answerMode,
+  autoProcessed = false,
+  compatibilityDocument,
+  documents,
+  excludedAttachments,
+  model = null,
+  needsProcessing = false,
+  processingError = null,
+  provider = 'system',
+  requestContext,
+  session,
+  userMessage,
+}) {
+  const assistantMetadata = buildAssistantMetadata({
+    provider,
+    model,
+    mode: answerMode,
+    usedRag: false,
+    needsProcessing,
+    processingError,
+    requestContext,
+  });
+  const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer, assistantMetadata);
+  await safeTouchSession(session.id);
+  return {
+    systemResponse: buildScopeResponse({
+      answer,
+      sources: [],
+      documents,
+      compatibilityDocument,
+      session,
+      answerMode,
+      usedRag: false,
+      autoProcessed,
+      provider,
+      model,
+      usage: null,
+      userMessage,
+      assistantMessage,
+      excludedAttachments,
+      needsProcessing,
+      processingError,
+      comparisonMetadata: null,
+    }),
+  };
+}
+
 function filterDocumentsByIds(documents, documentIds) {
   const allowedIds = new Set((documentIds || []).map(Number).filter(Number.isInteger));
   if (!allowedIds.size) return [];
@@ -560,21 +635,6 @@ async function retrieveChunksForQuestion({
         });
       const vectorChunks = normalizeRetrievedChunksToAuthorizedScope(vectorRows, chunks);
 
-  if (embeddingsAvailable) {
-    try {
-      const queryEmbedding = await embeddingService.embedQuery(question);
-      const vectorRows = docIds.length === 1
-        ? await documentChunkModel.matchByEmbedding({
-          docId: docIds[0],
-          embedding: queryEmbedding.embedding,
-          limit: RAG_CONTEXT_LIMIT,
-        })
-        : await documentChunkModel.matchByEmbeddingAcrossDocuments({
-          docIds,
-          embedding: queryEmbedding.embedding,
-          limit: RAG_CONTEXT_LIMIT,
-        });
-      const vectorChunks = normalizeRetrievedChunksToAuthorizedScope(vectorRows, chunks);
 
       if (vectorChunks.length) {
         return mergeHybridChunks({
@@ -749,6 +809,8 @@ async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
     inaccessible: 0,
     unavailable: 0,
     notReady: 0,
+    notReadyIds: [],
+    notReadyDocuments: [],
   };
 
   for (const link of links) {
@@ -771,6 +833,8 @@ async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
     }
     if (!isDocumentReadyForRag(document)) {
       excluded.notReady += 1;
+      excluded.notReadyIds.push(document.id);
+      excluded.notReadyDocuments.push(document);
       continue;
     }
     documents.push(document);
@@ -779,18 +843,18 @@ async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
   return { session, documents, excluded };
 }
 
-async function resolveAskScope({ id, sessionId, userId }) {
+async function resolveAskScope({ primaryDocumentId, sessionId, userId }) {
   if (sessionId !== undefined && sessionId !== null) {
     const resolved = await resolveAuthorizedSessionDocuments({ sessionId, userId });
     return { ...resolved, compatibilityDocument: null };
   }
 
-  const doc = await getProcessableDocument({ id, userId });
+  const doc = await getProcessableDocument({ id: primaryDocumentId, userId });
   const session = await chatService.getOrCreateSession({ userId, docId: doc.id });
   return {
     session,
     documents: [doc],
-    excluded: { inaccessible: 0, unavailable: 0, notReady: 0 },
+    excluded: { inaccessible: 0, unavailable: 0, notReady: 0, notReadyIds: [] },
     compatibilityDocument: doc,
   };
 }
@@ -871,6 +935,12 @@ function buildScopeResponse({
   needsProcessing = false,
   processingError = null,
 }) {
+  const safeExcludedAttachments = excludedAttachments
+    ? {
+      ...excludedAttachments,
+      notReadyDocuments: undefined,
+    }
+    : excludedAttachments;
   return {
     answer,
     sources,
@@ -887,7 +957,7 @@ function buildScopeResponse({
     usage,
     needsProcessing,
     processingError,
-    excludedAttachments,
+    excludedAttachments: safeExcludedAttachments,
     comparison: comparisonMetadata,
     messages: {
       user: userMessage,
@@ -896,7 +966,7 @@ function buildScopeResponse({
   };
 }
 
-async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mode, model, sendEvent }) {
+async function prepareAsk({ primaryDocumentId, sessionId, userId, question, displayQuestion, mode, model, focusedDocumentId, sendEvent }) {
   const cleanedQuestion = cleanQuestion(question);
   const storedUserContent = resolveStoredUserMessageContent({ question: cleanedQuestion, displayQuestion });
   const answerMode = normalizeAnswerMode(mode);
@@ -904,8 +974,14 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
   const selectedModel = selectedProviderModel.model;
   const selectedProvider = selectedProviderModel.provider;
   sendEvent?.('status', { message: sessionId ? 'Checking session attachments...' : 'Checking document...' });
-  const scope = await resolveAskScope({ id, sessionId, userId });
+  const scope = await resolveAskScope({ primaryDocumentId, sessionId, userId });
   const { session, compatibilityDocument, excluded } = scope;
+  const allScopeDocuments = [
+    ...scope.documents,
+    ...(excluded?.notReadyDocuments || []),
+  ].filter((document, index, documents) => (
+    documents.findIndex((candidate) => Number(candidate.id) === Number(document.id)) === index
+  ));
   const storedHistory = await chatModel.getRecentMessages(
     session.id,
     chatContextService.MAX_HISTORY_MESSAGES
@@ -913,11 +989,11 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
   const requestContext = chatContextService.analyzeRequest({
     question: cleanedQuestion,
     history: storedHistory,
-    documents: scope.documents,
+    documents: allScopeDocuments,
   });
   const documentScope = chatContextService.resolveDocumentScope({
     question: requestContext.retrievalQuery,
-    documents: scope.documents,
+    documents: allScopeDocuments,
     primaryDocumentId: session.primary_document_id || compatibilityDocument?.id || scope.documents[0]?.id,
     focusedDocumentId,
     intent: requestContext.intent,
@@ -930,6 +1006,14 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
     documentScope.documentIds = requestContext.comparedDocumentIds;
     documentScope.reason = 'inherited_comparison_scope';
   }
+  const imageQuestionType = chatContextService.classifyImageQuestion(cleanedQuestion);
+  logImageOcrDebug('scope', {
+    imageQuestionType,
+    documentScopeType: documentScope.type,
+    documentScopeReason: documentScope.reason,
+    documentIds: documentScope.documentIds,
+    focusedDocumentId: focusedDocumentId == null ? null : Number(focusedDocumentId),
+  });
   requestContext.documentScope = documentScope;
   if (requestContext.intent === 'comparison') {
     requestContext.comparedDocumentIds = documentScope.documentIds;
@@ -960,6 +1044,56 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
     storedUserContent,
     userMetadata
   );
+
+  const notReadyTargets = filterDocumentsByIds(excluded?.notReadyDocuments || [], documentScope.documentIds);
+  const targetedImage = documentScope.type === 'explicit_single'
+    ? notReadyTargets.find(isImageDocument)
+    : null;
+  if (targetedImage) {
+    const isProcessing = targetedImage.extraction_status === 'pending'
+      || targetedImage.extraction_status === 'processing';
+    const answer = isProcessing
+      ? 'Tài liệu này hiện vẫn đang được xử lý hoặc chưa thể phân tích lúc này. Vui lòng thử lại sau vài giây.'
+      : buildImageOcrLimitationAnswer(cleanedQuestion);
+    const processingError = isProcessing
+      ? 'Document is still processing'
+      : (targetedImage.extraction_error || 'No readable text could be extracted from this image');
+    logImageOcrDebug('not-ready-image', {
+      imageQuestionType,
+      documentId: Number(targetedImage.id),
+      extractionStatus: targetedImage.extraction_status || null,
+      isProcessing,
+      processingError,
+    });
+    return saveSystemAskResponse({
+      answer,
+      answerMode,
+      compatibilityDocument,
+      documents: [targetedImage],
+      excludedAttachments: excluded,
+      needsProcessing: isProcessing,
+      processingError,
+      requestContext,
+      session,
+      userMessage,
+    });
+  }
+
+  if (focusedDocumentId && excluded?.notReadyIds?.includes(Number(focusedDocumentId))) {
+    const answer = 'Tài liệu này hiện vẫn đang được xử lý hoặc chưa thể phân tích lúc này. Vui lòng thử lại sau vài giây.';
+    return saveSystemAskResponse({
+      answer,
+      answerMode,
+      compatibilityDocument,
+      documents: scope.documents,
+      excludedAttachments: excluded,
+      needsProcessing: true,
+      processingError: 'Document is still processing',
+      requestContext,
+      session,
+      userMessage,
+    });
+  }
 
   if (documentScope.type === 'ambiguous') {
     const answer = buildAmbiguousDocumentAnswer(cleanedQuestion, documentScope.matchingDocuments);
@@ -1042,6 +1176,35 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
   const documentsForRetrievalScope = documentScope.type === 'general'
     ? scope.documents
     : filterDocumentsByIds(scope.documents, documentScope.documentIds);
+  const readyTargetedImage = documentScope.type === 'explicit_single'
+    ? documentsForRetrievalScope.find(isImageDocument)
+    : null;
+  if (readyTargetedImage && imageQuestionType === 'image_visual_question') {
+    logImageOcrDebug('visual-limitation', {
+      imageQuestionType,
+      documentId: Number(readyTargetedImage.id),
+      extractionStatus: readyTargetedImage.extraction_status || null,
+    });
+    return saveSystemAskResponse({
+      answer: buildImageVisualLimitationAnswer(cleanedQuestion),
+      answerMode,
+      compatibilityDocument,
+      documents: [readyTargetedImage],
+      excludedAttachments: excluded,
+      processingError: 'Visual image understanding is not implemented',
+      requestContext,
+      session,
+      userMessage,
+    });
+  }
+  if (readyTargetedImage && imageQuestionType === 'image_text_question') {
+    requestContext.imageQuestionType = imageQuestionType;
+    logImageOcrDebug('ready-image-text', {
+      imageQuestionType,
+      documentId: Number(readyTargetedImage.id),
+      extractionStatus: readyTargetedImage.extraction_status || null,
+    });
+  }
   const overviewIntent = detectOverviewIntent({
     question: cleanedQuestion,
     requestContext,
@@ -1292,6 +1455,15 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
   if (!relevantChunks.length) {
     throw createError(400, 'No ownership-valid document context is available for this question');
   }
+  if (requestContext.imageQuestionType) {
+    logImageOcrDebug('selected-context', {
+      imageQuestionType: requestContext.imageQuestionType,
+      targetedDocumentId: selectedScopeDocumentIds.length === 1 ? Number(selectedScopeDocumentIds[0]) : null,
+      selectedChunkIds: relevantChunks.map((chunk) => chunk.id),
+      sourceDocumentIds: [...new Set(sources.map((source) => Number(source.documentId)))],
+      hasOcrTextContext: relevantChunks.some((chunk) => String(chunk.promptContent || chunk.content || '').trim().length > 0),
+    });
+  }
   await documentModel.touchSessionDocuments(
     [...new Set(sources.map((source) => Number(source.documentId)).filter(Number.isInteger))]
   );
@@ -1352,8 +1524,8 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
   };
 }
 
-async function executeAsk({ id, sessionId, userId, question, displayQuestion, mode, model }) {
-  const prepared = await prepareAsk({ id, sessionId, userId, question, displayQuestion, mode, model });
+async function executeAsk({ primaryDocumentId, sessionId, userId, question, displayQuestion, mode, model, focusedDocumentId }) {
+  const prepared = await prepareAsk({ primaryDocumentId, sessionId, userId, question, displayQuestion, mode, model, focusedDocumentId });
   if (prepared.systemResponse) {
     return prepared.systemResponse;
   }
@@ -1394,6 +1566,7 @@ async function executeAsk({ id, sessionId, userId, question, displayQuestion, mo
       retrievalQuery: requestContext.retrievalQuery,
       overviewContext,
       overviewIntent,
+      imageQuestionType: requestContext.imageQuestionType,
     });
 
     await aiUsageService.logGeminiRequest({
@@ -1459,8 +1632,8 @@ async function executeAsk({ id, sessionId, userId, question, displayQuestion, mo
   });
 }
 
-async function executeAskStream({ id, sessionId, userId, question, displayQuestion, mode, model, sendEvent }) {
-  const prepared = await prepareAsk({ id, sessionId, userId, question, displayQuestion, mode, model, sendEvent });
+async function executeAskStream({ primaryDocumentId, sessionId, userId, question, displayQuestion, mode, model, focusedDocumentId, sendEvent }) {
+  const prepared = await prepareAsk({ primaryDocumentId, sessionId, userId, question, displayQuestion, mode, model, focusedDocumentId, sendEvent });
   if (prepared.systemResponse) {
     sendEvent('token', { text: prepared.systemResponse.answer });
     sendEvent('done', prepared.systemResponse);
@@ -1506,6 +1679,7 @@ async function executeAskStream({ id, sessionId, userId, question, displayQuesti
       retrievalQuery: requestContext.retrievalQuery,
       overviewContext,
       overviewIntent,
+      imageQuestionType: requestContext.imageQuestionType,
     })) {
       if (event.type === 'token' && event.text) {
         answer += event.text;
@@ -1577,19 +1751,19 @@ async function executeAskStream({ id, sessionId, userId, question, displayQuesti
 }
 
 async function askDocument(args) {
-  return executeAsk(args);
+  return executeAsk({ ...args, primaryDocumentId: args.id });
 }
 
 async function askSession(args) {
-  return executeAsk(args);
+  return executeAsk({ ...args, primaryDocumentId: null });
 }
 
 async function askDocumentStream(args) {
-  return executeAskStream(args);
+  return executeAskStream({ ...args, primaryDocumentId: args.id });
 }
 
 async function askSessionStream(args) {
-  return executeAskStream(args);
+  return executeAskStream({ ...args, primaryDocumentId: null });
 }
 
 async function retryDocumentOverview({ id, userId }) {

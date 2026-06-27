@@ -3,6 +3,7 @@ const test = require('node:test');
 
 process.env.SUPABASE_URL ||= 'http://127.0.0.1:54321';
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-role-key';
+process.env.GEMINI_API_KEY ||= 'test-api-key';
 
 const aiService = require('../src/services/ai.service');
 const aiProviderService = require('../src/services/ai-provider.service');
@@ -76,7 +77,8 @@ function setupAskMocks(t, {
     return message;
   });
   t.mock.method(chatModel, 'touchSession', async () => ({}));
-  t.mock.method(documentChunkModel, 'findByDocumentIds', async () => chunks);
+  t.mock.method(documentChunkModel, 'findByDocumentIds', async () => chunks || []);
+  t.mock.method(documentChunkModel, 'findByDocumentId', async (id) => (chunks || []).filter(c => Number(c.doc_id) === Number(id)));
   t.mock.method(documentModel, 'touchSessionDocuments', async () => []);
   t.mock.method(aiUsageService, 'resolveModel', () => ({ provider: 'gemini', model: 'gemini-2.5-flash' }));
   t.mock.method(aiUsageService, 'assertQuota', onAssertQuota);

@@ -85,7 +85,8 @@ function normalizePreviewText(text) {
 function getDocumentFileType(doc) {
   const mimeType = doc.cloud_files?.mime_type || '';
   if (mimeType.includes('pdf')) return 'PDF';
-  if (mimeType.includes('word')) return 'DOC';
+  if (mimeType.includes('word')) return 'DOCX';
+  if (mimeType === 'text/plain') return 'TXT';
   if (mimeType.startsWith('image/')) return 'IMAGE';
   return 'DOC';
 }
@@ -156,6 +157,15 @@ async function addThumbnailUrls(documents) {
     }
 
     if (!thumbnail?.path || thumbnail.status !== 'ready') {
+      const isImage = String(doc.cloud_files?.mime_type || '').startsWith('image/');
+      const storagePath = doc.cloud_files?.storage_path;
+      if (isImage && storagePath) {
+        try {
+          return { ...doc, thumbnailUrl: await supabaseService.getSignedUrl(storagePath) };
+        } catch (error) {
+          console.warn(`Image preview URL failed for document ${doc.id}:`, error.message);
+        }
+      }
       return { ...doc, thumbnailUrl: null };
     }
 
