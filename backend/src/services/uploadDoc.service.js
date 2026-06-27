@@ -164,7 +164,7 @@ async function upload({
       await afterDocumentCreated(document);
     }
 
-    await documentThumbnailService.generateAndSaveThumbnail({
+    await documentThumbnailService.ensureThumbnailForDocument({
       document,
       buffer: file.buffer,
       mimeType: file.mimetype,

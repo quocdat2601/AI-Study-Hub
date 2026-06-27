@@ -1,4 +1,5 @@
 const publicService = require('../services/public.service');
+const snapshotService = require('../services/chat-snapshot.service');
 
 async function getTrendingDocuments(req, res, next) {
   try {
@@ -12,6 +13,15 @@ async function getTrendingDocuments(req, res, next) {
 async function getPublicChatShare(req, res, next) {
   try {
     res.json(await publicService.getPublicChatShare(req.params.token));
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getPublicChatSnapshot(req, res, next) {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await snapshotService.getPublicPreview(req.params.token));
   } catch (error) {
     next(error);
   }
@@ -78,6 +88,7 @@ async function createDocumentComment(req, res, next) {
 module.exports = {
   getTrendingDocuments,
   getPublicChatShare,
+  getPublicChatSnapshot,
   searchPublicDocuments,
   getPublicDocumentById,
   getPublicDocumentSignedUrl,

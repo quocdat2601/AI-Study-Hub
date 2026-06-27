@@ -55,3 +55,16 @@ npm run lifecycle:cleanup -- --batch-size=10 --max-batches=1
 ```
 
 The job is safe to overlap: database row locks, claim tokens, leases, and the storage cleanup queue prevent duplicate purges. Per-document failures remain retryable; only a job-wide failure exits nonzero.
+
+## Immutable Shared Chats
+
+Immutable shared chats require migration `022_immutable_chat_snapshots.sql`. Keep both backend `CHAT_SNAPSHOT_SHARING_ENABLED=false` and frontend `VITE_CHAT_SNAPSHOT_SHARING_ENABLED=false` until the migration, hash audit, capture/import smoke tests, and lifecycle dry run pass.
+
+Audit legacy files before enabling sharing:
+
+```bash
+npm run content-hashes:backfill -- --dry-run
+npm run content-hashes:backfill -- --limit=50
+```
+
+The migration revokes legacy mutable public links. A new Share action always captures a point-in-time snapshot and creates a new 30-day token.

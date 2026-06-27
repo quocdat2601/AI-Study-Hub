@@ -11,6 +11,9 @@ export const dashboardSidebarItems = [
   { id: "study-resources", icon: "compass", label: "Explore Docs", labelKey: "nav.studyResources", to: "/public-documents" },
   { id: "community", icon: "community", label: "Community", labelKey: "nav.community", to: "/community" },
   { id: "ai-workspace", icon: "chat", label: "AI Workspace", labelKey: "nav.aiWorkspace", to: "/workspace" },
+  ...(String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true" ? [
+    { id: "shared", icon: "compass", label: "Shared", to: "/shared" },
+  ] : []),
   { id: "analytics", icon: "analytics", label: "Analytics", labelKey: "nav.analytics", to: "/dashboard" },
 ];
 

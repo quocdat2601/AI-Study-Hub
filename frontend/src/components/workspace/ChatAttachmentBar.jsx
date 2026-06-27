@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { UPLOAD_DOC_ACCEPT_ATTR } from "../../services/uploadDocApi.js";
+import { UPLOAD_DOC_ACCEPT_ATTR, getUploadDocFileLabel } from "../../services/uploadDocApi.js";
 import { getRecoverableAttachmentPresentation } from "../../utils/chatAttachments.js";
 import { BookmarkIcon, ClockIcon, FileTextIcon, PlusIcon, RefreshIcon, UploadIcon, XIcon } from "./WorkspaceIcons.jsx";
 
-const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENTS = 20;
 
 function isExpired(document) {
   return document?.lifecycleStatus === "expired"
@@ -119,19 +119,50 @@ function AttachmentCard({ attachment, action, onRemove, onRestore, onSave, prima
   );
 }
 
+function PendingAttachmentCard({ item, onRemove, onRetry }) {
+  const busy = ["queued", "uploading", "processing"].includes(item.status);
+  const failed = item.status === "failed";
+  const label = item.status === "queued"
+    ? "Queued"
+    : item.status === "uploading"
+      ? `${item.progress || 0}% uploaded`
+      : item.status === "processing"
+        ? "Processing"
+        : failed ? "Failed - not included in your next question" : "Ready";
+  return (
+    <div className={`flex min-w-[220px] max-w-[300px] items-center gap-2 rounded-lg border px-2.5 py-2 ${failed ? "border-red-200 bg-red-50/70" : "border-indigo-100 bg-indigo-50/60"}`}>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white text-indigo-600"><FileTextIcon size={14} /></span>
+      <div className="min-w-0 flex-1">
+        <p className="m-0 truncate text-[11px] font-bold text-slate-800" title={item.file.name}>{item.file.name}</p>
+        <p className={failed ? "m-0.5 text-[10px] font-semibold text-red-700" : "m-0.5 text-[10px] font-semibold text-slate-500"}>{getUploadDocFileLabel(item.file)} - {label}</p>
+        {busy ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-white"><span className="block h-full bg-indigo-600 transition-[width]" style={{ width: `${Math.max(5, item.progress || 0)}%` }} /></div> : null}
+        {failed && item.error ? <p className="m-0.5 truncate text-[10px] text-red-600" title={item.error}>{item.error}</p> : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        {failed ? <button className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[10px] font-bold text-indigo-600 hover:bg-white" onClick={() => onRetry(item.id)} type="button"><RefreshIcon size={12} />Retry</button> : null}
+        <button aria-label={`Remove ${item.file.name}`} className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-red-600" onClick={() => onRemove(item.id)} title="Remove file" type="button"><XIcon size={13} /></button>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatAttachmentBar({
   action,
   activeAttachments = [],
   availableDocuments = [],
+  dragDropAttachmentsEnabled = false,
   error,
   isLoading,
   onAttach,
   onCancelUpload,
   onRemove,
+  onRemoveQueued,
   onRestore,
+  onRetryQueued,
   onSave,
   onUpload,
   primaryDocumentId,
+  pendingItems = [],
   recoverableAttachments = [],
   sessionId,
   uploadProgress,
@@ -153,7 +184,8 @@ export default function ChatAttachmentBar({
       && (!term || String(document.title || "").toLowerCase().includes(term))
     ));
   }, [attachedIds, availableDocuments, search]);
-  const atLimit = activeAttachments.length >= MAX_ATTACHMENTS;
+  const pendingReservationCount = pendingItems.filter((item) => ["queued", "uploading", "processing"].includes(item.status)).length;
+  const atLimit = activeAttachments.length + pendingReservationCount >= MAX_ATTACHMENTS;
   const isUploading = action?.type === "upload";
   const isBusy = Boolean(action);
 
@@ -167,10 +199,10 @@ export default function ChatAttachmentBar({
   }
 
   async function chooseUpload(event) {
-    const file = event.target.files?.[0];
+    const files = dragDropAttachmentsEnabled ? Array.from(event.target.files || []) : [event.target.files?.[0]].filter(Boolean);
     event.target.value = "";
-    if (!file) return;
-    if (await onUpload(file)) setIsOpen(false);
+    if (!files.length) return;
+    if (await onUpload(dragDropAttachmentsEnabled ? files : files[0])) setIsOpen(false);
   }
 
   return (
@@ -178,13 +210,13 @@ export default function ChatAttachmentBar({
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-[11px] font-bold text-slate-600">Files</span>
-          <span className={`text-[10px] font-bold ${atLimit ? "text-amber-600" : "text-slate-400"}`}>{activeAttachments.length}/{MAX_ATTACHMENTS}</span>
+          <span className={`text-[10px] font-bold ${atLimit ? "text-amber-600" : "text-slate-400"}`}>{activeAttachments.length + pendingReservationCount}/{MAX_ATTACHMENTS}</span>
         </div>
         <button
           className="flex h-7 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 text-[11px] font-bold text-indigo-600 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45"
           disabled={!sessionId || atLimit || isBusy || isLoading}
           onClick={() => setIsOpen((current) => !current)}
-          title={atLimit ? "This chat already has 10 active files" : "Add a file to this chat"}
+          title={atLimit ? "This chat already has 20 active documents" : "Add a file to this chat"}
           type="button"
         >
           <PlusIcon size={12} />
@@ -194,8 +226,13 @@ export default function ChatAttachmentBar({
 
       {isLoading ? (
         <div className="mt-2 h-11 animate-pulse rounded-lg bg-slate-100" />
-      ) : activeAttachments.length || recoverableAttachments.length ? (
+      ) : activeAttachments.length || recoverableAttachments.length || pendingItems.length ? (
         <div className="mt-2 space-y-2">
+          {pendingItems.length ? (
+            <div className="workspace-scrollbar flex gap-2 overflow-x-auto pb-1">
+              {pendingItems.map((item) => <PendingAttachmentCard item={item} key={item.id} onRemove={onRemoveQueued} onRetry={onRetryQueued} />)}
+            </div>
+          ) : null}
           {activeAttachments.length ? (
             <div className="workspace-scrollbar flex gap-2 overflow-x-auto pb-1">
               {activeAttachments.map((attachment) => (
@@ -245,7 +282,7 @@ export default function ChatAttachmentBar({
               <UploadIcon size={12} />
               Upload new
             </button>
-            <input accept={UPLOAD_DOC_ACCEPT_ATTR} className="hidden" onChange={chooseUpload} ref={fileInputRef} type="file" />
+            <input accept={UPLOAD_DOC_ACCEPT_ATTR} className="hidden" multiple={dragDropAttachmentsEnabled} onChange={chooseUpload} ref={fileInputRef} type="file" />
           </div>
           <div className="workspace-scrollbar max-h-52 overflow-y-auto p-1.5">
             {choices.length ? choices.map((document) => (

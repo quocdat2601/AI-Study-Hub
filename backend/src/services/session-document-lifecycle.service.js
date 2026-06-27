@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const supabase = require('../config/supabase');
 const supabaseService = require('./supabase.service');
 const activityService = require('./activity.service');
+const snapshotService = require('./chat-snapshot.service');
 
 const DEFAULT_BATCH_SIZE = 50;
 const DEFAULT_MAX_BATCHES = 10;
@@ -118,7 +119,39 @@ async function claimStorageBatch(batchSize, claimToken, leaseSeconds) {
 async function storagePathIsReferenced(item) {
   const table = item.object_kind === 'thumbnail' ? 'documents' : 'cloud_files';
   const column = item.object_kind === 'thumbnail' ? 'thumbnail_path' : 'storage_path';
-  return (await countRows(table, (query) => query.eq(column, item.storage_path))) > 0;
+  const [liveReferences, snapshotReferences] = await Promise.all([
+    countRows(table, (query) => query.eq(column, item.storage_path)),
+    countRows('shared_file_versions', (query) => query.eq('storage_path', item.storage_path)),
+  ]);
+  return liveReferences + snapshotReferences > 0;
+}
+
+async function purgeSnapshots(batchSize, maxBatches, leaseSeconds, summary) {
+  summary.snapshotEligibilityMarked = await snapshotService.markCleanupEligibility();
+  for (let index = 0; index < maxBatches; index += 1) {
+    const claimToken = crypto.randomUUID();
+    const { data, error } = await supabase.rpc('claim_chat_snapshots_for_purge', {
+      p_batch_size: batchSize,
+      p_claim_token: claimToken,
+      p_lease_seconds: leaseSeconds,
+    });
+    if (error) throw error;
+    const claimed = data || [];
+    summary.snapshotsClaimed += claimed.length;
+    for (const snapshot of claimed) {
+      const { data: finalized, error: finalizeError } = await supabase.rpc('finalize_chat_snapshot_purge', {
+        p_snapshot_id: snapshot.snapshot_id,
+        p_claim_token: claimToken,
+      });
+      if (finalizeError) {
+        summary.snapshotPurgeFailed += 1;
+        console.error(`[session-lifecycle] snapshot ${snapshot.snapshot_id} purge failed:`, finalizeError.message);
+      } else if (finalized) {
+        summary.snapshotsPurged += 1;
+      }
+    }
+    if (claimed.length < batchSize) break;
+  }
 }
 
 async function completeStorageItem(item, claimToken, metadata = {}) {
@@ -184,8 +217,16 @@ async function runLifecycleCleanup(options = {}) {
     storageSkippedReferenced: 0,
     storageRetried: 0,
     storageFailed: 0,
+    snapshotEligibilityMarked: 0,
+    snapshotsClaimed: 0,
+    snapshotsPurged: 0,
+    snapshotPurgeFailed: 0,
     ranAt: new Date().toISOString(),
   };
+
+  if (snapshotService.featureEnabled()) {
+    await purgeSnapshots(batchSize, maxBatches, leaseSeconds, summary);
+  }
 
   for (let index = 0; index < maxBatches; index += 1) {
     const rows = await expireBatch(batchSize);

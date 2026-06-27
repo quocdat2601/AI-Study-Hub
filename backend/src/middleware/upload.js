@@ -7,6 +7,7 @@ const allowedMimeTypes = [
   'image/jpeg',
   'image/tiff',
   'image/bmp',
+  'text/plain',
 ];
 
 const upload = multer({
@@ -14,7 +15,7 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!allowedMimeTypes.includes(file.mimetype)) {
-      return cb(new Error('Only PDF, DOCX, PNG, JPEG, TIFF, and BMP files are accepted'));
+      return cb(new Error('Only PDF, DOCX, TXT, PNG, JPEG, TIFF, and BMP files are accepted'));
     }
     cb(null, true);
   },

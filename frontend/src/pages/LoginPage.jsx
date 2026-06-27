@@ -2,8 +2,27 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
+const POST_LOGIN_REDIRECT_KEY = "aiStudyHub.postLoginRedirect";
+
 function messageFromError(err) {
   return err.response?.data?.error || err.message || "Something went wrong. Please try again.";
+}
+
+function readStoredRedirect() {
+  try {
+    const value = window.sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+    return value && value.startsWith("/") ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function clearStoredRedirect() {
+  try {
+    window.sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+  } catch {
+    // Session storage can be unavailable in restricted browser modes.
+  }
 }
 
 export default function LoginPage() {
@@ -39,8 +58,16 @@ export default function LoginPage() {
         hash: location.state.from.hash || "",
       };
     }
+    const storedRedirect = readStoredRedirect();
+    if (storedRedirect) return storedRedirect;
     return user?.role === "admin" ? "/admin" : "/dashboard";
   }, [location.state, user]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      clearStoredRedirect();
+    }
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (
@@ -103,10 +130,12 @@ export default function LoginPage() {
           switchMode("login");
           setSuccess("Account created. Check your email to confirm your account, then log in.");
         } else {
+          clearStoredRedirect();
           navigate(destination, { replace: true });
         }
       } else {
         await login({ email: form.email, password: form.password });
+        clearStoredRedirect();
         navigate(destination, { replace: true });
       }
     } catch (err) {

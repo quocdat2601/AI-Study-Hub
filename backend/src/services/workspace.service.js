@@ -55,7 +55,7 @@ async function getBootstrap({ userId, search, subjectId }) {
 async function getDocumentContext({ userId, docId }) {
   const id = parseDocId(docId);
 
-  const document = await documentService.getDocumentById({ id, userId });
+  const document = await documentService.getWorkspaceDocumentById({ id, userId });
   const session = await chatService.getOrCreateSession({ userId, docId: id });
 
   const [signed, chat] = await Promise.all([
@@ -79,7 +79,7 @@ async function getDocumentContext({ userId, docId }) {
 
 async function getDocumentPdf({ userId, docId }) {
   const id = parseDocId(docId);
-  const document = await documentService.getDocumentById({ id, userId });
+  const document = await documentService.getWorkspaceDocumentById({ id, userId });
   const storagePath = document.cloud_files?.storage_path;
 
   if (!storagePath) {

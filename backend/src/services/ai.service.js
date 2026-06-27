@@ -76,10 +76,12 @@ async function extractTextFromStorage(doc) {
   }
 
   const canExtractFromStorage = mimeType === documentTextService.MIME_TYPES.PDF
+    || mimeType === documentTextService.MIME_TYPES.DOCX
+    || mimeType === documentTextService.MIME_TYPES.TXT
     || documentTextService.IMAGE_MIME_TYPES.has(mimeType);
 
   if (!canExtractFromStorage) {
-    throw createError(400, 'Only PDF and image OCR processing is supported in this temporary workspace');
+    throw createError(400, 'This document type cannot be processed for AI');
   }
 
   const buffer = await supabaseService.downloadFile(storagePath);
@@ -195,6 +197,41 @@ function getChunkKey(chunk) {
   return chunk.id == null
     ? `doc:${chunk.doc_id || chunk.metadata?.documentId}:index:${chunk.chunk_index}`
     : `id:${chunk.id}`;
+}
+
+function buildAuthorizedChunkIndex(chunks) {
+  const byKey = new Map();
+  for (const chunk of chunks || []) {
+    byKey.set(getChunkKey(chunk), chunk);
+    const docId = Number(chunk.doc_id || chunk.metadata?.documentId);
+    const chunkIndex = Number(chunk.chunk_index);
+    if (Number.isInteger(docId) && Number.isInteger(chunkIndex)) {
+      byKey.set(`doc:${docId}:index:${chunkIndex}`, chunk);
+    }
+  }
+  return byKey;
+}
+
+function normalizeRetrievedChunksToAuthorizedScope(retrievedChunks, authorizedChunks) {
+  const authorizedByKey = buildAuthorizedChunkIndex(authorizedChunks);
+  return (retrievedChunks || []).map((chunk) => {
+    const authorized = authorizedByKey.get(getChunkKey(chunk))
+      || authorizedByKey.get(`doc:${Number(chunk.doc_id)}:index:${Number(chunk.chunk_index)}`);
+    if (!authorized) return chunk;
+
+    return {
+      ...authorized,
+      score: chunk.score ?? authorized.score,
+      similarity: chunk.similarity ?? authorized.similarity,
+      vectorScore: chunk.vectorScore ?? chunk.similarity ?? authorized.vectorScore,
+      keywordScore: authorized.keywordScore ?? chunk.keywordScore,
+      metadata: {
+        ...(authorized.metadata || {}),
+        retrieval: chunk.metadata?.retrieval || authorized.metadata?.retrieval,
+        embeddingModel: chunk.metadata?.embeddingModel || authorized.metadata?.embeddingModel,
+      },
+    };
+  });
 }
 
 function mergeHybridChunks({ vectorChunks, keywordChunks, embeddingModel, limit = RAG_CONTEXT_LIMIT }) {
@@ -314,7 +351,7 @@ async function retrieveChunksForQuestion({ docIds, question, chunks }) {
   if (embeddingsAvailable) {
     try {
       const queryEmbedding = await embeddingService.embedQuery(question);
-      const vectorChunks = docIds.length === 1
+      const vectorRows = docIds.length === 1
         ? await documentChunkModel.matchByEmbedding({
           docId: docIds[0],
           embedding: queryEmbedding.embedding,
@@ -325,6 +362,7 @@ async function retrieveChunksForQuestion({ docIds, question, chunks }) {
           embedding: queryEmbedding.embedding,
           limit: RAG_CONTEXT_LIMIT,
         });
+      const vectorChunks = normalizeRetrievedChunksToAuthorizedScope(vectorRows, chunks);
 
       if (vectorChunks.length) {
         return mergeHybridChunks({
@@ -348,6 +386,35 @@ async function retrieveChunksForQuestion({ docIds, question, chunks }) {
       retrieval: 'keyword',
     },
   }));
+}
+
+function logRagValidationDebug({
+  sessionId,
+  resolvedDocuments,
+  retrievedChunks,
+  validation,
+}) {
+  if (!validation?.rejected?.length && process.env.RAG_AUTH_DEBUG !== 'true') return;
+  console.info('RAG session authorization validation debug:', {
+    sessionId,
+    resolvedAttachmentDocumentIds: (resolvedDocuments || []).map((doc) => Number(doc.id)),
+    retrievedChunkDocumentIds: [...new Set(
+      (retrievedChunks || [])
+        .map((chunk) => Number(chunk.doc_id || chunk.metadata?.documentId))
+        .filter(Number.isInteger)
+    )],
+    removedChunkDocumentIds: [...new Set(
+      (validation?.rejected || [])
+        .map((item) => item.actualDocumentId || item.metadataDocumentId)
+        .filter(Number.isInteger)
+    )],
+    removedReasons: (validation?.rejected || []).map((item) => ({
+      reason: item.reason,
+      chunkId: item.chunkId,
+      actualDocumentId: item.actualDocumentId,
+      metadataDocumentId: item.metadataDocumentId,
+    })),
+  });
 }
 
 async function getUsageBestEffort({ model, userId }) {
@@ -387,6 +454,23 @@ function isDocumentReadyForRag(doc) {
     && documentTextService.isExtractedTextUseful(doc.extracted_text);
 }
 
+async function canUseDocumentThroughOwnedSession({ document, session, userId }) {
+  if (!document || !session || String(session.user_id) !== String(userId)) {
+    return false;
+  }
+
+  if (document.document_scope === 'session') {
+    return String(document.user_id) === String(userId)
+      && Number(document.origin_session_id) === Number(session.id);
+  }
+
+  if (document.document_scope === 'shared') {
+    return true;
+  }
+
+  return Boolean(await documentService.canAttachDocumentToSession(userId, document.id));
+}
+
 async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
   const normalizedSessionId = normalizeNumericId(sessionId, 'sessionId');
   const session = await chatModel.findOwnedSession(normalizedSessionId, userId);
@@ -408,10 +492,11 @@ async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
       continue;
     }
 
-    const authorized = document.document_scope === 'session'
-      ? String(document.user_id) === String(userId)
-        && Number(document.origin_session_id) === Number(session.id)
-      : Boolean(await documentService.canAttachDocumentToSession(userId, docId));
+    const authorized = await canUseDocumentThroughOwnedSession({
+      document,
+      session,
+      userId,
+    });
 
     if (!authorized) {
       excluded.inaccessible += 1;
@@ -460,9 +545,10 @@ async function loadSessionChunks({ documents, sessionId, userId, sendEvent }) {
 
   for (const doc of documents) {
     let chunks = chunksByDocument.get(Number(doc.id)) || [];
-    const ownsDocument = String(doc.user_id) === String(userId);
+    const canAutoProcessDocument = doc.document_scope !== 'shared'
+      && String(doc.user_id) === String(userId);
 
-    if (!chunks.length && ownsDocument) {
+    if (!chunks.length && canAutoProcessDocument) {
       try {
         sendEvent?.('status', { message: `Preparing ${doc.title || 'document'} for AI...` });
         const result = await getOrCreateChunksForAsk({ doc, userId, sessionId, sendEvent });
@@ -756,6 +842,12 @@ async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mo
     : chunkResult.usableDocuments;
   const documentsById = new Map(evidenceDocuments.map((doc) => [Number(doc.id), doc]));
   const validatedEvidence = ragService.buildValidatedEvidence(relevantChunks, documentsById);
+  logRagValidationDebug({
+    sessionId: session.id,
+    resolvedDocuments: evidenceDocuments,
+    retrievedChunks: relevantChunks,
+    validation: validatedEvidence.validation,
+  });
   relevantChunks = validatedEvidence.chunks;
   const sources = validatedEvidence.sources;
   if (!relevantChunks.length) {

@@ -34,6 +34,19 @@ async function getSignedUrl(storagePath, expiresInSeconds = 3600) {
   return data.signedUrl;
 }
 
+async function fileExists(storagePath) {
+  const normalizedPath = String(storagePath || '').replace(/^\/+/, '');
+  if (!normalizedPath) return false;
+  const separator = normalizedPath.lastIndexOf('/');
+  const folder = separator === -1 ? '' : normalizedPath.slice(0, separator);
+  const fileName = separator === -1 ? normalizedPath : normalizedPath.slice(separator + 1);
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .list(folder, { limit: 100, search: fileName });
+  if (error) throw buildStorageError(error, 'Could not inspect file storage');
+  return (data || []).some((item) => item.name === fileName);
+}
+
 async function downloadFileBlob(storagePath) {
   const { data, error } = await supabase.storage.from(BUCKET).download(storagePath);
 
@@ -54,4 +67,4 @@ async function deleteFile(storagePath) {
   if (error) throw new Error(error.message);
 }
 
-module.exports = { uploadFile, getSignedUrl, downloadFile, downloadFileBlob, deleteFile };
+module.exports = { uploadFile, getSignedUrl, fileExists, downloadFile, downloadFileBlob, deleteFile };

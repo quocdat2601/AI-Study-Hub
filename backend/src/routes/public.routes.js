@@ -25,6 +25,7 @@ const router = express.Router();
  */
 router.get('/documents/trending', publicController.getTrendingDocuments);
 router.get('/chat-shares/:token', publicController.getPublicChatShare);
+router.get('/chat-snapshots/:token', publicController.getPublicChatSnapshot);
 router.get('/community', communityController.getHome);
 router.get('/community/feed', communityController.getFeed);
 router.get('/community/posts/:id', communityController.getPostById);

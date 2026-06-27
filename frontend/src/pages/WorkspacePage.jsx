@@ -6,6 +6,7 @@ import DocumentSidebar from "../components/workspace/DocumentSidebar.jsx";
 import DocumentViewer from "../components/workspace/DocumentViewer.jsx";
 import WorkspaceResizeHandle from "../components/workspace/WorkspaceResizeHandle.jsx";
 import useWorkspaceLayout from "../hooks/useWorkspaceLayout.js";
+import useChatAttachmentQueue from "../hooks/useChatAttachmentQueue.js";
 import {
   attachChatDocument,
   createChatSession,
@@ -14,6 +15,7 @@ import {
   getChatSessionMessages,
   getOrCreateDocumentChatSession,
   listChatSessions,
+  listSharedDocuments as listSharedWorkspaceDocuments,
   renameChatSession,
   restoreChatDocument,
   saveChatDocumentToLibrary,
@@ -51,7 +53,18 @@ const DEFAULT_OLLAMA_MODELS = [
   "qwen2.5:3b",
 ];
 const DEFAULT_MODELS = [...DEFAULT_GEMINI_MODELS, ...DEFAULT_OLLAMA_MODELS];
-const MAX_CHAT_ATTACHMENTS = 10;
+const MAX_CHAT_ATTACHMENTS = 20;
+const snapshotSharingEnabled = String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true";
+const dragDropAttachmentsEnabled = String(import.meta.env.VITE_CHAT_DRAG_DROP_ATTACHMENTS_ENABLED || "false") === "true";
+
+async function loadWorkspaceDocuments() {
+  const [libraryDocuments, sharedPayload] = await Promise.all([
+    listDocuments(),
+    snapshotSharingEnabled ? listSharedWorkspaceDocuments() : Promise.resolve({ documents: [] }),
+  ]);
+  const byId = new Map([...(libraryDocuments || []), ...(sharedPayload.documents || [])].map((document) => [Number(document.id), document]));
+  return [...byId.values()];
+}
 
 function buildUserMessage(content) {
   return {
@@ -201,6 +214,14 @@ export default function WorkspacePage() {
   const ollamaModels = modelStatus?.ollama?.allowedModels || availableModels.filter((model) => model.startsWith("qwen"));
   const isOllamaModel = (selectedModel || usage?.model || "").startsWith("qwen") || usage?.provider === "ollama";
   const recoverableAttachments = recoverableAttachmentsBySession[String(sessionId || "")] || [];
+  const attachmentQueue = useChatAttachmentQueue({
+    enabled: dragDropAttachmentsEnabled,
+    sessionId,
+    activeCount: attachments.length,
+    maxDocuments: MAX_CHAT_ATTACHMENTS,
+    onPayload: applyAttachmentPayload,
+    onError: (queueError) => setAttachmentError(attachmentFailureMessage(queueError, "Could not upload this file.")),
+  });
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
@@ -279,7 +300,7 @@ export default function WorkspacePage() {
           setIsLoadingDocs(true);
         }
         setError("");
-        const data = await listDocuments();
+        const data = await loadWorkspaceDocuments();
         if (!isMounted) return;
         const nextDocuments = data || [];
         cacheWorkspaceState({ documents: nextDocuments });
@@ -916,8 +937,8 @@ export default function WorkspacePage() {
     const targetSessionId = sessionId;
     const targetDocumentId = selectedId;
     if (!targetSessionId || attachmentAction) return false;
-    if (attachments.length >= MAX_CHAT_ATTACHMENTS) {
-      setAttachmentError("This chat already has 10 active files.");
+    if (attachments.length + attachmentQueue.reservedCount >= MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError("This chat already has 20 active documents.");
       return false;
     }
 
@@ -949,8 +970,8 @@ export default function WorkspacePage() {
       setAttachmentError(validationError);
       return false;
     }
-    if (attachments.length >= MAX_CHAT_ATTACHMENTS) {
-      setAttachmentError("This chat already has 10 active files.");
+    if (attachments.length + attachmentQueue.reservedCount >= MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError("This chat already has 20 active documents.");
       return false;
     }
 
@@ -1058,7 +1079,7 @@ export default function WorkspacePage() {
       if (String(getWorkspaceCache().selectedId || "") !== String(targetDocumentId || "")) return false;
       if (!applyAttachmentPayload(payload, targetSessionId)) return false;
 
-      const nextDocuments = await listDocuments();
+      const nextDocuments = await loadWorkspaceDocuments();
       setDocuments(nextDocuments || []);
       cacheWorkspaceState({ documents: nextDocuments || [] });
       return true;
@@ -1406,11 +1427,10 @@ export default function WorkspacePage() {
 
         <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} />
 
-        <div 
-          className="flex h-full flex-col min-h-0 shrink-0 gap-2" 
+        <div
+          className="flex h-full flex-col min-h-0 shrink-0 gap-2"
           style={{ width: chatWidth }}
         >
-          {/* Modern Segmented Tab Switched Control */}
           <div className="flex shrink-0 items-center justify-start border border-slate-200/60 bg-slate-50/80 p-1 rounded-xl gap-1">
             <button
               onClick={() => setRightActiveTab("chat")}
@@ -1438,14 +1458,17 @@ export default function WorkspacePage() {
                 attachmentAction={attachmentAction}
                 attachmentError={attachmentError}
                 attachmentUploadProgress={attachmentUploadProgress}
+                attachmentQueueItems={attachmentQueue.items}
                 attachments={attachments}
                 availableDocuments={documents}
                 answerMode={answerMode}
                 chatScrollRef={chatScrollRef}
                 className="flex-1 min-h-0 w-full"
+                dragDropAttachmentsEnabled={dragDropAttachmentsEnabled}
                 error={error}
                 geminiModels={geminiModels}
                 isAsking={isAsking}
+                isAttachmentQueueBlocking={attachmentQueue.isBlocking}
                 isLoadingMessages={isLoadingMessages}
                 isLoadingSessions={isLoadingSessions}
                 isLoadingUsage={isLoadingUsage}
@@ -1455,6 +1478,9 @@ export default function WorkspacePage() {
                 onAnswerModeChange={setAnswerMode}
                 onAttachDocument={handleAttachExisting}
                 onCancelAttachmentUpload={handleCancelAttachmentUpload}
+                onDropFiles={attachmentQueue.enqueue}
+                onRemoveQueuedAttachment={attachmentQueue.remove}
+                onRetryQueuedAttachment={attachmentQueue.retry}
                 onAsk={handleAsk}
                 onChatScroll={handleChatScroll}
                 onQuestionChange={setQuestion}
@@ -1466,7 +1492,7 @@ export default function WorkspacePage() {
                 onRenameSession={handleRenameSession}
                 onSelectSession={handleSelectSession}
                 onSelectedModelChange={setSelectedModel}
-                onUploadAttachment={handleUploadAttachment}
+                onUploadAttachment={dragDropAttachmentsEnabled ? attachmentQueue.enqueue : handleUploadAttachment}
                 question={question}
                 recoverableAttachments={recoverableAttachments}
                 selectedDocument={selectedDocument}

@@ -93,6 +93,20 @@ class DocumentModel {
     return data;
   }
 
+  static async findOwnedSharedById(id, userId) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .eq('document_scope', 'shared')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
   static async findAccessibleById(id, userId) {
     const doc = await this.findById(id);
     if (!doc) return null;
@@ -264,6 +278,13 @@ class DocumentModel {
       .from('documents')
       .update({
         deleted_at: null,
+        lifecycle_status: 'active',
+        expires_at: null,
+        expired_at: null,
+        purge_after: null,
+        purge_claim_token: null,
+        purge_claimed_at: null,
+        last_cleanup_error: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -312,11 +333,20 @@ class DocumentModel {
 
   // Đếm số cloud_file còn trỏ tới cùng object vật lý — để biết khi nào được xóa file thật
   static async countCloudFilesByStoragePath(storagePath) {
-    const { count, error } = await supabase
-      .from('cloud_files')
-      .select('*', { count: 'exact', head: true })
-      .eq('storage_path', storagePath);
+    const [{ count: cloudCount, error: cloudError }, { count: snapshotCount, error: snapshotError }] = await Promise.all([
+      supabase.from('cloud_files').select('*', { count: 'exact', head: true }).eq('storage_path', storagePath),
+      supabase.from('shared_file_versions').select('*', { count: 'exact', head: true }).eq('storage_path', storagePath),
+    ]);
+    if (cloudError) throw cloudError;
+    if (snapshotError) throw snapshotError;
+    return (cloudCount || 0) + (snapshotCount || 0);
+  }
 
+  static async countDocumentsByFileId(fileId) {
+    const { count, error } = await supabase
+      .from('documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('file_id', Number(fileId));
     if (error) throw error;
     return count || 0;
   }
@@ -528,6 +558,64 @@ class DocumentModel {
     return data;
   }
 
+  static async updateThumbnailsByFileId(fileId, thumbnailData) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        thumbnail_path: thumbnailData.path || null,
+        thumbnail_status: thumbnailData.status,
+        thumbnail_error: thumbnailData.error || null,
+        thumbnail_generated_at: thumbnailData.status === 'ready' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('file_id', Number(fileId))
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .select(DOCUMENT_SELECT);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async claimSessionDocumentProcessing({ documentId, sessionId, userId, claimToken, staleSeconds = 900 }) {
+    const { data, error } = await supabase.rpc('claim_session_document_processing', {
+      p_document_id: Number(documentId),
+      p_session_id: Number(sessionId),
+      p_user_id: userId,
+      p_claim_token: claimToken,
+      p_stale_seconds: Number(staleSeconds),
+    });
+    if (error) throw error;
+    return Boolean(data);
+  }
+
+  static async releaseSessionDocumentProcessing({ documentId, claimToken }) {
+    const { data, error } = await supabase.rpc('release_session_document_processing', {
+      p_document_id: Number(documentId),
+      p_claim_token: claimToken,
+    });
+    if (error) throw error;
+    return Boolean(data);
+  }
+
+  static async findReadyThumbnailByFileId(fileId) {
+    if (!fileId) return null;
+    const { data, error } = await supabase
+      .from('documents')
+      .select('id, file_id, thumbnail_path, thumbnail_status, thumbnail_error, thumbnail_generated_at')
+      .eq('file_id', Number(fileId))
+      .eq('thumbnail_status', 'ready')
+      .not('thumbnail_path', 'is', null)
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null)
+      .order('thumbnail_generated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
   static async findThumbnailBackfillCandidates({ limit = 50, force = false } = {}) {
     let query = supabase
       .from('documents')
@@ -601,6 +689,7 @@ class DocumentModel {
       .from('documents')
       .select(`
         id,
+        file_id,
         title,
         status,
         extraction_status,
@@ -629,6 +718,7 @@ class DocumentModel {
       .from('documents')
       .select(`
         id,
+        file_id,
         title,
         created_at,
         extracted_text,
@@ -661,6 +751,7 @@ class DocumentModel {
       .from('documents')
       .select('cloud_files (size_bytes)')
       .eq('user_id', userId)
+      .neq('document_scope', 'shared')
       .is('deleted_at', null);
 
     if (error) throw error;
@@ -695,6 +786,7 @@ class DocumentModel {
       .from('documents')
       .select(`
         id,
+        file_id,
         title,
         created_at,
         view_count,
