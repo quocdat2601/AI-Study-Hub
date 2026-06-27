@@ -9,13 +9,21 @@ const documentTextService = require('./document-text.service');
 const embeddingService = require('./embedding.service');
 const ragService = require('./rag.service');
 const ragComparisonService = require('./rag-comparison.service');
+const ragNeighborService = require('./rag-neighbor.service');
+const ragRerankService = require('./rag-rerank.service');
 const chatContextService = require('./chat-context.service');
+const documentOverviewModel = require('../models/document-overview.model');
+const documentOverviewService = require('./document-overview.service');
+const { getDocumentOverviewConfig } = require('../config/document-overview');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
 
 const MAX_QUESTION_CHARS = 2000;
 const ANSWER_MODES = new Set(['hybrid', 'document_only']);
 const RAG_CONTEXT_LIMIT = 4;
+const OVERVIEW_CONTEXT_LIMIT = ragService.MAX_CONTEXT_CHARS;
+const EXPLICIT_SCOPE_CANDIDATE_LIMIT = 6;
+const GENERAL_SCOPE_CANDIDATE_LIMIT = 12;
 const VECTOR_SCORE_WEIGHT = 0.7;
 const KEYWORD_SCORE_WEIGHT = 0.3;
 
@@ -50,14 +58,22 @@ function getMimeType(doc) {
   return doc.cloud_files?.mime_type || '';
 }
 
-function estimatePromptTokens({ question, chunks, history, documentTitles, responseConstraints }) {
+function estimatePromptTokens({
+  question,
+  chunks,
+  history,
+  documentTitles,
+  responseConstraints,
+  overviewContext,
+}) {
   const chars = String(question || '').length
     + (chunks || []).reduce((total, chunk) => (
       total + String(chunk.promptContent || chunk.content || '').length
     ), 0)
     + (history || []).reduce((total, message) => total + String(message.content || '').length, 0)
     + (documentTitles || []).join(' ').length
-    + JSON.stringify(responseConstraints || {}).length;
+    + JSON.stringify(responseConstraints || {}).length
+    + String(overviewContext || '').length;
   return Math.ceil(chars / 4);
 }
 
@@ -146,12 +162,18 @@ async function processDocument({
     chunksToSave = embeddingService.markChunksEmbeddingFailed(chunks, err);
   }
 
+  await documentOverviewService.markStaleBestEffort(doc.id);
   const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunksToSave);
+  const overview = await documentOverviewService.generateOverviewBestEffort({
+    document: savedDoc,
+    chunks: savedChunks,
+  });
 
   return {
     document: savedDoc,
     chunkCount: savedChunks.length,
     status: 'ready',
+    overviewStatus: overview?.status || null,
   };
 }
 
@@ -336,8 +358,182 @@ function buildAssistantMetadata({
   };
 }
 
-async function retrieveChunksForQuestion({ docIds, question, chunks }) {
-  const keywordChunks = ragService.retrieveRelevantChunks(question, chunks, RAG_CONTEXT_LIMIT);
+function buildAmbiguousDocumentAnswer(question, matches = []) {
+  const vietnamese = /[\u00C0-\u1EF9]|\b(file|tai lieu|tep)\b/iu.test(String(question || ''));
+  const titles = (matches || [])
+    .map((document) => document.title)
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((title) => `- ${title}`)
+    .join('\n');
+  return vietnamese
+    ? `Mình chưa chắc bạn muốn hỏi tài liệu nào. Vui lòng chọn rõ một trong các tài liệu sau:\n${titles}`
+    : `I am not sure which document you mean. Please ask using one specific document name:\n${titles}`;
+}
+
+function filterDocumentsByIds(documents, documentIds) {
+  const allowedIds = new Set((documentIds || []).map(Number).filter(Number.isInteger));
+  if (!allowedIds.size) return [];
+  return (documents || []).filter((document) => allowedIds.has(Number(document.id)));
+}
+
+function filterChunksByDocumentIds(chunks, documentIds) {
+  const allowedIds = new Set((documentIds || []).map(Number).filter(Number.isInteger));
+  if (!allowedIds.size) return [];
+  return (chunks || []).filter((chunk) => {
+    const id = Number(chunk.doc_id || chunk.metadata?.documentId);
+    return allowedIds.has(id);
+  });
+}
+
+function detectOverviewIntent({ question, requestContext, documentScope }) {
+  const normalized = chatContextService.normalizeComparable(question);
+  const overviewPattern = /\b(what is .* (file|document).* about|what .* (file|document).* say|summari[sz]e|summary|main purpose|key points|main idea|overview)\b|noi dung chinh|tom tat|noi ve gi|file nay noi|tai lieu nay noi|tep nay noi/iu;
+  const comparisonOverviewPattern = /\b(compare|comparison|related|relationship|relation|similarities|differences)\b|so sanh|lien quan|khac nhau|hai file|hai tai lieu/iu;
+  const narrowFactualPattern = /\b(deadline|due date|invoice number|amount|price|cost|email|phone|address|date|who|when|where|how many|which requirement|status of|id)\b|ngay nao|bao nhieu|ai la|o dau|ma so|han nop/iu;
+
+  if (requestContext.intent === 'comparison' && comparisonOverviewPattern.test(normalized)) {
+    return documentScope.documentIds?.length >= 2 ? 'document_comparison_overview' : null;
+  }
+
+  if (overviewPattern.test(normalized) && !narrowFactualPattern.test(normalized)) {
+    return documentScope.type === 'explicit_single' || documentScope.documentIds?.length === 1
+      ? 'document_overview'
+      : null;
+  }
+
+  return null;
+}
+
+function trimForOverviewContext(text, limit) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 3)).trim()}...`;
+}
+
+function formatOverviewRecord({ document, overview, chunkCount, charLimit }) {
+  const topics = Array.isArray(overview.key_topics) ? overview.key_topics.join(', ') : '';
+  const outline = Array.isArray(overview.outline)
+    ? overview.outline
+      .map((item) => {
+        const heading = item.heading || item.title || item.section || 'Section';
+        const description = item.description || item.summary || '';
+        return `- ${heading}${description ? `: ${description}` : ''}`;
+      })
+      .join('\n')
+    : '';
+  return trimForOverviewContext([
+    `Document: ${document.title || `Document ${document.id}`}`,
+    `Type: ${overview.document_type || 'Unknown'}`,
+    `Purpose: ${overview.purpose || 'Unknown'}`,
+    `Summary: ${overview.summary || ''}`,
+    topics ? `Key topics: ${topics}` : '',
+    outline ? `Outline:\n${outline}` : '',
+    `Supporting source chunks included: ${chunkCount}`,
+  ].filter(Boolean).join('\n'), charLimit);
+}
+
+async function buildOverviewEvidence({ documents, overviewIntent }) {
+  const runtimeConfig = getDocumentOverviewConfig();
+  const docIds = (documents || []).map((doc) => Number(doc.id)).filter(Number.isInteger);
+  if (!docIds.length) return null;
+
+  const overviews = await documentOverviewModel.findReadyByDocumentIds(
+    docIds,
+    runtimeConfig.overviewVersion
+  );
+  const overviewByDocId = new Map(overviews.map((overview) => [Number(overview.document_id), overview]));
+  // If any document in scope lacks a ready overview, return null so the caller
+  // falls through to chunk-based comparison for ALL resolved documents.  Do NOT
+  // remove a document from scope or report "only one document attached".
+  if (docIds.some((docId) => !overviewByDocId.has(docId))) return null;
+
+  const allSourceIds = overviews
+    .flatMap((overview) => overview.source_chunk_ids || [])
+    .map(Number)
+    .filter(Number.isInteger);
+  // An overview with no source chunk IDs is unusable; fall through to chunks.
+  if (!allSourceIds.length) return null;
+
+  const sourceChunks = await documentChunkModel.findByIds(allSourceIds);
+  const chunksByDocId = new Map();
+  for (const chunk of sourceChunks) {
+    const docId = Number(chunk.doc_id);
+    if (!docIds.includes(docId)) continue;
+    const docChunks = chunksByDocId.get(docId) || [];
+    docChunks.push(chunk);
+    chunksByDocId.set(docId, docChunks);
+  }
+
+  const maxChunksPerDocument = overviewIntent === 'document_comparison_overview' ? 2 : 2;
+  const selectedChunks = [];
+  let remainingContext = OVERVIEW_CONTEXT_LIMIT;
+  const perDocumentContextLimit = Math.max(800, Math.floor(OVERVIEW_CONTEXT_LIMIT / docIds.length));
+  const overviewParts = [];
+
+  for (const document of documents) {
+    const docId = Number(document.id);
+    const overview = overviewByDocId.get(docId);
+    const docChunks = (chunksByDocId.get(docId) || [])
+      .sort((a, b) => Number(a.chunk_index || 0) - Number(b.chunk_index || 0))
+      .slice(0, maxChunksPerDocument)
+      .map((chunk) => ({
+        ...chunk,
+        documentTitle: document.title,
+        score: Number(chunk.score || 1),
+        metadata: {
+          ...(chunk.metadata || {}),
+          documentId: docId,
+          documentTitle: document.title,
+          retrieval: 'document_overview',
+        },
+      }));
+    // If the source chunks for any document are missing, fall through to chunks.
+    if (!docChunks.length) return null;
+    selectedChunks.push(...docChunks);
+
+    const part = formatOverviewRecord({
+      document,
+      overview,
+      chunkCount: docChunks.length,
+      charLimit: Math.min(remainingContext, perDocumentContextLimit),
+    });
+    if (part) {
+      overviewParts.push(part);
+      remainingContext -= part.length;
+    }
+  }
+
+  const chunkBudget = Math.max(1200, OVERVIEW_CONTEXT_LIMIT - overviewParts.join('\n\n---\n\n').length);
+  const chunkLimit = Math.max(300, Math.floor(chunkBudget / Math.max(selectedChunks.length, 1)));
+  const boundedChunks = selectedChunks.map((chunk) => ({
+    ...chunk,
+    promptContent: trimForOverviewContext(chunk.content, chunkLimit),
+  }));
+
+  return {
+    overviewContext: overviewParts.join('\n\n---\n\n').slice(0, OVERVIEW_CONTEXT_LIMIT),
+    chunks: boundedChunks,
+    metadata: {
+      overviewIntent,
+      overviewDocumentIds: docIds,
+      overviewVersion: runtimeConfig.overviewVersion,
+    },
+  };
+}
+
+function candidateLimitForScope(scopeType) {
+  return scopeType === 'general' ? GENERAL_SCOPE_CANDIDATE_LIMIT : EXPLICIT_SCOPE_CANDIDATE_LIMIT;
+}
+
+async function retrieveChunksForQuestion({
+  docIds,
+  question,
+  chunks,
+  scopeType = 'general',
+}) {
+  const candidateLimit = candidateLimitForScope(scopeType);
+  const keywordChunks = ragService.retrieveRelevantChunks(question, chunks, candidateLimit);
 
   try {
     const queryEmbedding = await embeddingService.embedQuery(question);
@@ -345,12 +541,12 @@ async function retrieveChunksForQuestion({ docIds, question, chunks }) {
       ? await documentChunkModel.matchByEmbedding({
         docId: docIds[0],
         embedding: queryEmbedding.embedding,
-        limit: RAG_CONTEXT_LIMIT,
+        limit: candidateLimit,
       })
       : await documentChunkModel.matchByEmbeddingAcrossDocuments({
         docIds,
         embedding: queryEmbedding.embedding,
-        limit: RAG_CONTEXT_LIMIT,
+        limit: candidateLimit,
       });
     const vectorChunks = normalizeRetrievedChunksToAuthorizedScope(vectorRows, chunks);
 
@@ -372,6 +568,61 @@ async function retrieveChunksForQuestion({ docIds, question, chunks }) {
       retrieval: 'keyword',
     },
   }));
+}
+
+function allocateDocumentCoverage(candidatesByDocument, documentIds, limit = RAG_CONTEXT_LIMIT) {
+  const selected = [];
+  const seen = new Set();
+  const orderedIds = (documentIds || []).map(Number).filter(Number.isInteger);
+  const maxPerDocument = orderedIds.length <= 2 ? 2 : 1;
+
+  for (const docId of orderedIds) {
+    const candidates = candidatesByDocument.get(docId) || [];
+    let taken = 0;
+    for (const chunk of candidates) {
+      if (taken >= maxPerDocument || selected.length >= limit) break;
+      const key = getChunkKey(chunk);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      selected.push(chunk);
+      taken += 1;
+    }
+  }
+
+  const remaining = [...candidatesByDocument.values()]
+    .flat()
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  for (const chunk of remaining) {
+    if (selected.length >= limit) break;
+    const key = getChunkKey(chunk);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(chunk);
+  }
+
+  return selected
+    .sort((a, b) => orderedIds.indexOf(Number(a.doc_id || a.metadata?.documentId))
+      - orderedIds.indexOf(Number(b.doc_id || b.metadata?.documentId))
+      || Number(a.chunk_index || 0) - Number(b.chunk_index || 0));
+}
+
+async function retrieveCoveredChunksForQuestion({ docIds, question, chunks }) {
+  const candidatesByDocument = new Map();
+  for (const docId of docIds.map(Number).filter(Number.isInteger)) {
+    const docChunks = filterChunksByDocumentIds(chunks, [docId]);
+    if (!docChunks.length) {
+      candidatesByDocument.set(docId, []);
+      continue;
+    }
+    const candidates = await retrieveChunksForQuestion({
+      docIds: [docId],
+      question,
+      chunks: docChunks,
+      scopeType: 'explicit_single',
+    });
+    candidatesByDocument.set(docId, candidates);
+  }
+  return allocateDocumentCoverage(candidatesByDocument, docIds);
 }
 
 function logRagValidationDebug({
@@ -514,7 +765,13 @@ async function resolveAskScope({ id, sessionId, userId }) {
   };
 }
 
-async function loadSessionChunks({ documents, sessionId, userId, sendEvent }) {
+async function loadSessionChunks({
+  documents,
+  sessionId,
+  userId,
+  sendEvent,
+  allowAutoProcess = true,
+}) {
   const allChunks = [];
   const usableDocuments = [];
   const skippedDocumentIds = [];
@@ -534,7 +791,7 @@ async function loadSessionChunks({ documents, sessionId, userId, sendEvent }) {
     const canAutoProcessDocument = doc.document_scope !== 'shared'
       && String(doc.user_id) === String(userId);
 
-    if (!chunks.length && canAutoProcessDocument) {
+    if (!chunks.length && allowAutoProcess && canAutoProcessDocument) {
       try {
         sendEvent?.('status', { message: `Preparing ${doc.title || 'document'} for AI...` });
         const result = await getOrCreateChunksForAsk({ doc, userId, sessionId, sendEvent });
@@ -609,7 +866,7 @@ function buildScopeResponse({
   };
 }
 
-async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEvent }) {
+async function prepareAsk({ id, sessionId, userId, question, mode, model, focusedDocumentId, sendEvent }) {
   const cleanedQuestion = cleanQuestion(question);
   const answerMode = normalizeAnswerMode(mode);
   const selectedProviderModel = aiUsageService.resolveModel(model);
@@ -627,11 +884,33 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
     history: storedHistory,
     documents: scope.documents,
   });
+  const documentScope = chatContextService.resolveDocumentScope({
+    question: requestContext.retrievalQuery,
+    documents: scope.documents,
+    primaryDocumentId: session.primary_document_id || compatibilityDocument?.id || scope.documents[0]?.id,
+    focusedDocumentId,
+    intent: requestContext.intent,
+  });
+  if (
+    requestContext.intent === 'comparison'
+    && documentScope.reason === 'comparison_all_documents'
+    && requestContext.comparedDocumentIds.length >= 2
+  ) {
+    documentScope.documentIds = requestContext.comparedDocumentIds;
+    documentScope.reason = 'inherited_comparison_scope';
+  }
+  requestContext.documentScope = documentScope;
+  if (requestContext.intent === 'comparison') {
+    requestContext.comparedDocumentIds = documentScope.documentIds;
+    requestContext.filteredComparedDocumentIds = documentScope.documentIds;
+    requestContext.comparisonUnavailable = documentScope.documentIds.length < 2;
+  }
   requestContext.comparisonDebug = {
     resolvedActiveAttachmentIds: requestContext.activeAttachmentIds,
     inheritedComparedDocumentIds: requestContext.inheritedComparedDocumentIds,
     filteredComparedDocumentIds: requestContext.filteredComparedDocumentIds,
     finalRetrievalQuery: requestContext.retrievalQuery,
+    documentScope,
     selectedSourceDocumentIds: [],
     comparisonEvidenceStrategy: null,
   };
@@ -641,6 +920,7 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
     substantiveQuestion: requestContext.substantiveQuestion,
     retrievalQuery: requestContext.retrievalQuery,
     responseConstraints: requestContext.responseConstraints,
+    documentScope,
     comparisonDebug: requestContext.comparisonDebug,
   };
   const userMessage = await chatModel.addMessage(
@@ -649,6 +929,38 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
     cleanedQuestion,
     userMetadata
   );
+
+  if (documentScope.type === 'ambiguous') {
+    const answer = buildAmbiguousDocumentAnswer(cleanedQuestion, documentScope.matchingDocuments);
+    const assistantMetadata = buildAssistantMetadata({
+      provider: 'system',
+      model: null,
+      mode: answerMode,
+      usedRag: false,
+      requestContext,
+    });
+    const assistantMessage = await chatModel.addMessage(session.id, 'assistant', answer, assistantMetadata);
+    await safeTouchSession(session.id);
+    return {
+      systemResponse: buildScopeResponse({
+        answer,
+        sources: [],
+        documents: documentScope.matchingDocuments,
+        compatibilityDocument,
+        session,
+        answerMode,
+        usedRag: false,
+        autoProcessed: false,
+        provider: 'system',
+        model: null,
+        usage: null,
+        userMessage,
+        assistantMessage,
+        excludedAttachments: excluded,
+        comparisonMetadata: null,
+      }),
+    };
+  }
 
   if (requestContext.comparisonUnavailable) {
     const answer = chatContextService.buildComparisonUnavailableAnswer(cleanedQuestion);
@@ -696,11 +1008,84 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
     };
   }
 
+  const documentsForRetrievalScope = documentScope.type === 'general'
+    ? scope.documents
+    : filterDocumentsByIds(scope.documents, documentScope.documentIds);
+  const overviewIntent = detectOverviewIntent({
+    question: cleanedQuestion,
+    requestContext,
+    documentScope,
+  });
+
+  if (overviewIntent && documentsForRetrievalScope.length) {
+    const overviewEvidence = await buildOverviewEvidence({
+      documents: documentsForRetrievalScope,
+      overviewIntent,
+    }).catch((err) => {
+      console.warn('Document overview retrieval skipped:', err.message);
+      return null;
+    });
+
+    if (overviewEvidence?.chunks?.length) {
+      const documentsById = new Map(documentsForRetrievalScope.map((doc) => [Number(doc.id), doc]));
+      const validatedEvidence = ragService.buildValidatedEvidence(overviewEvidence.chunks, documentsById);
+      logRagValidationDebug({
+        sessionId: session.id,
+        resolvedDocuments: documentsForRetrievalScope,
+        retrievedChunks: overviewEvidence.chunks,
+        validation: validatedEvidence.validation,
+      });
+
+      if (validatedEvidence.chunks.length) {
+        const sources = validatedEvidence.sources;
+        await documentModel.touchSessionDocuments(
+          [...new Set(sources.map((source) => Number(source.documentId)).filter(Number.isInteger))]
+        );
+        const estimatedTokens = estimatePromptTokens({
+          question: cleanedQuestion,
+          chunks: validatedEvidence.chunks,
+          history: requestContext.history,
+          documentTitles: documentsForRetrievalScope.map((document) => document.title),
+          responseConstraints: requestContext.responseConstraints,
+          overviewContext: overviewEvidence.overviewContext,
+        });
+        if (selectedProvider === 'gemini') {
+          await aiUsageService.assertQuota({ model: selectedModel, userId, estimatedTokens });
+        }
+        requestContext.comparisonDebug = {
+          ...(requestContext.comparisonDebug || {}),
+          selectedSourceDocumentIds: [...new Set(sources.map((source) => Number(source.documentId)))],
+          overviewIntent,
+          overviewVersion: overviewEvidence.metadata.overviewVersion,
+        };
+        return {
+          cleanedQuestion,
+          answerMode,
+          selectedProvider,
+          selectedModel,
+          documents: documentsForRetrievalScope,
+          compatibilityDocument,
+          session,
+          userMessage,
+          relevantChunks: validatedEvidence.chunks,
+          sources,
+          autoProcessed: false,
+          excludedAttachments: excluded,
+          requestContext,
+          comparisonMetadata: null,
+          overviewContext: overviewEvidence.overviewContext,
+          overviewIntent,
+        };
+      }
+    }
+  }
+
   const chunkResult = await loadSessionChunks({
-    documents: scope.documents,
+    documents: documentsForRetrievalScope,
     sessionId: session.id,
     userId,
     sendEvent,
+    allowAutoProcess: !overviewIntent,
   });
   const excludedAttachments = {
     ...excluded,
@@ -728,7 +1113,7 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
       systemResponse: buildScopeResponse({
         answer,
         sources: [],
-        documents: scope.documents,
+        documents: documentsForRetrievalScope,
         compatibilityDocument,
         session,
         answerMode,
@@ -748,8 +1133,19 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
   }
 
   sendEvent?.('status', { message: 'Searching relevant chunks...' });
+  const selectedScopeDocumentIds = documentScope.type === 'general'
+    ? chunkResult.usableDocuments.map((document) => Number(document.id))
+    : documentScope.documentIds;
+  const scopedUsableDocuments = filterDocumentsByIds(
+    chunkResult.usableDocuments,
+    selectedScopeDocumentIds
+  );
+  const scopedChunks = filterChunksByDocumentIds(
+    chunkResult.allChunks,
+    selectedScopeDocumentIds
+  );
   const comparisonDocuments = requestContext.intent === 'comparison'
-    ? chunkResult.usableDocuments.filter((document) => (
+    ? scopedUsableDocuments.filter((document) => (
       requestContext.comparedDocumentIds.includes(Number(document.id))
     ))
     : [];
@@ -759,7 +1155,7 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
   if (comparisonDocuments.length >= 2) {
     const comparison = await ragComparisonService.retrieveComparisonEvidence({
       question: requestContext.retrievalQuery,
-      chunks: chunkResult.allChunks.filter((chunk) => (
+      chunks: scopedChunks.filter((chunk) => (
         requestContext.comparedDocumentIds.includes(Number(chunk.doc_id || chunk.metadata?.documentId))
       )),
       documents: comparisonDocuments,
@@ -811,10 +1207,37 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
     }
     relevantChunks = comparison.chunks;
   } else {
-    relevantChunks = await retrieveChunksForQuestion({
-      docIds: chunkResult.usableDocuments.map((doc) => doc.id),
+    relevantChunks = documentScope.type === 'explicit_multi'
+      ? await retrieveCoveredChunksForQuestion({
+        docIds: scopedUsableDocuments.map((doc) => doc.id),
+        question: requestContext.retrievalQuery,
+        chunks: scopedChunks,
+      })
+      : await retrieveChunksForQuestion({
+        docIds: scopedUsableDocuments.map((doc) => doc.id),
+        question: requestContext.retrievalQuery,
+        chunks: scopedChunks,
+        scopeType: documentScope.type,
+      });
+    // Bounded neighbor expansion: optionally include one previous/next chunk
+    // per seed from the pre-loaded pool to give the model fuller context.
+    // Applied only to normal (non-comparison, non-overview) retrieval.
+    // Falls back silently to original seeds on any error.
+    relevantChunks = ragNeighborService.expandWithNeighborsSafe({
+      seedChunks: relevantChunks,
+      chunkPool: scopedChunks,
       question: requestContext.retrievalQuery,
-      chunks: chunkResult.allChunks,
+      documentIds: selectedScopeDocumentIds,
+    });
+    // Rule-based reranking and pruning: re-score seeds + neighbors together,
+    // apply intent-sensitive penalties, and drop low-relevance evidence.
+    // Applied only to normal (non-comparison, non-overview) retrieval.
+    // Falls back silently to the expanded list on any error.
+    relevantChunks = ragRerankService.rerankAndPruneSafe({
+      chunks: relevantChunks,
+      question: requestContext.retrievalQuery,
+      scopeType: documentScope.type,
+      documentIds: selectedScopeDocumentIds,
     });
   }
 
@@ -824,7 +1247,7 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
 
   const evidenceDocuments = comparisonDocuments.length >= 2
     ? comparisonDocuments
-    : chunkResult.usableDocuments;
+    : scopedUsableDocuments;
   const documentsById = new Map(evidenceDocuments.map((doc) => [Number(doc.id), doc]));
   const validatedEvidence = ragService.buildValidatedEvidence(relevantChunks, documentsById);
   logRagValidationDebug({
@@ -898,8 +1321,8 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
   };
 }
 
-async function executeAsk({ id, sessionId, userId, question, mode, model }) {
-  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model });
+async function executeAsk({ id, sessionId, userId, question, mode, model, focusedDocumentId }) {
+  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model, focusedDocumentId });
   if (prepared.systemResponse) {
     return prepared.systemResponse;
   }
@@ -919,6 +1342,8 @@ async function executeAsk({ id, sessionId, userId, question, mode, model }) {
     excludedAttachments,
     requestContext,
     comparisonMetadata,
+    overviewContext,
+    overviewIntent,
   } = prepared;
   let generationResult;
 
@@ -936,6 +1361,8 @@ async function executeAsk({ id, sessionId, userId, question, mode, model }) {
       comparisonMetadata,
       substantiveQuestion: requestContext.substantiveQuestion,
       retrievalQuery: requestContext.retrievalQuery,
+      overviewContext,
+      overviewIntent,
     });
 
     await aiUsageService.logGeminiRequest({
@@ -1001,8 +1428,17 @@ async function executeAsk({ id, sessionId, userId, question, mode, model }) {
   });
 }
 
-async function executeAskStream({ id, sessionId, userId, question, mode, model, sendEvent }) {
-  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model, sendEvent });
+async function executeAskStream({ id, sessionId, userId, question, mode, model, focusedDocumentId, sendEvent }) {
+  const prepared = await prepareAsk({
+    id,
+    sessionId,
+    userId,
+    question,
+    mode,
+    model,
+    focusedDocumentId,
+    sendEvent,
+  });
   if (prepared.systemResponse) {
     sendEvent('token', { text: prepared.systemResponse.answer });
     sendEvent('done', prepared.systemResponse);
@@ -1024,6 +1460,8 @@ async function executeAskStream({ id, sessionId, userId, question, mode, model, 
     excludedAttachments,
     requestContext,
     comparisonMetadata,
+    overviewContext,
+    overviewIntent,
   } = prepared;
 
   let answer = '';
@@ -1044,6 +1482,8 @@ async function executeAskStream({ id, sessionId, userId, question, mode, model, 
       comparisonMetadata,
       substantiveQuestion: requestContext.substantiveQuestion,
       retrievalQuery: requestContext.retrievalQuery,
+      overviewContext,
+      overviewIntent,
     })) {
       if (event.type === 'token' && event.text) {
         answer += event.text;
@@ -1130,8 +1570,26 @@ async function askSessionStream(args) {
   return executeAskStream(args);
 }
 
+async function retryDocumentOverview({ id, userId }) {
+  const docId = normalizeNumericId(id, 'documentId');
+  let doc = await documentService.canUseDocumentInChat(userId, docId);
+  if (!doc) {
+    const activeDoc = await documentModel.findActiveById(docId);
+    if (activeDoc?.document_scope === 'session' && String(activeDoc.user_id) === String(userId)) {
+      doc = activeDoc;
+    }
+  }
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+  return {
+    overview: await documentOverviewService.retryOverview({ document: doc }),
+  };
+}
+
 module.exports = {
   processDocument,
+  retryDocumentOverview,
   askDocument,
   askDocumentStream,
   askSession,

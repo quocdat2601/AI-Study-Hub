@@ -112,6 +112,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/workspace/documents/:documentId"
+          element={
+            <ProtectedRoute>
+              <WorkspacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/public-documents"
           element={
             <ProtectedRoute>

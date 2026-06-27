@@ -67,6 +67,28 @@ router.post('/documents/:id/process', aiController.processDocument);
 
 /**
  * @swagger
+ * /api/ai/documents/{id}/overview/retry:
+ *   post:
+ *     summary: Regenerate a persisted document overview from existing chunks
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Overview regenerated or failed status persisted }
+ *       400: { description: Document has no existing AI chunks or overview is disabled }
+ *       401: { description: Unauthorized }
+ *       404: { description: Document not found }
+ *       409: { description: Overview generation is already in progress }
+ */
+router.post('/documents/:id/overview/retry', aiController.retryDocumentOverview);
+
+/**
+ * @swagger
  * /api/ai/documents/{id}/ask:
  *   post:
  *     summary: Ask Gemini a question using retrieved document chunks

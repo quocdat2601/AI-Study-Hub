@@ -179,6 +179,40 @@ async function softDetachDocument(req, res, next) {
   }
 }
 
+async function removeTemporaryAttachments(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.removeTemporaryAttachments({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function permanentlyRemoveRecoverableAttachment(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.permanentlyRemoveRecoverableAttachment({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+      documentId: req.params.documentId,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function permanentlyRemoveAllRecoverableAttachments(req, res, next) {
+  try {
+    res.json(await sessionAttachmentService.permanentlyRemoveAllRecoverableAttachments({
+      sessionId: req.params.sessionId,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function restoreDocument(req, res, next) {
   try {
     res.json(await sessionAttachmentService.restoreDocument({
@@ -219,6 +253,9 @@ module.exports = {
   uploadSessionDocument,
   reprocessSessionDocument,
   softDetachDocument,
+  removeTemporaryAttachments,
+  permanentlyRemoveRecoverableAttachment,
+  permanentlyRemoveAllRecoverableAttachments,
   restoreDocument,
   saveDocumentToLibrary,
 };

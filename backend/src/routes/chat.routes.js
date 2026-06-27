@@ -43,6 +43,9 @@ router.post(
   upload.single('file'),
   chatController.uploadSessionDocument
 );
+router.delete('/sessions/:sessionId/documents/recoverable', chatController.permanentlyRemoveAllRecoverableAttachments);
+router.delete('/sessions/:sessionId/documents/temporary', chatController.removeTemporaryAttachments);
+router.delete('/sessions/:sessionId/documents/:documentId/recoverable', chatController.permanentlyRemoveRecoverableAttachment);
 router.delete('/sessions/:sessionId/documents/:documentId', chatController.softDetachDocument);
 router.post('/sessions/:sessionId/documents/:documentId/reprocess', chatController.reprocessSessionDocument);
 router.post('/sessions/:sessionId/documents/:documentId/restore', chatController.restoreDocument);

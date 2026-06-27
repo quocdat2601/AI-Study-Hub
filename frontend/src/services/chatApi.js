@@ -71,6 +71,21 @@ export async function detachChatDocument(sessionId, documentId, { signal } = {})
   return response.data;
 }
 
+export async function removeTemporaryChatDocuments(sessionId, { signal } = {}) {
+  const response = await api.delete(`/chat/sessions/${sessionId}/documents/temporary`, { signal });
+  return response.data;
+}
+
+export async function permanentlyRemoveRecoverableChatDocument(sessionId, documentId, { signal } = {}) {
+  const response = await api.delete(`/chat/sessions/${sessionId}/documents/${documentId}/recoverable`, { signal });
+  return response.data;
+}
+
+export async function permanentlyRemoveRecoverableChatDocuments(sessionId, { signal } = {}) {
+  const response = await api.delete(`/chat/sessions/${sessionId}/documents/recoverable`, { signal });
+  return response.data;
+}
+
 export async function restoreChatDocument(sessionId, documentId, { signal } = {}) {
   const response = await api.post(`/chat/sessions/${sessionId}/documents/${documentId}/restore`, null, { signal });
   return response.data;

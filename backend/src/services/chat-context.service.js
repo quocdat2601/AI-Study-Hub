@@ -1,7 +1,8 @@
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_CHARS = 6000;
+const MAX_EXPLICIT_COMPARISON_DOCUMENTS = 4;
 
-const COMPARISON_PATTERN = /\b(compare|comparison|versus|vs\.?|differences?)\b|so s[aá]nh|[đd]ối chiếu|kh[aá]c nhau|[đd]iểm kh[aá]c/iu;
+const COMPARISON_PATTERN = /\b(compare|comparison|versus|vs\.?|differences?|related|relationship|relation)\b|so s[aá]nh|[đd]ối chiếu|kh[aá]c nhau|[đd]iểm kh[aá]c|li[eê]n\s+quan/iu;
 const BRIEF_PATTERN = /\b(brief|briefly|concise|shorter|short response)\b|ngắn gọn|ngắn hơn|rút gọn|súc tích/iu;
 const ONLY_DIFFERENCES_PATTERN = /only\s+(?:show|state|list|mention)?\s*(?:the\s+)?differences?|chỉ\s+(?:nêu|liệt kê|cho biết)?\s*(?:các\s+)?(?:điểm\s+)?khác/iu;
 const TABLE_PATTERN = /\btable\b|bảng/iu;
@@ -90,6 +91,265 @@ function normalizeComparable(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+const DOCUMENT_REFERENCE_STOP_WORDS = new Set([
+  'file', 'files', 'document', 'documents', 'attachment', 'attachments',
+  'report', 'assignment', 'pdf', 'doc', 'docx', 'txt', 'image',
+  'tai', 'lieu', 'tep', 'tap', 'dinh', 'kem', 'bai', 'bao', 'cao',
+  'trong', 'cua', 've', 'noi', 'dung', 'nay', 'this', 'that', 'main',
+  'primary', 'current',
+]);
+
+const PRIMARY_DOCUMENT_ALIAS_PATTERN = /\b(primary document|main document|primary file|main file)\b|tai lieu chinh|file chinh/iu;
+const CONTEXTUAL_DOCUMENT_PATTERN = /\b(this file|this attachment|current file|current attachment)\b|file nay|tep nay|tai lieu nay|tep dinh kem nay/iu;
+
+function getStorageFileName(document) {
+  const storagePath = String(document?.cloud_files?.storage_path || '');
+  const parts = storagePath.split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function stripExtension(value) {
+  return String(value || '').replace(/\.[a-z0-9]{1,8}$/iu, '');
+}
+
+// Strip a trailing duplicate-copy suffix such as " (1)" or " (2)" so that a
+// document named "TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx" also matches a query that
+// references it as "TRƯỜNG ĐẠI HỌC KINH TẾ" (without the numeric suffix).
+function stripDuplicateSuffix(value) {
+  return String(value || '').replace(/\s*\(\d+\)\s*$/, '');
+}
+
+function documentDisplayNames(document) {
+  return [
+    document?.title,
+    document?.filename,
+    document?.file_name,
+    document?.original_filename,
+    document?.cloud_files?.file_name,
+    document?.cloud_files?.filename,
+    getStorageFileName(document),
+  ]
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+}
+
+function documentNameProfile(document) {
+  const names = [...new Set(documentDisplayNames(document))];
+  const exactNames = names.map((name) => name.toLowerCase());
+  const normalizedNames = names.map(normalizeComparable).filter(Boolean);
+  // Include both the raw basename and a de-duplicated variant (stripping a
+  // trailing " (N)" copy suffix) so that e.g. "Report (1).docx" matches a
+  // query that says "Report" without the numeric suffix.
+  const rawBasenames = names.map(stripExtension).map(normalizeComparable);
+  const deduplicatedBasenames = names
+    .map(stripExtension)
+    .map(stripDuplicateSuffix)
+    .map(normalizeComparable);
+  const basenames = [...new Set([...rawBasenames, ...deduplicatedBasenames])].filter(Boolean);
+  const tokens = new Set();
+  const tokenSequences = new Set();
+
+  for (const normalized of [...normalizedNames, ...basenames]) {
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    for (const token of parts) {
+      if (token.length >= 3 && !DOCUMENT_REFERENCE_STOP_WORDS.has(token)) tokens.add(token);
+    }
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const sequence = `${parts[index]} ${parts[index + 1]}`;
+      if (!sequence.split(/\s+/).some((token) => DOCUMENT_REFERENCE_STOP_WORDS.has(token))) {
+        tokenSequences.add(sequence);
+      }
+    }
+  }
+
+  return {
+    id: Number(document.id),
+    document,
+    exactNames,
+    normalizedNames: [...new Set(normalizedNames)],
+    basenames: [...new Set(basenames)],
+    tokens: [...tokens],
+    tokenSequences: [...tokenSequences],
+  };
+}
+
+function uniqueMatches(matches) {
+  const byId = new Map();
+  for (const match of matches || []) {
+    const id = Number(match.id);
+    if (Number.isInteger(id)) byId.set(id, match.document);
+  }
+  return [...byId.entries()].map(([id, document]) => ({ id, document }));
+}
+
+function matchesByPriority(question, documents) {
+  const profiles = (documents || []).map(documentNameProfile);
+  const normalizedQuestion = normalizeComparable(question);
+  const lowerQuestion = String(question || '').toLowerCase();
+  const priorityChecks = [
+    ['exact', (profile) => profile.exactNames.some((name) => name && lowerQuestion.includes(name))],
+    ['normalized_exact', (profile) => profile.normalizedNames.some((name) => name.length >= 3 && normalizedQuestion.includes(name))],
+    ['basename', (profile) => profile.basenames.some((name) => name.length >= 3 && normalizedQuestion.includes(name))],
+    ['prefix', (profile) => profile.normalizedNames.some((name) => (
+      name.length >= 3 && normalizedQuestion.split(/\s+/).some((term) => (
+        term.length >= 3 && !DOCUMENT_REFERENCE_STOP_WORDS.has(term) && name.startsWith(term)
+      ))
+    ))],
+  ];
+
+  for (const [kind, check] of priorityChecks) {
+    const matches = uniqueMatches(profiles.filter(check));
+    if (matches.length) return { matches, kind };
+  }
+
+  const tokenOwners = new Map();
+  const sequenceOwners = new Map();
+  for (const profile of profiles) {
+    for (const token of profile.tokens) {
+      const owners = tokenOwners.get(token) || new Set();
+      owners.add(profile.id);
+      tokenOwners.set(token, owners);
+    }
+    for (const sequence of profile.tokenSequences) {
+      const owners = sequenceOwners.get(sequence) || new Set();
+      owners.add(profile.id);
+      sequenceOwners.set(sequence, owners);
+    }
+  }
+
+  const tokenMatches = uniqueMatches(profiles.filter((profile) => {
+    const hasUniqueSequence = profile.tokenSequences.some((sequence) => (
+      sequence.length >= 7
+      && normalizedQuestion.includes(sequence)
+      && sequenceOwners.get(sequence)?.size === 1
+    ));
+    const hasUniqueToken = profile.tokens.some((token) => (
+      token.length >= 3
+      && normalizedQuestion.includes(token)
+      && tokenOwners.get(token)?.size === 1
+    ));
+    return hasUniqueSequence || hasUniqueToken;
+  }));
+  return { matches: tokenMatches, kind: 'token' };
+}
+
+function buildAmbiguousScope(matches, reason = 'ambiguous_document_reference') {
+  return {
+    type: 'ambiguous',
+    documentIds: [],
+    matchingDocuments: uniqueMatches(matches).map(({ document }) => ({
+      id: Number(document.id),
+      title: document.title,
+    })),
+    reason,
+  };
+}
+
+function resolveContextualDocumentScope({ question, documents, primaryDocumentId, focusedDocumentId }) {
+  const normalizedQuestion = normalizeComparable(question);
+  if (!CONTEXTUAL_DOCUMENT_PATTERN.test(normalizedQuestion)) return null;
+  const availableIds = new Set((documents || []).map((document) => Number(document.id)));
+
+  if (focusedDocumentId != null && availableIds.has(Number(focusedDocumentId))) {
+    return {
+      type: 'explicit_single',
+      documentIds: [Number(focusedDocumentId)],
+      matchingDocuments: [],
+      reason: 'focused_document',
+    };
+  }
+
+  const attachments = (documents || []).filter((document) => (
+    Number(document.id) !== Number(primaryDocumentId)
+  ));
+  if (attachments.length === 1) {
+    return {
+      type: 'explicit_single',
+      documentIds: [Number(attachments[0].id)],
+      matchingDocuments: [],
+      reason: 'single_attachment_context',
+    };
+  }
+  if (attachments.length > 1) {
+    return buildAmbiguousScope(attachments.map((document) => ({ id: document.id, document })), 'ambiguous_contextual_reference');
+  }
+  return null;
+}
+
+function resolveDocumentScope({
+  question,
+  documents,
+  primaryDocumentId,
+  focusedDocumentId = null,
+  intent = 'question',
+}) {
+  const normalizedQuestion = normalizeComparable(question);
+  const availableDocuments = documents || [];
+
+  if (PRIMARY_DOCUMENT_ALIAS_PATTERN.test(normalizedQuestion)) {
+    const primary = availableDocuments.find((document) => Number(document.id) === Number(primaryDocumentId));
+    return primary
+      ? {
+        type: intent === 'comparison' ? 'comparison' : 'explicit_single',
+        documentIds: [Number(primary.id)],
+        matchingDocuments: [],
+        reason: 'primary_alias',
+      }
+      : {
+        type: 'general',
+        documentIds: availableDocuments.map((document) => Number(document.id)),
+        matchingDocuments: [],
+        reason: 'primary_alias_unavailable',
+      };
+  }
+
+  const contextual = resolveContextualDocumentScope({
+    question,
+    documents: availableDocuments,
+    primaryDocumentId,
+    focusedDocumentId,
+  });
+  if (contextual) return contextual;
+
+  const { matches, kind: matchKind } = matchesByPriority(question, availableDocuments);
+  if (matches.length > MAX_EXPLICIT_COMPARISON_DOCUMENTS) {
+    return buildAmbiguousScope(matches, 'too_many_document_matches');
+  }
+  if (matches.length > 1) {
+    if (matchKind === 'prefix') {
+      return buildAmbiguousScope(matches, 'ambiguous_prefix_reference');
+    }
+    return {
+      type: intent === 'comparison' ? 'comparison' : 'explicit_multi',
+      documentIds: matches.map((match) => Number(match.id)),
+      matchingDocuments: [],
+      reason: 'named_documents',
+    };
+  }
+  if (matches.length === 1) {
+    return {
+      type: intent === 'comparison' ? 'comparison' : 'explicit_single',
+      documentIds: [Number(matches[0].id)],
+      matchingDocuments: [],
+      reason: 'named_document',
+    };
+  }
+  if (intent === 'comparison') {
+    return {
+      type: 'comparison',
+      documentIds: availableDocuments.map((document) => Number(document.id)),
+      matchingDocuments: [],
+      reason: 'comparison_all_documents',
+    };
+  }
+  return {
+    type: 'general',
+    documentIds: availableDocuments.map((document) => Number(document.id)),
+    matchingDocuments: [],
+    reason: 'no_explicit_document_reference',
+  };
 }
 
 function resolveMentionedDocumentIds(question, documents) {
@@ -204,4 +464,5 @@ module.exports = {
   detectResponseConstraints,
   getRecentConversation,
   normalizeComparable,
+  resolveDocumentScope,
 };

@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+process.env.SUPABASE_URL ||= 'http://127.0.0.1:54321';
+process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-role-key';
+
 const chatContext = require('../src/services/chat-context.service');
 const comparison = require('../src/services/rag-comparison.service');
 const aiProvider = require('../src/services/ai-provider.service');
@@ -346,6 +349,28 @@ test('database follow-up excludes SQL injection, security, and storage-only chun
   assert.equal(selected.every((item) => item.negativeTopicScore === 0), true);
 });
 
+test('broad relationship comparison preserves evidence from unrelated documents', async () => {
+  const documents = [
+    { id: 1, title: 'TRƯỜNG ĐẠI HỌC KINH TẾ.docx' },
+    { id: 2, title: 'Business.docx' },
+  ];
+  const chunks = [
+    chunk(1, 1, 0, 'Thorakao global strategy analyzes entering Saudi Arabia with cosmetics distribution.'),
+    chunk(2, 2, 0, 'AI Study Hub business logic manages uploaded documents, chat sessions, and study workflows.'),
+  ];
+  const evidence = await comparison.retrieveComparisonEvidence({
+    question: 'file TRƯỜNG ĐẠI HỌC KINH TẾ nói về cái gì, có liên quan gì đến file business không?',
+    chunks,
+    documents,
+  });
+
+  assert.equal(evidence.insufficient, false);
+  assert.equal(evidence.metadata.strategy, 'broad_document_coverage');
+  assert.deepEqual(evidence.chunks.map((item) => item.doc_id), [1, 2]);
+  assert.match(evidence.chunks[0].content, /Thorakao/);
+  assert.match(evidence.chunks[1].content, /AI Study Hub/);
+});
+
 test('shorter follow-up preserves the immediately previous database scope', () => {
   const documents = [{ id: 1, title: 'SWP' }, { id: 2, title: 'SRS_UPDATE' }];
   const initial = chatContext.analyzeRequest({
@@ -441,5 +466,184 @@ test('Gemini and Qwen share cleaned comparison scope and constraints', () => {
       'SWP uses MySQL (chunk 25 của SRS_UPDATE), while SRS_UPDATE uses PostgreSQL [Source 2].'
     ),
     'SWP uses MySQL, while SRS_UPDATE uses PostgreSQL.'
+  );
+});
+
+test('multi-document prompts forbid unsupported relationship claims', () => {
+  const prompts = aiProvider.buildRagPrompts({
+    question: 'file A có liên quan gì đến file B không?',
+    documentTitles: ['TRƯỜNG ĐẠI HỌC KINH TẾ.docx', 'Business.docx'],
+    chunks: [
+      chunk(1, 1, 0, 'Thorakao global market strategy in Saudi Arabia.', {
+        documentTitle: 'TRƯỜNG ĐẠI HỌC KINH TẾ.docx',
+      }),
+      chunk(2, 2, 0, 'AI Study Hub business logic and document workflows.', {
+        documentTitle: 'Business.docx',
+      }),
+    ],
+    mode: 'hybrid',
+    history: [],
+    comparisonMetadata: { strategy: 'balanced', comparedDocumentIds: [1, 2] },
+  });
+
+  assert.match(prompts.systemPrompt, /Do not claim that documents are related unless/i);
+  assert.match(prompts.systemPrompt, /If the documents discuss unrelated subjects/i);
+  assert.match(prompts.systemPrompt, /Evaluate each requested document separately/i);
+});
+
+// ─── Regression tests for multi-document overview comparison ─────────────────
+
+test('(1) duplicate suffix is stripped so TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx matches query without suffix', () => {
+  const documents = [
+    { id: 1, title: 'TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx' },
+    { id: 2, title: 'Business.docx' },
+  ];
+  // resolveDocumentScope must resolve both docs when question references each
+  // without the "(1)" suffix and without the ".docx" extension.
+  const scope = chatContext.resolveDocumentScope({
+    question: 'File TRƯỜNG ĐẠI HỌC KINH TẾ và file Business nói về gì',
+    documents,
+    primaryDocumentId: 1,
+    intent: 'comparison',
+  });
+
+  assert.deepEqual(
+    scope.documentIds.slice().sort((a, b) => a - b),
+    [1, 2],
+    'both document IDs must resolve'
+  );
+  assert.notEqual(scope.type, 'ambiguous', 'scope must not be ambiguous');
+});
+
+test('analyzeRequest resolves both docs for TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx + Business.docx session', () => {
+  const documents = [
+    { id: 1, title: 'TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx' },
+    { id: 2, title: 'Business.docx' },
+  ];
+  const context = chatContext.analyzeRequest({
+    question: 'File TRƯỜNG ĐẠI HỌC KINH TẾ và file Business nói về gì, chúng có liên quan trực tiếp với nhau không?',
+    history: [],
+    documents,
+  });
+
+  assert.equal(context.intent, 'comparison');
+  assert.equal(context.comparisonUnavailable, false,
+    'must NOT report comparison unavailable when two docs are attached');
+  assert.deepEqual(
+    context.comparedDocumentIds.slice().sort((a, b) => a - b),
+    [1, 2],
+    'both doc IDs must be in comparedDocumentIds'
+  );
+});
+
+test('partial name "Business" without extension resolves only Business.docx', () => {
+  const documents = [
+    { id: 10, title: 'SWP.docx' },
+    { id: 20, title: 'Business.docx' },
+  ];
+  const scope = chatContext.resolveDocumentScope({
+    question: 'What does Business say about the API?',
+    documents,
+    primaryDocumentId: 10,
+    intent: 'question',
+  });
+
+  assert.deepEqual(scope.documentIds, [20]);
+  assert.equal(scope.type, 'explicit_single');
+});
+
+test('(N) suffix variants (1), (2) are all stripped independently', () => {
+  const documents = [
+    { id: 1, title: 'Report (1).docx' },
+    { id: 2, title: 'Report (2).docx' },
+  ];
+  const scope1 = chatContext.resolveDocumentScope({
+    question: 'Summarize Report',
+    documents,
+    primaryDocumentId: 1,
+    intent: 'question',
+  });
+  // Both docs have the same de-duplicated basename "report" — must be ambiguous
+  // or resolve both (never silently pick just one).
+  assert.ok(
+    scope1.type === 'ambiguous' || scope1.documentIds.length === 2,
+    'multiple docs with same deduplicated basename must be ambiguous or both resolved'
+  );
+
+  // Even when user says "Report (1)", the de-duplicated basename "report" still
+  // matches both docs. The raw basename "report 1" matches doc 1 only, but
+  // because both patterns are in scope, the result is ambiguous rather than
+  // silently single-selecting.
+  const scope2 = chatContext.resolveDocumentScope({
+    question: 'Summarize Report (1)',
+    documents,
+    primaryDocumentId: 1,
+    intent: 'question',
+  });
+  // At minimum, doc 1 must be in scope; the scope must not be empty.
+  assert.ok(scope2.documentIds.includes(1), 'doc 1 must be in scope when query says Report (1)');
+});
+
+test('true one-document session still returns comparison-unavailable answer', () => {
+  // Use a question that explicitly triggers comparison intent (contains lien quan).
+  const q = 'File TRƯỜNG ĐẠI HỌC KINH TẾ và file Business có liên quan gì nhau không?';
+  const context = chatContext.analyzeRequest({
+    question: q,
+    history: [],
+    documents: [{ id: 1, title: 'TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx' }],
+  });
+
+  assert.equal(context.intent, 'comparison');
+  assert.equal(context.comparisonUnavailable, true,
+    'only one doc in session → comparison must be unavailable');
+  assert.equal(
+    chatContext.buildComparisonUnavailableAnswer(q),
+    'Hiện chỉ còn một tài liệu được đính kèm nên không thể so sánh hai tài liệu.'
+  );
+});
+
+test('comparison fallback evidence includes chunks from both documents', async () => {
+  const documents = [
+    { id: 1, title: 'TRƯỜNG ĐẠI HỌC KINH TẾ (1).docx' },
+    { id: 2, title: 'Business.docx' },
+  ];
+  const chunks = [
+    chunk(1, 1, 0, 'Thorakao enters the Saudi Arabia cosmetics market with distribution strategy.'),
+    chunk(2, 2, 0, 'AI Study Hub manages uploaded documents and chat sessions for students.'),
+  ];
+  const evidence = await comparison.retrieveComparisonEvidence({
+    question: 'File TRƯỜNG ĐẠI HỌC KINH TẾ và file Business nói về gì, có liên quan không?',
+    chunks,
+    documents,
+  });
+
+  const evidenceDocIds = [...new Set(evidence.chunks.map((c) => c.doc_id))].sort((a, b) => a - b);
+  assert.deepEqual(evidenceDocIds, [1, 2],
+    'fallback evidence must include chunks from BOTH documents');
+  assert.equal(evidence.insufficient, false);
+});
+
+test('comparison_all_documents reason still overrides documentScope when no explicit names match', () => {
+  const documents = [
+    { id: 1, title: 'Tài liệu A' },
+    { id: 2, title: 'Tài liệu B' },
+  ];
+  // Generic comparison question with no explicit document names
+  const context = chatContext.analyzeRequest({
+    question: 'So sánh hai tài liệu và chỉ nêu điểm khác nhau',
+    history: [],
+    documents,
+  });
+  const scope = chatContext.resolveDocumentScope({
+    question: context.retrievalQuery,
+    documents,
+    primaryDocumentId: 1,
+    intent: context.intent,
+  });
+
+  assert.equal(scope.reason, 'comparison_all_documents');
+  assert.deepEqual(
+    scope.documentIds.slice().sort((a, b) => a - b),
+    [1, 2]
   );
 });

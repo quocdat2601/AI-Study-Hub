@@ -67,6 +67,21 @@ class DocumentChunkModel {
     return data || [];
   }
 
+  static async findByIds(ids) {
+    const normalizedIds = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+    if (!normalizedIds.length) return [];
+
+    const { data, error } = await supabase
+      .from('document_chunks')
+      .select('*')
+      .in('id', normalizedIds)
+      .order('doc_id', { ascending: true })
+      .order('chunk_index', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async matchByEmbedding({ docId, embedding, limit = 4 }) {
     const { data, error } = await supabase.rpc('match_document_chunks', {
       p_doc_id: Number(docId),

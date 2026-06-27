@@ -376,11 +376,15 @@ export default function AIChatPanel({
   onAnswerModeChange,
   onAttachDocument,
   onCancelAttachmentUpload,
+  onClearPendingAttachments,
   onDropFiles,
   onAsk,
   onChatScroll,
   onQuestionChange,
+  onPermanentlyRemoveRecoverableAttachment,
+  onPermanentlyRemoveAllRecoverableAttachments,
   onRemoveAttachment,
+  onRemoveTemporaryAttachments,
   onRemoveQueuedAttachment,
   onRestoreAttachment,
   onRetryQueuedAttachment,
@@ -490,7 +494,11 @@ export default function AIChatPanel({
         isLoading={isLoadingMessages}
         onAttach={onAttachDocument}
         onCancelUpload={onCancelAttachmentUpload}
+        onClearPending={onClearPendingAttachments}
+        onDeleteRecoverable={onPermanentlyRemoveRecoverableAttachment}
+        onDeleteAllRecoverable={onPermanentlyRemoveAllRecoverableAttachments}
         onRemove={onRemoveAttachment}
+        onRemoveTemporary={onRemoveTemporaryAttachments}
         onRemoveQueued={onRemoveQueuedAttachment}
         onRestore={onRestoreAttachment}
         onRetryQueued={onRetryQueuedAttachment}

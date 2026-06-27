@@ -344,6 +344,25 @@ class ChatModel {
     return data;
   }
 
+  static async removeTemporarySessionAttachments(sessionId, userId) {
+    const { data, error } = await supabase.rpc('remove_temporary_session_attachments', {
+      p_session_id: Number(sessionId),
+      p_user_id: userId,
+    });
+    if (error) throw error;
+    return (data || []).map((row) => Number(row.document_id));
+  }
+
+  static async permanentlyRemoveRecoverableSessionAttachments(sessionId, userId, documentId = null) {
+    const { data, error } = await supabase.rpc('permanently_remove_recoverable_session_attachments', {
+      p_session_id: Number(sessionId),
+      p_user_id: userId,
+      p_document_id: documentId == null ? null : Number(documentId),
+    });
+    if (error) throw error;
+    return (data || []).map((row) => Number(row.document_id));
+  }
+
   static async getMessages(sessionId) {
     const { data, error } = await supabase
       .from('chat_messages')

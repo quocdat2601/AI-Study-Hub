@@ -11,6 +11,20 @@ const migrationPath = path.resolve(
   '020_session_document_cleanup.sql'
 );
 const migration = fs.readFileSync(migrationPath, 'utf8');
+const correctiveMigration = fs.readFileSync(path.resolve(
+  __dirname,
+  '..',
+  'db',
+  'migrations',
+  '027_session_lifecycle_and_bulk_attachment_cleanup.sql'
+), 'utf8');
+const recoverableRemovalMigration = fs.readFileSync(path.resolve(
+  __dirname,
+  '..',
+  'db',
+  'migrations',
+  '028_recoverable_attachment_permanent_removal.sql'
+), 'utf8');
 
 test('lifecycle migration defines the complete state machine and retention windows', () => {
   assert.match(migration, /lifecycle_status IN \('active', 'expired', 'purging'\)/);
@@ -38,4 +52,29 @@ test('lifecycle RPCs are restricted to the backend service role', () => {
   assert.match(migration, /REVOKE ALL ON FUNCTION restore_session_document[\s\S]*FROM PUBLIC, anon, authenticated/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION restore_session_document[\s\S]*TO service_role/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION finalize_session_document_purge[\s\S]*TO service_role/);
+});
+
+test('corrective lifecycle migration qualifies expired document output columns', () => {
+  assert.match(correctiveMigration, /CREATE OR REPLACE FUNCTION expire_due_session_documents/);
+  assert.match(correctiveMigration, /expired_docs AS/);
+  assert.match(correctiveMigration, /d\.expired_at AS document_expired_at/);
+  assert.match(correctiveMigration, /SELECT e\.document_id, e\.document_expired_at, e\.document_purge_after/);
+  assert.doesNotMatch(correctiveMigration, /SELECT id, expired_at, purge_after FROM expired;/);
+});
+
+test('bulk temporary attachment cleanup excludes primary and library documents', () => {
+  assert.match(correctiveMigration, /CREATE OR REPLACE FUNCTION remove_temporary_session_attachments/);
+  assert.match(correctiveMigration, /csd\.doc_id IS DISTINCT FROM os\.primary_document_id/);
+  assert.match(correctiveMigration, /d\.document_scope = 'session'/);
+  assert.match(correctiveMigration, /d\.lifecycle_status = 'active'/);
+  assert.match(correctiveMigration, /SET removed_at = NOW\(\)/);
+});
+
+test('recoverable permanent removal makes session documents immediately purge eligible', () => {
+  assert.match(recoverableRemovalMigration, /permanently_remove_recoverable_session_attachments/);
+  assert.match(recoverableRemovalMigration, /csd\.removed_at IS NOT NULL/);
+  assert.match(recoverableRemovalMigration, /csd\.doc_id IS DISTINCT FROM os\.primary_document_id/);
+  assert.match(recoverableRemovalMigration, /d\.document_scope = 'session'/);
+  assert.match(recoverableRemovalMigration, /purge_after = NOW\(\)/);
+  assert.match(recoverableRemovalMigration, /GRANT EXECUTE ON FUNCTION permanently_remove_recoverable_session_attachments/);
 });

@@ -68,6 +68,8 @@ function buildRagPrompts({
   comparisonMetadata,
   substantiveQuestion,
   retrievalQuery,
+  overviewContext,
+  overviewIntent,
 }) {
   const context = (chunks || [])
     .map((chunk, index) => `${buildSourceLabel(chunk, index)}\n${chunk.promptContent || chunk.content}`)
@@ -80,7 +82,11 @@ function buildRagPrompts({
   const comparisonInstruction = comparisonMetadata
     ? [
       'This is a document comparison request.',
+      'Evaluate each requested document separately before comparing them.',
       'Compare only claims supported by evidence from every compared document.',
+      'Do not claim that documents are related unless the supplied evidence supports that conclusion.',
+      'If the documents discuss unrelated subjects, state that clearly.',
+      'If evidence from one requested document is missing, say there is insufficient context for that document instead of guessing.',
       'Do not present unrelated sections as differences.',
       comparisonMetadata.structureEquivalent
         ? 'The evidence is structurally aligned. Treat the documents as structurally similar and list only supported content changes; do not characterize one as merely an overview or the other as a more detailed specification.'
@@ -95,6 +101,27 @@ function buildRagPrompts({
       `Evidence alignment strategy: ${comparisonMetadata.strategy}.`,
     ].join('\n')
     : '';
+  const multiDocumentInstruction = !comparisonMetadata && selectedTitles.length > 1
+    ? [
+      'This request intentionally includes multiple selected documents.',
+      'Evaluate each selected document separately before drawing a combined conclusion.',
+      'Do not claim the documents are related unless the supplied chunks support that relationship.',
+      'If they discuss unrelated subjects, state that clearly.',
+      'If evidence for one selected document is missing, say there is insufficient context for that document instead of guessing.',
+      'Do not use outside knowledge to fill missing document evidence.',
+    ].join('\n')
+    : '';
+  const overviewInstruction = overviewIntent
+    ? [
+      'This request asks for a high-level document overview or overview comparison.',
+      'Use the provided persisted overview context as high-level orientation.',
+      'Use the source chunks as the cited supporting evidence.',
+      overviewIntent === 'document_comparison_overview'
+        ? 'Compare topic, purpose, similarities, differences, and whether the documents are directly related. If they are unrelated, say that clearly.'
+        : 'Explain the document topic, purpose, key topics, and structure at a high level.',
+      'Do not cite the overview itself. The application only cites real chunks.',
+    ].join('\n')
+    : '';
   const systemPrompt = [
     "You are AI Study Hub's study assistant.",
     buildModeInstruction(mode),
@@ -104,12 +131,15 @@ function buildRagPrompts({
     'Do not write source numbers, chunk numbers, or parenthetical chunk labels in the answer. The application renders citations separately. Never combine a document title with another source chunk.',
     ...constraintInstructions,
     comparisonInstruction,
+    multiDocumentInstruction,
+    overviewInstruction,
   ].filter(Boolean).join('\n\n');
   const userPrompt = [
     historyText ? `Recent conversation context:\n${historyText}` : '',
     substantiveQuestion ? `Active substantive question:\n${substantiveQuestion}` : '',
     retrievalQuery ? `Current retrieval topic (do not broaden it):\n${retrievalQuery}` : '',
     `Selected document titles:\n${selectedTitles.join('\n') || 'Untitled document'}`,
+    overviewContext ? `Persisted document overview context:\n${overviewContext}` : '',
     `Retrieved source chunks:\n${context || 'No source chunks were available.'}`,
     `Current user question:\n${question}`,
   ].filter(Boolean).join('\n\n');

@@ -235,6 +235,75 @@ async function softDetachDocument({ sessionId, userId, documentId }) {
   return getUpdatedSessionPayload(session.id, userId);
 }
 
+async function removeTemporaryAttachments({ sessionId, userId }) {
+  const session = await requireOwnedSession(userId, sessionId);
+  const documentIds = await chatModel.removeTemporarySessionAttachments(session.id, userId);
+
+  if (documentIds.length) {
+    activityService.log({
+      userId,
+      action: 'chat.attachment.bulk_detach_temporary',
+      targetType: 'chat_session',
+      targetId: session.id,
+      metadata: { documentIds, removedCount: documentIds.length },
+    });
+  }
+
+  return {
+    ...(await getUpdatedSessionPayload(session.id, userId)),
+    removedCount: documentIds.length,
+    documentIds,
+  };
+}
+
+async function permanentlyRemoveRecoverableAttachment({ sessionId, userId, documentId }) {
+  const session = await requireOwnedSession(userId, sessionId);
+  const docId = normalizeNumericId(documentId, 'documentId');
+  const documentIds = await chatModel.permanentlyRemoveRecoverableSessionAttachments(session.id, userId, docId);
+  if (!documentIds.length) {
+    const purgeLog = await documentModel.findSessionPurgeLog(session.id, docId);
+    throw createError(
+      purgeLog ? 410 : 404,
+      purgeLog ? 'Session attachment has been permanently purged' : 'Recoverable session attachment not found'
+    );
+  }
+
+  activityService.log({
+    userId,
+    action: 'chat.attachment.permanent_remove_recoverable',
+    targetType: 'chat_session',
+    targetId: session.id,
+    metadata: { documentIds, removedCount: documentIds.length },
+  });
+
+  return {
+    ...(await getUpdatedSessionPayload(session.id, userId)),
+    removedCount: documentIds.length,
+    documentIds,
+  };
+}
+
+async function permanentlyRemoveAllRecoverableAttachments({ sessionId, userId }) {
+  const session = await requireOwnedSession(userId, sessionId);
+  const documentIds = await chatModel.permanentlyRemoveRecoverableSessionAttachments(session.id, userId);
+
+  if (documentIds.length) {
+    activityService.log({
+      userId,
+      action: 'chat.attachment.bulk_permanent_remove_recoverable',
+      targetType: 'chat_session',
+      targetId: session.id,
+      metadata: { documentIds, removedCount: documentIds.length },
+    });
+  }
+
+  return {
+    ...(await getUpdatedSessionPayload(session.id, userId)),
+    removedCount: documentIds.length,
+    documentIds,
+  };
+}
+
 async function restoreDocument({ sessionId, userId, documentId }) {
   const session = await requireOwnedSession(userId, sessionId);
   const docId = normalizeNumericId(documentId, 'documentId');
@@ -338,6 +407,9 @@ module.exports = {
   uploadSessionDocument,
   reprocessSessionDocument,
   softDetachDocument,
+  removeTemporaryAttachments,
+  permanentlyRemoveRecoverableAttachment,
+  permanentlyRemoveAllRecoverableAttachments,
   restoreDocument,
   saveToLibrary,
 };

@@ -490,6 +490,25 @@ function selectProgressiveGroups(candidatesByDocument, documentIds, query) {
   }];
 }
 
+function buildBroadCoverageGroups(candidatesByDocument, documentIds) {
+  const chunks = [];
+  for (const docId of documentIds) {
+    const candidates = candidatesByDocument.get(docId) || [];
+    const selected = candidates.find((chunk) => String(chunk.content || '').trim())
+      || candidates[0];
+    if (!selected) return [];
+    chunks.push(selected);
+  }
+  return [{
+    strategy: 'broad_document_coverage',
+    key: 'broad_document_coverage',
+    chunks,
+    differenceScore: contentDifferenceScore(chunks),
+    providerDifference: providerDifferenceScore(chunks),
+    score: chunks.reduce((sum, chunk) => sum + Number(chunk.score || 0), 0) / Math.max(1, chunks.length),
+  }];
+}
+
 function applyContextBudget(groups, allChunks, documentIds) {
   const selected = [];
   const seen = new Set();
@@ -593,7 +612,10 @@ async function retrieveComparisonEvidence({ question, chunks, documents }) {
     );
   }
 
-  const groups = selectProgressiveGroups(candidatesByDocument, documentIds, question);
+  let groups = selectProgressiveGroups(candidatesByDocument, documentIds, question);
+  if (!groups.length) {
+    groups = buildBroadCoverageGroups(candidatesByDocument, documentIds);
+  }
   const candidateDebug = [...candidatesByDocument.entries()].flatMap(([docId, candidates]) => (
     candidates.map((chunk) => {
       const topicScore = scoreTopicCandidate(chunk, expandedQuery);

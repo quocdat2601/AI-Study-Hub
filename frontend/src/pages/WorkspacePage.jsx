@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { askDocument, askDocumentStream, askSession, askSessionStream, getAiModelStatus, getAiUsage, processDocumentForAi } from "../services/aiApi.js";
 import AIChatPanel from "../components/workspace/AIChatPanel.jsx";
 import DocumentSidebar from "../components/workspace/DocumentSidebar.jsx";
@@ -131,11 +132,15 @@ function getDocumentType(document) {
 }
 
 export default function WorkspacePage() {
+  const { documentId: urlDocumentId } = useParams();
+  const navigate = useNavigate();
   const cachedWorkspace = getWorkspaceCache();
-  const initialSelectedId = cachedWorkspace.selectedId || cachedWorkspace.documents?.[0]?.id || null;
-  const initialChat = getCachedDocumentChat(initialSelectedId);
+  
+  const selectedId = urlDocumentId ? Number(urlDocumentId) : null;
+  const initialChat = getCachedDocumentChat(selectedId || cachedWorkspace.selectedId || cachedWorkspace.documents?.[0]?.id || null);
   const chatScrollRef = useRef(null);
-  const lastSelectedIdRef = useRef(initialSelectedId);
+  const prevUrlSelectedIdRef = useRef(selectedId);
+  const lastSelectedIdRef = useRef(selectedId);
   const previousMessageCountRef = useRef(initialChat.messages.length);
   const pdfBlobUrlRef = useRef(null);
   const pdfPreviewRequestRef = useRef(0);
@@ -161,7 +166,6 @@ export default function WorkspacePage() {
   } = useWorkspaceLayout();
 
   const [documents, setDocuments] = useState(() => cachedWorkspace.documents || []);
-  const [selectedId, setSelectedId] = useState(() => initialSelectedId);
   const [messages, setMessages] = useState(() => initialChat.messages);
   const [sessionId, setSessionId] = useState(() => initialChat.sessionId);
   const [sessions, setSessions] = useState([]);
@@ -293,13 +297,6 @@ export default function WorkspacePage() {
         const nextDocuments = data || [];
         cacheWorkspaceState({ documents: nextDocuments });
         setDocuments(nextDocuments);
-        setSelectedId((current) => {
-          const cachedSelected = getWorkspaceCache().selectedId;
-          const nextSelected = [current, cachedSelected, nextDocuments[0]?.id]
-            .find((candidate) => candidate && nextDocuments.some((doc) => Number(doc.id) === Number(candidate))) || null;
-          cacheWorkspaceState({ selectedId: nextSelected });
-          return nextSelected;
-        });
       } catch (err) {
         if (isMounted) {
           setError(err.response?.data?.error || "Could not load documents");
@@ -315,6 +312,36 @@ export default function WorkspacePage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoadingDocs) return;
+    if (documents.length > 0 && selectedId !== null) {
+      const isValid = documents.some((doc) => Number(doc.id) === selectedId);
+      if (!isValid) {
+        const cachedSelected = getWorkspaceCache().selectedId;
+        const validId = [cachedSelected, documents[0]?.id]
+          .find((candidate) => candidate && documents.some((doc) => Number(doc.id) === Number(candidate))) || null;
+        if (validId) {
+          navigate(`/workspace/documents/${validId}`, { replace: true });
+        } else {
+          navigate(`/workspace`, { replace: true });
+        }
+      } else {
+        cacheWorkspaceState({ selectedId });
+      }
+    } else if (documents.length > 0 && selectedId === null) {
+      const cachedSelected = getWorkspaceCache().selectedId;
+      const validId = [cachedSelected, documents[0]?.id]
+        .find((candidate) => candidate && documents.some((doc) => Number(doc.id) === Number(candidate))) || null;
+      if (validId) {
+        navigate(`/workspace/documents/${validId}`, { replace: true });
+      }
+    } else if (documents.length === 0 && selectedId !== null) {
+      navigate(`/workspace`, { replace: true });
+    }
+  }, [documents, selectedId, isLoadingDocs, navigate]);
+
+
 
   function publishSessionMessages(targetSessionId, targetDocumentId, nextMessages) {
     cacheSessionMessages(targetSessionId, nextMessages);
@@ -399,6 +426,27 @@ export default function WorkspacePage() {
     setAttachmentUploadProgress(0);
     setIsAsking(false);
   }, []);
+
+  useEffect(() => {
+    if (selectedId && prevUrlSelectedIdRef.current !== selectedId) {
+      prevUrlSelectedIdRef.current = selectedId;
+      const cachedChat = getCachedDocumentChat(selectedId);
+      cancelActiveChatWork();
+      setSessions([]);
+      sessionIdRef.current = cachedChat.sessionId;
+      setSessionId(cachedChat.sessionId);
+      setMessages(cachedChat.messages);
+      setAttachments([]);
+      setAttachmentAction(null);
+      setAttachmentError("");
+      setAttachmentUploadProgress(0);
+      if (cachedChat.selectedModel) {
+        setSelectedModel(cachedChat.selectedModel);
+      }
+      setQuestion("");
+      setError("");
+    }
+  }, [selectedId, cancelActiveChatWork]);
 
   const loadChatHistory = useCallback(async (docId, options = {}) => {
     const { showLoader = true, sessionId: requestedSessionId } = options;
@@ -694,24 +742,8 @@ export default function WorkspacePage() {
   }, [answerMode]);
 
   function selectDocument(docId) {
-    const cachedChat = getCachedDocumentChat(docId);
-    cancelActiveChatWork();
-    cacheWorkspaceState({ selectedId: docId });
-    setSelectedId(docId);
-    setSessions([]);
-    sessionIdRef.current = cachedChat.sessionId;
-    setMessages(cachedChat.messages);
-    setSessionId(cachedChat.sessionId);
-    setAttachments([]);
-    setAttachmentAction(null);
-    setAttachmentError("");
-    setAttachmentUploadProgress(0);
-    if (cachedChat.selectedModel) {
-      setSelectedModel(cachedChat.selectedModel);
-    }
-    setQuestion("");
-    setProcessResult(cachedChat.processResult);
-    setError("");
+    if (Number(docId) === Number(selectedId)) return;
+    navigate(`/workspace/documents/${docId}`);
   }
 
   function applySelectedSessionPayload(payload, docId = selectedId) {

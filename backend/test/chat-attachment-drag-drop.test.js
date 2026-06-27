@@ -5,6 +5,9 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 const migration = fs.readFileSync(path.join(root, 'db', 'migrations', '026_chat_attachment_drag_drop.sql'), 'utf8');
+const chatRoutes = fs.readFileSync(path.join(root, 'src', 'routes', 'chat.routes.js'), 'utf8');
+const attachmentService = fs.readFileSync(path.join(root, 'src', 'services', 'session-attachment.service.js'), 'utf8');
+const chatModel = fs.readFileSync(path.join(root, 'src', 'models', 'chat.model.js'), 'utf8');
 const uploadMiddleware = fs.readFileSync(path.join(root, 'src', 'middleware', 'upload.js'), 'utf8');
 const textService = fs.readFileSync(path.join(root, 'src', 'services', 'document-text.service.js'), 'utf8');
 
@@ -26,4 +29,21 @@ test('TXT is accepted by upload validation and extraction', () => {
   assert.match(uploadMiddleware, /'text\/plain'/);
   assert.match(textService, /TXT: 'text\/plain'/);
   assert.match(textService, /buffer\.toString\('utf8'\)/);
+});
+
+test('bulk temporary attachment endpoint is session scoped and idempotent', () => {
+  assert.match(chatRoutes, /router\.delete\('\/sessions\/:sessionId\/documents\/temporary'/);
+  assert.match(attachmentService, /removeTemporaryAttachments/);
+  assert.match(attachmentService, /requireOwnedSession\(userId, sessionId\)/);
+  assert.match(chatModel, /remove_temporary_session_attachments/);
+  assert.match(attachmentService, /removedCount: documentIds\.length/);
+});
+
+test('recoverable permanent removal endpoints are session scoped', () => {
+  assert.match(chatRoutes, /router\.delete\('\/sessions\/:sessionId\/documents\/recoverable'/);
+  assert.match(chatRoutes, /router\.delete\('\/sessions\/:sessionId\/documents\/:documentId\/recoverable'/);
+  assert.match(attachmentService, /permanentlyRemoveRecoverableAttachment/);
+  assert.match(attachmentService, /permanentlyRemoveAllRecoverableAttachments/);
+  assert.match(attachmentService, /requireOwnedSession\(userId, sessionId\)/);
+  assert.match(chatModel, /permanently_remove_recoverable_session_attachments/);
 });

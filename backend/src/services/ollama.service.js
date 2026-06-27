@@ -76,7 +76,7 @@ async function assertModelInstalled(model) {
   }
 }
 
-async function generateChat({ model, systemPrompt, userPrompt, messages }) {
+async function generateChat({ model, systemPrompt, userPrompt, messages, format, options }) {
   await assertModelInstalled(model);
 
   const payloadMessages = messages || [
@@ -91,6 +91,8 @@ async function generateChat({ model, systemPrompt, userPrompt, messages }) {
       model,
       messages: payloadMessages,
       stream: false,
+      ...(format ? { format } : {}),
+      ...(options ? { options } : {}),
     }),
   });
 

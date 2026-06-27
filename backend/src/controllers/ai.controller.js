@@ -14,6 +14,17 @@ async function processDocument(req, res, next) {
   }
 }
 
+async function retryDocumentOverview(req, res, next) {
+  try {
+    res.json(await aiService.retryDocumentOverview({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function askDocument(req, res, next) {
   try {
     res.json(await aiService.askDocument({
@@ -22,6 +33,7 @@ async function askDocument(req, res, next) {
       question: req.body.question,
       mode: req.body.mode,
       model: req.body.model,
+      focusedDocumentId: req.body.focusedDocumentId,
     }));
   } catch (err) {
     next(err);
@@ -36,6 +48,7 @@ async function askSession(req, res, next) {
       question: req.body.question,
       mode: req.body.mode,
       model: req.body.model,
+      focusedDocumentId: req.body.focusedDocumentId,
     }));
   } catch (err) {
     next(err);
@@ -60,6 +73,7 @@ async function askDocumentStream(req, res) {
       question: req.body.question,
       mode: req.body.mode,
       model: req.body.model,
+      focusedDocumentId: req.body.focusedDocumentId,
       sendEvent,
     });
     res.end();
@@ -89,6 +103,7 @@ async function askSessionStream(req, res) {
       question: req.body.question,
       mode: req.body.mode,
       model: req.body.model,
+      focusedDocumentId: req.body.focusedDocumentId,
       sendEvent,
     });
     res.end();
@@ -121,6 +136,7 @@ async function getModelStatus(req, res, next) {
 
 module.exports = {
   processDocument,
+  retryDocumentOverview,
   askDocument,
   askDocumentStream,
   askSession,

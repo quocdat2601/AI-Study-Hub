@@ -104,6 +104,35 @@ async function queryDocumentChunks({
   };
 }
 
+async function generateText({
+  model = modelName,
+  systemPrompt = '',
+  userPrompt = '',
+  generationConfig,
+}) {
+  if (!genAI) {
+    const err = new Error('Gemini API key is not configured');
+    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const prompt = [systemPrompt, userPrompt].filter(Boolean).join('\n\n');
+  const response = await withTimeout(
+    genAI.models.generateContent({
+      model,
+      contents: prompt,
+      ...(generationConfig ? { config: generationConfig } : {}),
+    }),
+    GEMINI_TIMEOUT_MS
+  );
+  return {
+    text: response.text || '',
+    usageMetadata: extractUsageMetadata(response),
+    model,
+  };
+}
+
 async function* streamDocumentChunks({
   question,
   documentTitle,
@@ -133,4 +162,9 @@ async function* streamDocumentChunks({
   }
 }
 
-module.exports = { queryDocument, queryDocumentChunks, streamDocumentChunks };
+module.exports = {
+  queryDocument,
+  queryDocumentChunks,
+  generateText,
+  streamDocumentChunks,
+};

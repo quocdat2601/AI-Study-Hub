@@ -25,6 +25,27 @@ function writeStoredSelectedModel(model) {
   }
 }
 
+function readStoredLastOpenedDocumentId() {
+  if (typeof window === "undefined") return null;
+  try {
+    const id = window.localStorage.getItem("aiStudyHub.workspace.lastOpenedDocumentId");
+    return id ? Number(id) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLastOpenedDocumentId(id) {
+  if (typeof window === "undefined") return;
+  try {
+    if (id) {
+      window.localStorage.setItem("aiStudyHub.workspace.lastOpenedDocumentId", String(id));
+    } else {
+      window.localStorage.removeItem("aiStudyHub.workspace.lastOpenedDocumentId");
+    }
+  } catch {}
+}
+
 function readStoredSessions() {
   if (typeof window === "undefined") return {};
   try {
@@ -45,7 +66,7 @@ function writeStoredSessions(sessions) {
 
 const workspaceCache = {
   documents: null,
-  selectedId: null,
+  selectedId: readStoredLastOpenedDocumentId(),
   messagesBySessionId: {},
   processResultsByDocId: {},
   scrollTopByDocId: {},
@@ -123,5 +144,8 @@ export function cacheWorkspaceState(updates) {
   Object.assign(workspaceCache, updates);
   if (Object.prototype.hasOwnProperty.call(updates, "selectedModel")) {
     writeStoredSelectedModel(updates.selectedModel || "");
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "selectedId") && updates.selectedId !== null) {
+    writeStoredLastOpenedDocumentId(updates.selectedId);
   }
 }
