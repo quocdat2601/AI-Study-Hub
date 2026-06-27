@@ -1,6 +1,7 @@
 const aiService = require('../services/ai.service');
 const aiProviderService = require('../services/ai-provider.service');
 const aiUsageService = require('../services/ai-usage.service');
+const studyMaterialService = require('../services/study-material.service');
 
 async function processDocument(req, res, next) {
   try {
@@ -31,6 +32,7 @@ async function askDocument(req, res, next) {
       id: req.params.id,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
       focusedDocumentId: req.body.focusedDocumentId,
@@ -46,6 +48,7 @@ async function askSession(req, res, next) {
       sessionId: req.params.sessionId,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
       focusedDocumentId: req.body.focusedDocumentId,
@@ -71,6 +74,7 @@ async function askDocumentStream(req, res) {
       id: req.params.id,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
       focusedDocumentId: req.body.focusedDocumentId,
@@ -101,6 +105,7 @@ async function askSessionStream(req, res) {
       sessionId: req.params.sessionId,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
       focusedDocumentId: req.body.focusedDocumentId,
@@ -134,6 +139,41 @@ async function getModelStatus(req, res, next) {
   }
 }
 
+async function getMaterials(req, res, next) {
+  try {
+    res.json(await studyMaterialService.getMaterials({
+      docId: req.query.docId,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function generateMaterial(req, res, next) {
+  try {
+    res.json(await studyMaterialService.generateMaterial({
+      docId: req.body.docId,
+      userId: req.user.id,
+      materialType: req.body.materialType,
+      model: req.body.model,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteMaterial(req, res, next) {
+  try {
+    res.json(await studyMaterialService.deleteMaterial({
+      materialId: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   processDocument,
   retryDocumentOverview,
@@ -143,4 +183,7 @@ module.exports = {
   askSessionStream,
   getUsage,
   getModelStatus,
+  getMaterials,
+  generateMaterial,
+  deleteMaterial,
 };

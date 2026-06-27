@@ -3,9 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 const SIDEBAR_MIN = 260;
 const SIDEBAR_MAX = 340;
 const SIDEBAR_DEFAULT = 304;
-const CHAT_MIN = 300;
-const CHAT_MAX = 440;
-const CHAT_DEFAULT = 360;
+const CHAT_MIN = 380;
+const CHAT_MAX = 520;
+const CHAT_DEFAULT = 420;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));

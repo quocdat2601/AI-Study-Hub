@@ -7,7 +7,7 @@ import { buildCommunityPanelSearch, normalizeCommunityPanel } from "../component
 import { normalizeThreadPost } from "../components/community/communityThreadViewModel.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import useCommunityRealtime from "../hooks/useCommunityRealtime.js";
-import { getCommunityHome } from "../services/communityApi.js";
+import { getCommunityHome, getCommunityFeed } from "../services/communityApi.js";
 import { cx } from "../components/community/communityUtils.js";
 
 function SearchIcon() {
@@ -135,6 +135,7 @@ export default function CommunityPage() {
   const requestedPanel = normalizeCommunityPanel(searchParams.get("panel"), "find");
   const activePanel = requestedPanel === "new" ? "find" : requestedPanel;
   const [communityData, setCommunityData] = useState({ feed: [], subjects: [], topContributors: [], total: 0, totalPages: 1 });
+  const [hasLoadedMetadata, setHasLoadedMetadata] = useState(false);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -171,6 +172,10 @@ export default function CommunityPage() {
     setPage(1);
   }, [filterState.sort, filterState.type, filterState.subject, deferredSearch]);
 
+  useEffect(() => {
+    setHasLoadedMetadata(false);
+  }, [isAuthenticated]);
+
   const loadCommunity = useCallback(async ({ showLoading = true } = {}) => {
     const loadId = latestLoadIdRef.current + 1;
     latestLoadIdRef.current = loadId;
@@ -179,31 +184,52 @@ export default function CommunityPage() {
     setError("");
 
     try {
-      const data = await getCommunityHome({
-        tab: filterState.sort,
-        postType: filterState.type === DEFAULT_TYPE ? undefined : filterState.type,
-        subject: filterState.subject || undefined,
-        search: deferredSearch || undefined,
-        page,
-        pageSize: PAGE_SIZE,
-      });
+      if (!hasLoadedMetadata) {
+        const data = await getCommunityHome({
+          tab: filterState.sort,
+          postType: filterState.type === DEFAULT_TYPE ? undefined : filterState.type,
+          subject: filterState.subject || undefined,
+          search: deferredSearch || undefined,
+          page,
+          pageSize: PAGE_SIZE,
+        });
 
-      if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
+        if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
 
-      setCommunityData({
-        feed: Array.isArray(data.feed) ? data.feed : [],
-        subjects: Array.isArray(data.subjects) ? data.subjects : [],
-        topContributors: Array.isArray(data.topContributors) ? data.topContributors : [],
-        total: data.total || 0,
-        totalPages: data.totalPages || 1,
-      });
+        setCommunityData({
+          feed: Array.isArray(data.feed) ? data.feed : [],
+          subjects: Array.isArray(data.subjects) ? data.subjects : [],
+          topContributors: Array.isArray(data.topContributors) ? data.topContributors : [],
+          total: data.total || 0,
+          totalPages: data.totalPages || 1,
+        });
+        setHasLoadedMetadata(true);
+      } else {
+        const data = await getCommunityFeed({
+          tab: filterState.sort,
+          postType: filterState.type === DEFAULT_TYPE ? undefined : filterState.type,
+          subject: filterState.subject || undefined,
+          search: deferredSearch || undefined,
+          page,
+          pageSize: PAGE_SIZE,
+        });
+
+        if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
+
+        setCommunityData((current) => ({
+          ...current,
+          feed: Array.isArray(data.posts) ? data.posts : [],
+          total: data.total || 0,
+          totalPages: data.totalPages || 1,
+        }));
+      }
     } catch (err) {
       if (!isMountedRef.current || latestLoadIdRef.current !== loadId) return;
       setError(err.response?.data?.error || "Could not load community posts.");
     } finally {
       if (isMountedRef.current && latestLoadIdRef.current === loadId) setIsLoading(false);
     }
-  }, [deferredSearch, filterState.sort, filterState.subject, filterState.type, page]);
+  }, [deferredSearch, filterState.sort, filterState.subject, filterState.type, page, hasLoadedMetadata]);
 
   useEffect(() => {
     loadCommunity();

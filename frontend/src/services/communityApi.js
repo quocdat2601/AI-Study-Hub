@@ -5,6 +5,11 @@ export async function getCommunityHome(params = {}) {
   return response.data;
 }
 
+export async function getCommunityFeed(params = {}) {
+  const response = await api.get("/public/community/feed", { params });
+  return response.data;
+}
+
 export async function getUserCommunityProfile(userId) {
   const response = await api.get(`/public/community/users/${userId}`);
   return response.data;

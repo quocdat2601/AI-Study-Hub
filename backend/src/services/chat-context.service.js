@@ -22,6 +22,58 @@ function detectPointCount(question) {
   return count >= 1 && count <= 20 ? count : null;
 }
 
+const STUDIO_META_STRIP_PATTERN = /\n*\[(?:studio-quiz-meta|studio-flashcard-meta)\][\s\S]*$/i;
+
+function stripStudioMetaFromDisplay(text) {
+  return String(text || '').replace(STUDIO_META_STRIP_PATTERN, '').trim();
+}
+
+const QUIZ_HELP_PATTERN = /(?:đang làm bài trắc nghiệm|\[studio-quiz-meta\]|bài kiểm tra đã tạo|đáp án đúng theo bài)/iu;
+const STUDIO_QUIZ_META_PATTERN = /\[studio-quiz-meta\]\s*([\s\S]*)/iu;
+
+function detectQuizHelpConstraints(question) {
+  const text = String(question || '');
+  if (!QUIZ_HELP_PATTERN.test(text)) return null;
+
+  let storedAnswer = '';
+  const metaMatch = text.match(STUDIO_QUIZ_META_PATTERN);
+  if (metaMatch) {
+    const answerMatch = metaMatch[1].match(/Đáp án đúng:\s*([^\n]+)/iu);
+    storedAnswer = answerMatch ? answerMatch[1].trim() : '';
+  } else {
+    const answerMatch = text.match(/Đáp án đúng theo bài kiểm tra đã tạo:\s*([^\n]+)/iu);
+    storedAnswer = answerMatch ? answerMatch[1].trim() : '';
+  }
+
+  return {
+    quizHelp: true,
+    vietnameseOnly: true,
+    noMarkdown: true,
+    brief: true,
+    structure: 'paragraph',
+    storedQuizAnswer: storedAnswer,
+  };
+}
+
+function detectFlashcardHelpConstraints(question) {
+  const text = String(question || '');
+  if (!/\[studio-flashcard-meta\]/i.test(text)) return null;
+
+  const metaMatch = text.match(/\[studio-flashcard-meta\]\s*([\s\S]*)/i);
+  const storedAnswer = metaMatch
+    ? metaMatch[1].replace(/^Gợi ý đáp án:\s*/iu, '').trim()
+    : '';
+
+  return {
+    flashcardHelp: true,
+    vietnameseOnly: true,
+    noMarkdown: true,
+    brief: true,
+    structure: 'paragraph',
+    storedFlashcardAnswer: storedAnswer,
+  };
+}
+
 function detectResponseConstraints(question) {
   const text = normalizeText(question);
   const pointCount = detectPointCount(text);
@@ -30,11 +82,14 @@ function detectResponseConstraints(question) {
   else if (PARAGRAPH_PATTERN.test(text)) structure = 'paragraph';
   else if (BULLET_PATTERN.test(text) || pointCount) structure = 'bullets';
 
+  const studioHelp = detectQuizHelpConstraints(question) || detectFlashcardHelpConstraints(question) || {};
+
   return {
-    brief: BRIEF_PATTERN.test(text),
+    brief: BRIEF_PATTERN.test(text) || Boolean(studioHelp.brief),
     onlyDifferences: ONLY_DIFFERENCES_PATTERN.test(text),
-    pointCount,
-    structure,
+    pointCount: studioHelp.brief ? null : pointCount,
+    structure: studioHelp.structure || structure,
+    ...studioHelp,
   };
 }
 
@@ -440,6 +495,34 @@ function buildComparisonUnavailableAnswer(question) {
 
 function buildConstraintInstructions(constraints = {}) {
   const instructions = [];
+  if (constraints.vietnameseOnly) {
+    instructions.push(
+      'BẮT BUỘC trả lời hoàn toàn bằng tiếng Việt tự nhiên. TUYỆT ĐỐI KHÔNG dùng tiếng Trung, tiếng Anh (trừ tên riêng/thuật ngữ chuyên ngành), hay ngôn ngữ khác.'
+    );
+  }
+  if (constraints.noMarkdown) {
+    instructions.push('Không dùng markdown, không dùng **, không dùng danh sách gạch đầu dòng. Viết 2-3 câu văn xuôi đơn giản.');
+  }
+  if (constraints.quizHelp) {
+    const answerHint = constraints.storedQuizAnswer
+      ? `Đáp án đúng đã được cung cấp trong câu hỏi: "${constraints.storedQuizAnswer}". Bạn PHẢI xác nhận đúng đáp án này, không được mâu thuẫn hay đổi sang phương án khác.`
+      : 'Người dùng đang hỏi về câu trắc nghiệm Studio. Bám sát đáp án đúng đã nêu trong câu hỏi, không mâu thuẫn với nó.';
+    instructions.push(
+      'Đây là yêu cầu giải thích câu hỏi trắc nghiệm từ Studio.',
+      answerHint,
+      'Giải thích ngắn gọn vì sao đáp án đó đúng dựa trên các đoạn tài liệu được trích, không bịa thêm.'
+    );
+  }
+  if (constraints.flashcardHelp) {
+    const answerHint = constraints.storedFlashcardAnswer
+      ? `Câu trả lời tham khảo: "${constraints.storedFlashcardAnswer}". Bám sát nội dung này và giải thích sâu hơn dựa trên tài liệu.`
+      : 'Giải thích sâu hơn nội dung thẻ ghi nhớ dựa trên tài liệu.';
+    instructions.push(
+      'Đây là yêu cầu giải thích thẻ ghi nhớ từ Studio.',
+      answerHint,
+      'Viết 2-3 câu văn xuôi tiếng Việt, không markdown, không gạch đầu dòng.'
+    );
+  }
   if (constraints.brief) {
     instructions.push('Keep the answer brief while retaining the essential result. Omit generic advice and unrelated explanation.');
   }
@@ -464,5 +547,5 @@ module.exports = {
   detectResponseConstraints,
   getRecentConversation,
   normalizeComparable,
-  resolveDocumentScope,
+  stripStudioMetaFromDisplay,
 };

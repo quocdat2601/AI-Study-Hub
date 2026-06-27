@@ -165,4 +165,64 @@ router.post('/chat/sessions/:sessionId/ask', aiController.askSession);
  */
 router.post('/chat/sessions/:sessionId/ask/stream', aiController.askSessionStream);
 
+/**
+ * @swagger
+ * /api/ai/materials:
+ *   get:
+ *     summary: Get all generated materials for a document
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: docId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: List of materials }
+ */
+router.get('/materials', aiController.getMaterials);
+
+/**
+ * @swagger
+ * /api/ai/materials/generate:
+ *   post:
+ *     summary: Generate study materials (flashcard, quiz, mindmap)
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [docId, materialType]
+ *             properties:
+ *               docId: { type: integer }
+ *               materialType: { type: string, enum: [flashcard, quiz, mindmap] }
+ *               model: { type: string }
+ *     responses:
+ *       200: { description: Generated material }
+ */
+router.post('/materials/generate', aiController.generateMaterial);
+
+/**
+ * @swagger
+ * /api/ai/materials/{id}:
+ *   delete:
+ *     summary: Delete a study material
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Material deleted }
+ */
+router.delete('/materials/:id', aiController.deleteMaterial);
+
 module.exports = router;
