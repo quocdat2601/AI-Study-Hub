@@ -41,7 +41,7 @@ function parseSseEvent(block) {
   };
 }
 
-async function askStream(path, { question, mode = "hybrid", model, onStatus, onToken, signal }) {
+async function askStream(path, { question, displayQuestion, mode = "hybrid", model, onStatus, onToken, signal }) {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
 
@@ -56,7 +56,12 @@ async function askStream(path, { question, mode = "hybrid", model, onStatus, onT
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ question, mode, model }),
+    body: JSON.stringify({
+      question,
+      ...(displayQuestion ? { displayQuestion } : {}),
+      mode,
+      model,
+    }),
     signal,
   });
 
@@ -124,7 +129,7 @@ export async function getStudyMaterials(docId) {
 }
 
 export async function generateStudyMaterial(docId, materialType, model) {
-  const response = await api.post("/ai/materials/generate", { docId, materialType, model }, { timeout: 90000 });
+  const response = await api.post("/ai/materials/generate", { docId, materialType, model }, { timeout: 600000 });
   return response.data;
 }
 

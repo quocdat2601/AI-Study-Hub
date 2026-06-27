@@ -38,6 +38,12 @@ function cleanQuestion(question) {
   return cleaned;
 }
 
+function resolveStoredUserMessageContent({ question, displayQuestion }) {
+  const display = String(displayQuestion || '').trim();
+  if (display) return chatContextService.stripStudioMetaFromDisplay(display);
+  return chatContextService.stripStudioMetaFromDisplay(question);
+}
+
 function normalizeAnswerMode(mode) {
   const normalizedMode = String(mode || 'hybrid').trim().toLowerCase();
   if (!ANSWER_MODES.has(normalizedMode)) {
@@ -302,29 +308,37 @@ function buildAssistantMetadata({
 async function retrieveChunksForQuestion({ docIds, question, chunks }) {
   const keywordChunks = ragService.retrieveRelevantChunks(question, chunks, RAG_CONTEXT_LIMIT);
 
-  try {
-    const queryEmbedding = await embeddingService.embedQuery(question);
-    const vectorChunks = docIds.length === 1
-      ? await documentChunkModel.matchByEmbedding({
-        docId: docIds[0],
-        embedding: queryEmbedding.embedding,
-        limit: RAG_CONTEXT_LIMIT,
-      })
-      : await documentChunkModel.matchByEmbeddingAcrossDocuments({
-        docIds,
-        embedding: queryEmbedding.embedding,
-        limit: RAG_CONTEXT_LIMIT,
-      });
+  const apiKey = String(process.env.GEMINI_API_KEY || '');
+  const embeddingsAvailable = apiKey && !/replace_with|placeholder|your_/i.test(apiKey);
 
-    if (vectorChunks.length) {
-      return mergeHybridChunks({
-        vectorChunks,
-        keywordChunks,
-        embeddingModel: queryEmbedding.model,
-      });
+  if (embeddingsAvailable) {
+    try {
+      const queryEmbedding = await embeddingService.embedQuery(question);
+      const vectorChunks = docIds.length === 1
+        ? await documentChunkModel.matchByEmbedding({
+          docId: docIds[0],
+          embedding: queryEmbedding.embedding,
+          limit: RAG_CONTEXT_LIMIT,
+        })
+        : await documentChunkModel.matchByEmbeddingAcrossDocuments({
+          docIds,
+          embedding: queryEmbedding.embedding,
+          limit: RAG_CONTEXT_LIMIT,
+        });
+
+      if (vectorChunks.length) {
+        return mergeHybridChunks({
+          vectorChunks,
+          keywordChunks,
+          embeddingModel: queryEmbedding.model,
+        });
+      }
+    } catch (err) {
+      const errMsg = String(err.message || '');
+      if (!errMsg.includes('API key')) {
+        console.warn('Vector retrieval failed, falling back to keyword retrieval:', errMsg.slice(0, 200));
+      }
     }
-  } catch (err) {
-    console.error('Vector retrieval failed, falling back to keyword retrieval:', err.message);
   }
 
   return keywordChunks.map((chunk) => ({
@@ -523,8 +537,9 @@ function buildScopeResponse({
   };
 }
 
-async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEvent }) {
+async function prepareAsk({ id, sessionId, userId, question, displayQuestion, mode, model, sendEvent }) {
   const cleanedQuestion = cleanQuestion(question);
+  const storedUserContent = resolveStoredUserMessageContent({ question: cleanedQuestion, displayQuestion });
   const answerMode = normalizeAnswerMode(mode);
   const selectedProviderModel = aiUsageService.resolveModel(model);
   const selectedModel = selectedProviderModel.model;
@@ -560,7 +575,7 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
   const userMessage = await chatModel.addMessage(
     session.id,
     'user',
-    cleanedQuestion,
+    storedUserContent,
     userMetadata
   );
 
@@ -806,8 +821,8 @@ async function prepareAsk({ id, sessionId, userId, question, mode, model, sendEv
   };
 }
 
-async function executeAsk({ id, sessionId, userId, question, mode, model }) {
-  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model });
+async function executeAsk({ id, sessionId, userId, question, displayQuestion, mode, model }) {
+  const prepared = await prepareAsk({ id, sessionId, userId, question, displayQuestion, mode, model });
   if (prepared.systemResponse) {
     return prepared.systemResponse;
   }
@@ -909,8 +924,8 @@ async function executeAsk({ id, sessionId, userId, question, mode, model }) {
   });
 }
 
-async function executeAskStream({ id, sessionId, userId, question, mode, model, sendEvent }) {
-  const prepared = await prepareAsk({ id, sessionId, userId, question, mode, model, sendEvent });
+async function executeAskStream({ id, sessionId, userId, question, displayQuestion, mode, model, sendEvent }) {
+  const prepared = await prepareAsk({ id, sessionId, userId, question, displayQuestion, mode, model, sendEvent });
   if (prepared.systemResponse) {
     sendEvent('token', { text: prepared.systemResponse.answer });
     sendEvent('done', prepared.systemResponse);

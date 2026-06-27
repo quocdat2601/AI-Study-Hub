@@ -75,12 +75,21 @@ function buildAssistantMessage(data) {
   };
 }
 
+function stripStudioMetaFromDisplay(text) {
+  return String(text || "")
+    .replace(/\n*\[(?:studio-quiz-meta|studio-flashcard-meta)\][\s\S]*$/i, "")
+    .trim();
+}
+
 function mapStoredMessage(message) {
   const metadata = message.metadata || {};
+  const rawContent = message.role === "user"
+    ? stripStudioMetaFromDisplay(message.content)
+    : message.content;
   return {
     id: message.id || `${message.role}-${message.created_at}`,
     role: message.role,
-    content: message.content,
+    content: rawContent,
     sources: metadata.sources || [],
     mode: metadata.mode || "stored",
     provider: metadata.provider,
@@ -1107,11 +1116,18 @@ export default function WorkspacePage() {
 
   async function handleAsk(event, customQuestion) {
     if (event) event.preventDefault();
-    const questionToAsk = (typeof customQuestion === "string" ? customQuestion : question) || "";
+    const isPayload = customQuestion && typeof customQuestion === "object" && !Array.isArray(customQuestion);
+    const questionToAsk = isPayload
+      ? (customQuestion.question || customQuestion.displayText || "")
+      : ((typeof customQuestion === "string" ? customQuestion : question) || "");
+    const displayQuestion = isPayload
+      ? (customQuestion.displayText || questionToAsk)
+      : questionToAsk;
     const cleanedQuestion = questionToAsk.trim();
+    const cleanedDisplay = displayQuestion.trim();
     if (!selectedDocument || !cleanedQuestion || isAsking) return;
 
-    const userMessage = buildUserMessage(cleanedQuestion);
+    const userMessage = buildUserMessage(cleanedDisplay);
     const streamAssistantId = `assistant-stream-${Date.now()}`;
     const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
     const targetSessionId = sessionId;
@@ -1128,7 +1144,7 @@ export default function WorkspacePage() {
     if (targetSessionId) {
       pendingResponsesRef.current.set(String(targetSessionId), {
         documentId: targetDocumentId,
-        userContent: cleanedQuestion,
+        userContent: cleanedDisplay,
         optimisticUserId: userMessage.id,
         optimisticAssistantId: streamAssistantId,
       });
@@ -1150,7 +1166,9 @@ export default function WorkspacePage() {
       return nextMessages;
     });
     if (targetSessionId) scheduleSessionRevalidation(targetSessionId, targetDocumentId);
-    if (!customQuestion) {
+    if (isPayload) {
+      setQuestion(cleanedDisplay);
+    } else if (!customQuestion) {
       setQuestion("");
     }
     setError("");
@@ -1160,6 +1178,7 @@ export default function WorkspacePage() {
       const streamRequest = targetSessionId
         ? askSessionStream(targetSessionId, {
           question: cleanedQuestion,
+          displayQuestion: cleanedDisplay,
           mode: answerMode,
           model: activeModel,
           signal: streamController.signal,
@@ -1190,6 +1209,7 @@ export default function WorkspacePage() {
         })
         : askDocumentStream(selectedDocument.id, {
           question: cleanedQuestion,
+          displayQuestion: cleanedDisplay,
           mode: answerMode,
           model: activeModel,
           signal: streamController.signal,

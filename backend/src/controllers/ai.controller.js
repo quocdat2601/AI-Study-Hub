@@ -21,6 +21,7 @@ async function askDocument(req, res, next) {
       id: req.params.id,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
     }));
@@ -35,6 +36,7 @@ async function askSession(req, res, next) {
       sessionId: req.params.sessionId,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
     }));
@@ -59,6 +61,7 @@ async function askDocumentStream(req, res) {
       id: req.params.id,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
       sendEvent,
@@ -88,6 +91,7 @@ async function askSessionStream(req, res) {
       sessionId: req.params.sessionId,
       userId: req.user.id,
       question: req.body.question,
+      displayQuestion: req.body.displayQuestion,
       mode: req.body.mode,
       model: req.body.model,
       sendEvent,

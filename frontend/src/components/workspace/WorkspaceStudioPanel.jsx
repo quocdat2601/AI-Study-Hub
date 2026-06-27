@@ -88,6 +88,66 @@ function MindmapNode({ node, depth = 0, forceOpen }) {
   );
 }
 
+const STUDIO_MATERIAL_COUNTS = { flashcard: 10, quiz: 5 };
+
+function normalizeOptionText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function findOptionLetter(options, answer) {
+  const idx = (options || []).findIndex((opt) => normalizeOptionText(opt) === normalizeOptionText(answer));
+  return idx !== -1 ? String.fromCharCode(65 + idx) : "";
+}
+
+function formatQuizOptions(options) {
+  return (options || [])
+    .map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt}`)
+    .join("\n");
+}
+
+function buildQuizChatPayload(question, { userAnswer } = {}) {
+  const options = question.options || [];
+  const optionsText = formatQuizOptions(options);
+  const correctLetter = findOptionLetter(options, question.answer);
+
+  let displayText = `Tôi đang làm bài trắc nghiệm từ tài liệu nguồn trong Studio.
+
+Câu hỏi: "${question.question}"
+
+Các lựa chọn:
+${optionsText}`;
+
+  if (userAnswer !== undefined) {
+    const userLetter = findOptionLetter(options, userAnswer);
+    displayText += `\n\nLựa chọn của tôi: ${userLetter ? `${userLetter}. ` : ""}${userAnswer}`;
+  }
+
+  displayText += "\n\nHãy giải thích chủ đề này chi tiết hơn.";
+
+  const questionForApi = `${displayText}
+
+[studio-quiz-meta]
+Đáp án đúng: ${correctLetter ? `${correctLetter}. ` : ""}${question.answer}
+Giải thích tham khảo: ${question.explanation || "Chưa có"}`;
+
+  return { displayText, question: questionForApi };
+}
+
+function buildFlashcardChatPayload(front, back) {
+  const displayText = `Tôi đang xem lại thẻ ghi nhớ trong Studio.
+
+Câu hỏi: "${front}"
+
+Câu trả lời: "${back}"
+
+Hãy giải thích chủ đề này chi tiết hơn.`;
+  const questionForApi = `${displayText}
+
+[studio-flashcard-meta]
+Gợi ý đáp án: ${back}`;
+  return { displayText, question: questionForApi };
+}
+
 export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, className = "" }) {
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
@@ -293,6 +353,12 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
         total: quizLength,
       });
     }
+  };
+
+  const handleAskQuizChat = (questionIdx) => {
+    if (!onAskQuestion || !activeMaterial?.content?.[questionIdx]) return;
+    const q = activeMaterial.content[questionIdx];
+    onAskQuestion(buildQuizChatPayload(q, { userAnswer: selectedAnswers[questionIdx] }));
   };
 
   const renderActiveMaterial = () => {
@@ -594,8 +660,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                               e.stopPropagation();
                               const frontText = content[activeCardIndex]?.front || "";
                               const backText = content[activeCardIndex]?.back || "";
-                              const promptText = `Tôi đang xem lại các thẻ thông tin dựa trên tài liệu nguồn và muốn hiểu sâu hơn về một trong những thẻ này.\n\nNội dung ở mặt trước: "${frontText}"\nCâu trả lời ở mặt sau: "${backText}"\n\nHãy giải thích chủ đề này chi tiết hơn.`;
-                              onAskQuestion(promptText);
+                              onAskQuestion(buildFlashcardChatPayload(frontText, backText));
                             }}
                             className="flex items-center gap-1.5 rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-1.5 text-[11px] font-bold text-indigo-200 hover:bg-indigo-950/80 hover:text-white transition cursor-pointer"
                           >
@@ -641,74 +706,64 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                       Trước
                     </button>
 
-                    {isFlipped ? (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setUnknownCards((prev) => {
-                              const next = new Set(prev);
-                              next.add(activeCardIndex);
-                              return next;
-                            });
-                            setKnownCards((prev) => {
-                              const next = new Set(prev);
-                              next.delete(activeCardIndex);
-                              return next;
-                            });
+                    <button
+                      disabled={!isFlipped}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isFlipped) return;
+                        setUnknownCards((prev) => {
+                          const next = new Set(prev);
+                          next.add(activeCardIndex);
+                          return next;
+                        });
+                        setKnownCards((prev) => {
+                          const next = new Set(prev);
+                          next.delete(activeCardIndex);
+                          return next;
+                        });
 
-                            setIsFlipped(false);
-                            setTimeout(() => {
-                              if (currentCardIndex < cardLength - 1) {
-                                setCurrentCardIndex((i) => i + 1);
-                              } else {
-                                setIsDeckFinished(true);
-                              }
-                            }, 280);
-                          }}
-                          className="flex h-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-bold text-red-600 hover:bg-red-100 transition cursor-pointer"
-                        >
-                          ✗ Chưa biết
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setKnownCards((prev) => {
-                              const next = new Set(prev);
-                              next.add(activeCardIndex);
-                              return next;
-                            });
-                            setUnknownCards((prev) => {
-                              const next = new Set(prev);
-                              next.delete(activeCardIndex);
-                              return next;
-                            });
+                        setIsFlipped(false);
+                        setTimeout(() => {
+                          if (currentCardIndex < cardLength - 1) {
+                            setCurrentCardIndex((i) => i + 1);
+                          } else {
+                            setIsDeckFinished(true);
+                          }
+                        }, 280);
+                      }}
+                      className={`flex h-9 items-center justify-center rounded-xl border px-4 text-xs font-bold transition cursor-pointer ${isFlipped ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100" : "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                    >
+                      ✗ Chưa biết
+                    </button>
+                    <button
+                      disabled={!isFlipped}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isFlipped) return;
+                        setKnownCards((prev) => {
+                          const next = new Set(prev);
+                          next.add(activeCardIndex);
+                          return next;
+                        });
+                        setUnknownCards((prev) => {
+                          const next = new Set(prev);
+                          next.delete(activeCardIndex);
+                          return next;
+                        });
 
-                            setIsFlipped(false);
-                            setTimeout(() => {
-                              if (currentCardIndex < cardLength - 1) {
-                                setCurrentCardIndex((i) => i + 1);
-                              } else {
-                                setIsDeckFinished(true);
-                              }
-                            }, 280);
-                          }}
-                          className="flex h-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-bold text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
-                        >
-                          ✓ Đã biết
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsFlipped(true);
-                        }}
-                        className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-5 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition cursor-pointer"
-                      >
-                        Lật thẻ →
-                      </button>
-                    )}
+                        setIsFlipped(false);
+                        setTimeout(() => {
+                          if (currentCardIndex < cardLength - 1) {
+                            setCurrentCardIndex((i) => i + 1);
+                          } else {
+                            setIsDeckFinished(true);
+                          }
+                        }, 280);
+                      }}
+                      className={`flex h-9 items-center justify-center rounded-xl border px-4 text-xs font-bold transition cursor-pointer ${isFlipped ? "border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                    >
+                      ✓ Đã biết
+                    </button>
 
                     <button
                       disabled={cardLength === 0}
@@ -810,6 +865,21 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                       {content[currentQuizIndex]?.question}
                     </p>
                   </div>
+
+                  {onAskQuestion && (
+                    <div className="flex justify-end -mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAskQuizChat(currentQuizIndex)}
+                        className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer"
+                      >
+                        <svg className="stroke-current" width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        Hỏi chatbot
+                      </button>
+                    </div>
+                  )}
 
                   {/* Options */}
                   <div className="grid gap-2">
@@ -970,7 +1040,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
             </div>
             <div className="mt-4">
               <p className="m-0 text-xs font-bold text-slate-800">Thẻ ghi nhớ</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">10 cặp thẻ Front/Back</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{STUDIO_MATERIAL_COUNTS.flashcard} cặp thẻ Front/Back</p>
             </div>
           </button>
 
@@ -985,38 +1055,21 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
             </div>
             <div className="mt-4">
               <p className="m-0 text-xs font-bold text-slate-800">Bài kiểm tra</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">5 câu hỏi MCQ tự ôn</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{STUDIO_MATERIAL_COUNTS.quiz} câu hỏi MCQ tự ôn</p>
             </div>
           </button>
 
-          {/* Mindmap Tile */}
-          <button
-            onClick={() => handleGenerate("mindmap")}
-            disabled={!selectedDocument || isGenerating}
-            className="group flex flex-col justify-between items-start text-left cursor-pointer rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-          >
-            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-500 group-hover:scale-105 transition">
-              <MindmapIcon size={18} />
-            </div>
-            <div className="mt-4">
-              <p className="m-0 text-xs font-bold text-slate-800">Bản đồ tư duy</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">Sơ đồ tóm tắt cấu trúc</p>
-            </div>
-          </button>
-
-          {/* Locked / Coming Soon Tile 1 */}
+          {/* Mindmap Tile - Locked / Coming Soon */}
           <div className="flex flex-col justify-between items-start border border-dashed border-slate-200 bg-slate-50/60 p-3 rounded-xl opacity-60">
             <div className="flex items-center justify-between w-full">
-              <div className="rounded-lg bg-amber-50 p-2 text-amber-500">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
+              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-500">
+                <MindmapIcon size={18} />
               </div>
               <LockIcon className="text-slate-400" />
             </div>
             <div className="mt-4">
-              <p className="m-0 text-xs font-bold text-slate-500">Tổng quan audio</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">Audio podcast thảo luận</p>
+              <p className="m-0 text-xs font-bold text-slate-500">Bản đồ tư duy</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">Sơ đồ tóm tắt cấu trúc</p>
             </div>
           </div>
         </div>

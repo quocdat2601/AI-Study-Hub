@@ -3,11 +3,14 @@ const geminiService = require('./gemini.service');
 const ollamaService = require('./ollama.service');
 const chatContextService = require('./chat-context.service');
 
-function buildModeInstruction(mode) {
+function buildModeInstruction(mode, { provider } = {}) {
   const languageInstruction = [
     'Answer in the same language as the current user question.',
     'If the current question language is unclear or mixed, answer in Vietnamese.',
-  ].join('\n');
+    provider === 'ollama'
+      ? 'CRITICAL: You MUST reply entirely in Vietnamese. Never use Chinese characters or Chinese sentences, even partially.'
+      : '',
+  ].filter(Boolean).join('\n');
 
   if (mode === 'document_only') {
     return [
@@ -68,6 +71,7 @@ function buildRagPrompts({
   comparisonMetadata,
   substantiveQuestion,
   retrievalQuery,
+  provider,
 }) {
   const context = (chunks || [])
     .map((chunk, index) => `${buildSourceLabel(chunk, index)}\n${chunk.promptContent || chunk.content}`)
@@ -97,7 +101,7 @@ function buildRagPrompts({
     : '';
   const systemPrompt = [
     "You are AI Study Hub's study assistant.",
-    buildModeInstruction(mode),
+    buildModeInstruction(mode, { provider }),
     'The current user request has priority over earlier formatting preferences.',
     'Conversation history provides conversational context only. It is never document evidence, and facts from history must not be reused unless supported by the current source chunks.',
     'Do not use canned headings such as "Based on the compared documents", "Dựa trên tài liệu", or "Dựa trên tài liệu được so sánh". Start directly with the answer unless the user explicitly requests headings.',

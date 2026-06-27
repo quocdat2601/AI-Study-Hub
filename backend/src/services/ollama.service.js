@@ -1,7 +1,8 @@
 const aiProviders = require('../config/ai-providers');
 const createError = require('../utils/createError');
 
-const OLLAMA_TIMEOUT_MS = 30000;
+const OLLAMA_STATUS_TIMEOUT_MS = 15000;
+const OLLAMA_CHAT_TIMEOUT_MS = Number(process.env.OLLAMA_CHAT_TIMEOUT_MS) || 180000;
 
 function withTimeout(promise, timeoutMs) {
   const controller = new AbortController();
@@ -17,14 +18,20 @@ function createUnavailableError() {
   return createError(503, 'Local AI model is not available. Please start Ollama and try again.');
 }
 
+function createTimeoutError() {
+  const err = createError(504, 'Local AI model request timed out. Please try again.');
+  err.publicMessage = 'Ollama phản hồi quá chậm (quá thời gian chờ). Hãy thử lại hoặc chọn mô hình Gemini.';
+  return err;
+}
+
 function createModelMissingError(model) {
   return createError(400, `Selected local model is not installed. Run ollama pull ${model} first.`);
 }
 
-async function fetchJson(path, options = {}) {
+async function fetchJson(path, options = {}, timeoutMs = OLLAMA_STATUS_TIMEOUT_MS) {
   const url = `${aiProviders.ollama.baseUrl}${path}`;
   const request = (signal) => fetch(url, { ...options, signal });
-  const { promise } = withTimeout(request, OLLAMA_TIMEOUT_MS);
+  const { promise } = withTimeout(request, timeoutMs);
 
   try {
     const response = await promise;
@@ -36,7 +43,10 @@ async function fetchJson(path, options = {}) {
     }
     return response.json();
   } catch (err) {
-    if (err.name === 'AbortError' || err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
+    if (err.name === 'AbortError') {
+      throw timeoutMs >= OLLAMA_CHAT_TIMEOUT_MS ? createTimeoutError() : createUnavailableError();
+    }
+    if (err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
       throw createUnavailableError();
     }
     throw err;
@@ -76,7 +86,7 @@ async function assertModelInstalled(model) {
   }
 }
 
-async function generateChat({ model, systemPrompt, userPrompt, messages }) {
+async function generateChat({ model, systemPrompt, userPrompt, messages, format, options }) {
   await assertModelInstalled(model);
 
   const payloadMessages = messages || [
@@ -91,8 +101,10 @@ async function generateChat({ model, systemPrompt, userPrompt, messages }) {
       model,
       messages: payloadMessages,
       stream: false,
+      ...(format ? { format } : {}),
+      ...(options ? { options } : {}),
     }),
-  });
+  }, OLLAMA_CHAT_TIMEOUT_MS);
 
   return {
     text: data.message?.content || '',
@@ -124,13 +136,16 @@ async function* streamChat({ model, systemPrompt, userPrompt, messages }) {
     }),
     signal,
   });
-  const { promise } = withTimeout(request, OLLAMA_TIMEOUT_MS);
+  const { promise } = withTimeout(request, OLLAMA_CHAT_TIMEOUT_MS);
 
   let response;
   try {
     response = await promise;
   } catch (err) {
-    if (err.name === 'AbortError' || err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
+    if (err.name === 'AbortError') {
+      throw createTimeoutError();
+    }
+    if (err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed')) {
       throw createUnavailableError();
     }
     throw err;
