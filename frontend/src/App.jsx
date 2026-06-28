@@ -19,6 +19,7 @@ import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import OnboardingPage from "./pages/OnboardingPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
+import TrashPage from "./pages/TrashPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
 import WorkspacePage from "./pages/WorkspacePage.jsx";
@@ -33,7 +34,7 @@ function AppRoutes() {
   const navigate = useNavigate();
   const isSharedChatPreview = location.pathname.startsWith("/shared/chat/");
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/library", "/admin", "/shared"];
+  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/documents/trash", "/library", "/admin", "/shared"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
     && !dashboardShellRoutes.includes(location.pathname)
     && !location.pathname.startsWith("/public-documents")
@@ -101,6 +102,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <DocumentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents/trash"
+          element={
+            <ProtectedRoute>
+              <TrashPage />
             </ProtectedRoute>
           }
         />
