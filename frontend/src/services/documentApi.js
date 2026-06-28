@@ -64,6 +64,38 @@ export async function deleteDocument(id) {
   return response.data;
 }
 
+// ─── Trash / soft-delete lifecycle ──────────────────────────────────────────
+
+export async function listTrash() {
+  const response = await api.get("/documents/trash");
+  return response.data;
+}
+
+export async function restoreDocument(id) {
+  const response = await api.post(`/documents/${id}/restore`);
+  return response.data;
+}
+
+export async function purgeDocument(id) {
+  const response = await api.delete(`/documents/${id}/purge`);
+  return response.data;
+}
+
+export async function emptyTrash() {
+  const response = await api.post("/documents/trash/empty");
+  return response.data;
+}
+
+export async function bulkSoftDeleteDocuments(ids) {
+  const response = await api.post("/documents/bulk-delete", { ids });
+  return response.data;
+}
+
+export async function bulkRestoreDocuments(ids) {
+  const response = await api.post("/documents/bulk-restore", { ids });
+  return response.data;
+}
+
 export async function listDocumentShares(id) {
   const response = await api.get(`/documents/${id}/shares`);
   return response.data;

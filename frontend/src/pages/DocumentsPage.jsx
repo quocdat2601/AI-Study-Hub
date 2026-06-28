@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
@@ -183,23 +183,21 @@ export default function DocumentsPage() {
 
   async function handleDelete(doc) {
     const ok = window.confirm(
-      `Delete "${doc.title}"? If this is the primary document of an imported chat, the imported chat session and its history will also be deleted. The original shared snapshot and owner conversation are not affected.`
+      `Move "${doc.title}" to trash? You can restore it from Trash within 30 days.`
     );
     if (!ok) return;
 
     setActionError("");
     try {
-      const result = await deleteDocument(doc.id);
+      await deleteDocument(doc.id);
       addToast({
         type: "success",
-        title: result.sessionDeleted ? "Document and imported chat deleted" : "Document deleted",
-        message: result.sessionDeleted
-          ? `"${doc.title}" and its imported chat history were removed.`
-          : `"${doc.title}" was removed.`,
+        title: "Moved to trash",
+        message: `"${doc.title}" was moved to trash. Restore it from Trash within 30 days.`,
       });
       reload();
     } catch (err) {
-      const message = err.response?.data?.error || "Could not delete document.";
+      const message = err.response?.data?.error || "Could not move document to trash.";
       setActionError(message);
       addToast({ type: "error", title: "Delete failed", message });
     }
@@ -239,14 +237,22 @@ export default function DocumentsPage() {
                 Upload, organize, share and manage your PDF study materials in one place.
               </p>
             </div>
-            <button
-              className="inline-flex items-center gap-2 rounded-xl border-0 bg-white px-5 py-3 text-sm font-bold text-[#4648d4] cursor-pointer shadow-[0_8px_20px_rgba(15,23,42,0.15)]"
-              onClick={uploadDoc.open}
-              type="button"
-            >
-              <span className="text-lg leading-none">+</span>
-              Upload Document
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/25"
+                to="/documents/trash"
+              >
+                🗑️ Trash
+              </Link>
+              <button
+                className="inline-flex items-center gap-2 rounded-xl border-0 bg-white px-5 py-3 text-sm font-bold text-[#4648d4] cursor-pointer shadow-[0_8px_20px_rgba(15,23,42,0.15)]"
+                onClick={uploadDoc.open}
+                type="button"
+              >
+                <span className="text-lg leading-none">+</span>
+                Upload Document
+              </button>
+            </div>
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">

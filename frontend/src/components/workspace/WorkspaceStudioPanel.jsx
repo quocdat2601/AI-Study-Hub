@@ -266,7 +266,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
 
     function handleKey(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-      
+
       if (e.code === 'Space') {
         e.preventDefault();
         setIsFlipped(f => !f);
@@ -513,7 +513,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                 <div className="flex min-h-full flex-col items-center justify-center gap-6 pb-6 w-full">
                   <div className="rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm flex flex-col justify-between items-center text-center w-full min-h-[256px]">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lần tới bạn sẽ hiểu</span>
-                    
+
                     {/* Circle Stats & Count Grid */}
                     <div className="flex w-full items-center justify-around gap-4 mt-2 mb-4">
                       {/* Ring Progress */}
@@ -912,13 +912,11 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                               handleSelectQuizAnswer(currentQuizIndex, opt);
                             }
                           }}
-                          className={`w-full text-left rounded-xl border p-3.5 text-xs font-medium leading-relaxed transition-all duration-200 flex items-start gap-2 select-text ${
-                            isAnswered ? "cursor-default" : "cursor-pointer"
-                          } ${btnStyle}`}
+                          className={`w-full text-left rounded-xl border p-3.5 text-xs font-medium leading-relaxed transition-all duration-200 flex items-start gap-2 select-text ${isAnswered ? "cursor-default" : "cursor-pointer"
+                            } ${btnStyle}`}
                         >
-                          <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-                            isAnswered && isCorrect ? "bg-emerald-600 text-white border-emerald-600" : isAnswered && isSelected ? "bg-red-600 text-white border-red-600" : "border-slate-300 text-slate-500"
-                          }`}>
+                          <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${isAnswered && isCorrect ? "bg-emerald-600 text-white border-emerald-600" : isAnswered && isSelected ? "bg-red-600 text-white border-red-600" : "border-slate-300 text-slate-500"
+                            }`}>
                             {String.fromCharCode(65 + oIdx)}
                           </span>
                           <span className="flex-1 selection:bg-indigo-100">{opt}</span>

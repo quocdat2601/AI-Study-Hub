@@ -22,6 +22,8 @@ const accountRoutes = require('./routes/account.routes');
 const aiRoutes = require('./routes/ai.routes');
 const workspaceRoutes = require('./routes/workspace.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
+const onboardingRoutes = require('./routes/onboarding.routes');
+const tagRoutes = require('./routes/tag.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -53,6 +55,8 @@ app.use('/api/account', accountRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/tags', tagRoutes);
 
 app.use(errorHandler);
 

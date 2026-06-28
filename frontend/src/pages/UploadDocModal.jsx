@@ -8,6 +8,7 @@ import {
   validateUploadDocFile,
 } from "../services/uploadDocApi.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
+import { searchTags } from "../services/onboardingApi.js";
 
 function VisibilityOption({ active, disabled, label, description, onClick, tone }) {
   const activeClass = tone === "public"
@@ -43,6 +44,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   const [title, setTitle] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [tags, setTags] = useState("");
+  const [tagMatches, setTagMatches] = useState([]);
   const [isPublic, setIsPublic] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -54,6 +56,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
     setTitle("");
     setSubjectId("");
     setTags("");
+    setTagMatches([]);
     setIsPublic(false);
     setProgress(0);
     setIsUploading(false);
@@ -71,6 +74,34 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   useEffect(() => {
     if (!isOpen) resetForm();
   }, [isOpen]);
+
+  // Gợi ý tag đã có theo đoạn đang gõ (sau dấu phẩy cuối), debounce
+  useEffect(() => {
+    const term = tags.split(",").pop().trim().toLowerCase();
+    if (!term) {
+      setTagMatches([]);
+      return undefined;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const chosen = new Set(
+          tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+        );
+        const results = await searchTags(term, 6);
+        setTagMatches(results.filter((tag) => !chosen.has(tag.name)));
+      } catch {
+        setTagMatches([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [tags]);
+
+  function applyTagSuggestion(name) {
+    const idx = tags.lastIndexOf(",");
+    const prefix = idx >= 0 ? `${tags.slice(0, idx + 1)} ` : "";
+    setTags(`${prefix}${name}, `);
+    setTagMatches([]);
+  }
 
   function pickFile(nextFile) {
     const validationError = validateUploadDocFile(nextFile);
@@ -293,13 +324,32 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
 
               <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
                 Tags
-                <input
-                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                  disabled={isUploading}
-                  onChange={(event) => setTags(event.target.value)}
-                  placeholder="midterm, lecture"
-                  value={tags}
-                />
+                <div className="relative">
+                  <input
+                    className="w-full rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                    disabled={isUploading}
+                    onChange={(event) => setTags(event.target.value)}
+                    placeholder="database, machine learning"
+                    value={tags}
+                  />
+                  {tagMatches.length > 0 && (
+                    <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                      {tagMatches.map((tag) => (
+                        <li key={tag.id}>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => applyTagSuggestion(tag.name)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-normal text-slate-700 hover:bg-indigo-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                          >
+                            <span>{tag.name}</span>
+                            <span className="text-xs text-slate-400">{tag.doc_count} tài liệu</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </label>
             </div>
 

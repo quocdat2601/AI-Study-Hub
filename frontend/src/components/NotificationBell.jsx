@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext.jsx";
+import { supabase } from "../lib/supabase.js";
 import { BellIcon } from "./dashboard/DashboardIcons.jsx";
 import {
   listNotifications,
@@ -35,6 +37,7 @@ function getNotificationLabel(type) {
 
 export default function NotificationBell() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const panelRef = useRef(null);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -65,6 +68,30 @@ export default function NotificationBell() {
     const intervalId = window.setInterval(loadNotifications, 30000);
     return () => window.clearInterval(intervalId);
   }, [loadNotifications]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const channel = supabase
+      .channel(`notifications-user-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadNotifications, user?.id]);
 
   useEffect(() => {
     if (!isOpen) return undefined;

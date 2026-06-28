@@ -28,10 +28,10 @@ function cleanAndParseJson(text) {
 
   const firstBracket = cleaned.indexOf('[');
   const firstBrace = cleaned.indexOf('{');
-  
+
   let startIdx = -1;
   let endIdx = -1;
-  
+
   if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
     startIdx = firstBracket;
     endIdx = cleaned.lastIndexOf(']');
@@ -44,7 +44,7 @@ function cleanAndParseJson(text) {
     cleaned = cleaned.slice(startIdx, endIdx + 1);
   }
 
-    cleaned = cleaned.trim();
+  cleaned = cleaned.trim();
 
   // Strip trailing commas before ] or } (common with local models)
   let prev = '';
@@ -508,23 +508,35 @@ function normalizeDedupeText(text) {
     .slice(0, 80);
 }
 
+// Two keys are "similar" if they are identical, or one is a leading substring of the other
+// (covers "X được đề xuất?" vs "X được đề xuất trong dự án?").
+// The min-length guard (5 words) prevents false positives on short generic keys.
+function isSimilarKey(a, b) {
+  if (a === b) return true;
+  const minLen = Math.min(a.length, b.length);
+  if (minLen < 20) return false; // too short to be meaningful
+  const shorter = a.length <= b.length ? a : b;
+  const longer  = a.length <= b.length ? b : a;
+  return longer.startsWith(shorter);
+}
+
 function isKnownMaterialFront(front, mergedItems) {
   const key = normalizeDedupeText(front);
-  return mergedItems.some((item) => normalizeDedupeText(item.front) === key);
+  return mergedItems.some((item) => isSimilarKey(normalizeDedupeText(item.front), key));
 }
 
 function isKnownQuizQuestion(question, mergedItems) {
   const key = normalizeDedupeText(question);
-  return mergedItems.some((item) => normalizeDedupeText(item.question) === key);
+  return mergedItems.some((item) => isSimilarKey(normalizeDedupeText(item.question), key));
 }
 
 function dedupeMaterialItems(items, materialType) {
-  const seen = new Set();
+  const seen = [];
   return items.filter((item) => {
     const raw = materialType === 'flashcard' ? item.front : item.question;
     const key = normalizeDedupeText(raw);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
+    if (!key || seen.some((s) => isSimilarKey(s, key))) return false;
+    seen.push(key);
     return true;
   });
 }
@@ -1185,14 +1197,14 @@ class StudyMaterialService {
       }
     } catch (err) {
       console.error('Study material generation AI error:', err);
-      
+
       const errMsg = String(err.message || '').toLowerCase();
       if (errMsg.includes('api key not valid') || errMsg.includes('key not valid') || errMsg.includes('api key')) {
         const customErr = createError(400, 'Gemini API key is invalid or placeholder is used in backend/.env');
         customErr.publicMessage = 'Yêu cầu AI thất bại: API Key của Gemini không hợp lệ hoặc chưa được cấu hình đúng trong file backend/.env';
         throw customErr;
       }
-      
+
       if (errMsg.includes('connect to the remote server') || errMsg.includes('connection refused') || errMsg.includes('fetch failed')) {
         const customErr = createError(400, 'Unable to connect to Ollama local server');
         customErr.publicMessage = 'Yêu cầu AI thất bại: Không thể kết nối với dịch vụ Ollama cục bộ. Vui lòng đảm bảo Ollama đang chạy.';
@@ -1308,5 +1320,7 @@ class StudyMaterialService {
     return { success: true };
   }
 }
+
+module.exports = StudyMaterialService;
 
 module.exports = StudyMaterialService;

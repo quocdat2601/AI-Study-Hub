@@ -64,6 +64,23 @@ class DocumentModel {
     return [...byId.values()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
 
+  // Lấy nhiều document công khai theo danh sách id (cho gợi ý) — giữ đủ field preview
+  static async findPublicByIds(ids) {
+    if (!ids || !ids.length) return [];
+
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SELECT)
+      .in('id', ids)
+      .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
+      .is('deleted_at', null);
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async findById(id) {
     const { data, error } = await supabase
       .from('documents')
