@@ -74,7 +74,8 @@ export async function loginWithPassword(credentials) {
 }
 
 export async function loginWithGoogle() {
-  const redirectTo = new URL("/login", window.location.origin).toString();
+  const redirectOrigin = import.meta.env.VITE_AUTH_REDIRECT_ORIGIN || window.location.origin;
+  const redirectTo = new URL("/login", redirectOrigin).toString();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {

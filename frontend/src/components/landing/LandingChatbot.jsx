@@ -157,7 +157,7 @@ export default function LandingChatbot() {
             </div>
             <p className="m-0 mt-2 text-center text-[11px] text-slate-400">
               Cần hỏi AI về tài liệu? Vào{" "}
-              <Link className="font-semibold text-indigo-600 no-underline hover:underline" to="/login">
+              <Link className="font-semibold text-indigo-600 no-underline hover:underline" to="/workspace">
                 Workspace
               </Link>
               {" "}sau khi đăng nhập.
