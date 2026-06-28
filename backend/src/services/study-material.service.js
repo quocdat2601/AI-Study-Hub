@@ -484,8 +484,8 @@ const MATERIAL_TARGETS = {
 };
 
 const OLLAMA_BATCH_SIZE = {
-  flashcard: 1,
-  quiz: 1,
+  flashcard: 3,
+  quiz: 2,
 };
 
 const OLLAMA_MAX_BATCH_ATTEMPTS = {
@@ -546,11 +546,31 @@ function normalizeDedupeText(text) {
 // The min-length guard (5 words) prevents false positives on short generic keys.
 function isSimilarKey(a, b) {
   if (a === b) return true;
-  const minLen = Math.min(a.length, b.length);
-  if (minLen < 20) return false; // too short to be meaningful
-  const shorter = a.length <= b.length ? a : b;
-  const longer = a.length <= b.length ? b : a;
-  return longer.startsWith(shorter);
+
+  // 1. Substring containment check
+  if (a.includes(b) || b.includes(a)) return true;
+
+  // 2. Heavy leading prefix check (Plugs the "end-of-sentence variation" leak)
+  // If two questions share the exact same first 25 characters, they are functionally duplicate
+  const strictPrefixLen = 25;
+  if (a.length >= strictPrefixLen && b.length >= strictPrefixLen) {
+    if (a.slice(0, strictPrefixLen) === b.slice(0, strictPrefixLen)) {
+      return true; 
+    }
+  }
+
+  // 3. Token/Word Overlap Check (Jaccard-lite approximation)
+  const wordsA = a.split(' ');
+  const wordsB = b.split(' ');
+  const matches = wordsA.filter(word => wordsB.includes(word)).length;
+  const minWords = Math.min(wordsA.length, wordsB.length);
+  
+  // If more than 75% of the words match in any sequence, reject it as a duplicate
+  if ((matches / minWords) > 0.75) {
+    return true;
+  }
+
+  return false;
 }
 
 function isKnownMaterialFront(front, mergedItems) {
@@ -897,24 +917,29 @@ function appendExistingItemsPrompt(userPrompt, materialType, existingItems, { st
 
   let suffix = '';
   if (existingItems.length) {
-    const existingLines = materialType === 'flashcard'
-      ? existingItems.map((item, index) => `${index + 1}. ${item.front}`).join('\n')
-      : existingItems.map((item, index) => `${index + 1}. ${item.question}`).join('\n');
+    // FIX: Condense full questions down to raw 4-5 word key concepts.
+    // This stops small LLMs from mirroring sentence syntax.
+    const existingLines = existingItems.map((item) => {
+      const fullText = materialType === 'flashcard' ? item.front : item.question;
+      const shortConcept = String(fullText || '').split(/\s+/).slice(0, 5).join(' ');
+      return `- CẤM ĐỀ CẬP LẠI CHỦ ĐỀ: [${shortConcept}...]`;
+    }).join('\n');
 
-    suffix += `\n\nĐÃ CÓ ${existingItems.length} MỤC SAU — TUYỆT ĐỐI KHÔNG trùng lặp, paraphrase, hay hỏi lại cùng khái niệm:\n${existingLines}`;
-    suffix += `\n\nCâu hỏi mới PHẢI về chủ đề/chi tiết KHÁC HOÀN TOÀN. Không được viết lại cùng ý bằng từ khác.`;
+    suffix += `\n\nDANH SÁCH CÁC KHÁI NIỆM ĐÃ ĐƯỢC XỬ LÝ (KHÔNG ĐƯỢC HỎI LẠI):\n${existingLines}`;
+    suffix += `\n\nYêu cầu: Viết câu hỏi về một khía cạnh nhỏ hoặc thông số kỹ thuật hoàn toàn mới nằm ngoài danh sách cấm trên.`;
   }
 
   if (chunkHint) {
-    suffix += `\n\nGợi ý chủ đề từ phần tài liệu hiện tại: "${chunkHint}" — hãy tạo câu hỏi về chi tiết cụ thể trong phần này mà CHƯA có trong danh sách trên.`;
+    suffix += `\n\nGợi ý vùng dữ liệu tiêu điểm: "${chunkHint}" — Tìm ý ẩn hoặc thông tin chi tiết cụ thể trong phần này để đặt câu hỏi.`;
   }
 
   if (stalled) {
-    suffix += `\n\nCẢNH BÁO: Phản hồi trước bị TRÙNG LẶP hoặc THIẾU TRƯỜNG. Lần này BẮT BUỘC chọn khái niệm MỚI từ phần tài liệu hiện tại. Không hỏi lại mục lục, giới thiệu chung, hay câu hỏi đã có.`;
+    // FIX: Give explicit grammatical redirection commands to break the model's looping chain
+    suffix += `\n\n⚠️ THÔNG BÁO HỆ THỐNG: Bạn đang bị lặp lại cấu trúc ngữ pháp. Hãy THAY ĐỔI đại từ nghi vấn ngay lập tức! Ví dụ: Nếu đã dùng 'Tác vụ nào', hãy chuyển sang dùng 'Khi nào', 'Tại sao', 'Ai đảm nhận', hoặc 'Thông số nào'.`;
   }
 
   if (materialType === 'flashcard' && (stalled || existingItems.length > 0)) {
-    suffix += `\n\nNHẮC LẠI: JSON bắt buộc có cả "front" và "back". Ví dụ: {"front":"Ai là tác giả?","back":"Karl Marx."}`;
+    suffix += `\n\nĐỊNH DẠNG BẮT BUỘC: Trả về JSON chứa cả cặp "front" và "back". Cả hai trường phải có nội dung chữ hoàn chỉnh, ngắn gọn, dễ hiểu.`;
   }
 
   return `${userPrompt}${suffix}`;
@@ -989,12 +1014,12 @@ async function generateOllamaBatches({
         chunkHint: extractChunkHint(batchText),
       }
     );
-
+    const currentTemp = 0.2 + (consecutiveDuplicate * 0.15);
     try {
       const result = await callMaterialAi({
         batchSystemPrompt: batchPrompts.systemPrompt,
         batchUserPrompt,
-        temperature: (consecutiveDuplicate > 0 || consecutiveEmpty > 0) ? 0.7 : 0.2,
+        temperature: Math.min(currentTemp, 1.2),
       });
 
       usageMetadata.promptTokens += result.usageMetadata?.promptTokens || 0;
@@ -1170,12 +1195,12 @@ class StudyMaterialService {
     });
 
     // ADD: scale target down for short documents
-    const rawTarget = MATERIAL_TARGETS[materialType];
-    const targetCount = (documentChunks.length && rawTarget)
-      ? Math.min(rawTarget, Math.max(3, documentChunks.length - 1))
-      : rawTarget;
+    // const rawTarget = MATERIAL_TARGETS[materialType];
+    // const targetCount = (documentChunks.length && rawTarget)
+    //   ? Math.min(rawTarget, Math.max(3, documentChunks.length - 1))
+    //   : rawTarget;
 
-    // const targetCount = MATERIAL_TARGETS[materialType];
+    const targetCount = MATERIAL_TARGETS[materialType];
     const { systemPrompt, userPrompt } = buildMaterialPrompts({
       materialType,
       documentContext,
