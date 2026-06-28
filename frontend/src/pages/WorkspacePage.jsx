@@ -17,7 +17,10 @@ import {
   getOrCreateDocumentChatSession,
   listChatSessions,
   listSharedDocuments as listSharedWorkspaceDocuments,
+  permanentlyRemoveRecoverableChatDocument,
+  permanentlyRemoveRecoverableChatDocuments,
   renameChatSession,
+  removeTemporaryChatDocuments,
   restoreChatDocument,
   saveChatDocumentToLibrary,
   uploadChatDocument,
@@ -1067,6 +1070,86 @@ export default function WorkspacePage() {
     }
   }
 
+  async function handleRemoveTemporaryAttachments() {
+    const targetSessionId = sessionId;
+    const targetDocumentId = selectedId;
+    if (!targetSessionId || attachmentAction) return false;
+    const controller = new AbortController();
+    attachmentRequestAbortRef.current = controller;
+    try {
+      setAttachmentAction({ type: "remove-temporary" });
+      setAttachmentError("");
+      const payload = await removeTemporaryChatDocuments(targetSessionId, { signal: controller.signal });
+      if (String(getWorkspaceCache().selectedId || "") !== String(targetDocumentId || "")) return false;
+      return applyAttachmentPayload(payload, targetSessionId);
+    } catch (err) {
+      if (err.code === "ERR_CANCELED") return false;
+      setAttachmentError(attachmentFailureMessage(err, "Could not remove temporary files."));
+      return false;
+    } finally {
+      if (attachmentRequestAbortRef.current === controller) {
+        attachmentRequestAbortRef.current = null;
+        setAttachmentAction(null);
+      }
+    }
+  }
+
+  async function handlePermanentlyRemoveRecoverableAttachment(attachment) {
+    const targetSessionId = sessionId;
+    const targetDocumentId = selectedId;
+    if (!targetSessionId || attachmentAction) return false;
+    const controller = new AbortController();
+    attachmentRequestAbortRef.current = controller;
+    try {
+      setAttachmentAction({ type: "delete-recoverable", documentId: attachment.id });
+      setAttachmentError("");
+      const payload = await permanentlyRemoveRecoverableChatDocument(targetSessionId, attachment.id, { signal: controller.signal });
+      if (String(getWorkspaceCache().selectedId || "") !== String(targetDocumentId || "")) return false;
+      return applyAttachmentPayload(payload, targetSessionId);
+    } catch (err) {
+      if (err.code === "ERR_CANCELED") return false;
+      if (err.response?.status === 410) {
+        setRecoverableAttachmentsBySession((current) => ({
+          ...current,
+          [String(targetSessionId)]: (current[String(targetSessionId)] || []).filter((item) => (
+            Number(item.id) !== Number(attachment.id)
+          )),
+        }));
+      }
+      setAttachmentError(attachmentFailureMessage(err, "Could not permanently delete this file."));
+      return false;
+    } finally {
+      if (attachmentRequestAbortRef.current === controller) {
+        attachmentRequestAbortRef.current = null;
+        setAttachmentAction(null);
+      }
+    }
+  }
+
+  async function handlePermanentlyRemoveAllRecoverableAttachments() {
+    const targetSessionId = sessionId;
+    const targetDocumentId = selectedId;
+    if (!targetSessionId || attachmentAction) return false;
+    const controller = new AbortController();
+    attachmentRequestAbortRef.current = controller;
+    try {
+      setAttachmentAction({ type: "delete-recoverable-all" });
+      setAttachmentError("");
+      const payload = await permanentlyRemoveRecoverableChatDocuments(targetSessionId, { signal: controller.signal });
+      if (String(getWorkspaceCache().selectedId || "") !== String(targetDocumentId || "")) return false;
+      return applyAttachmentPayload(payload, targetSessionId);
+    } catch (err) {
+      if (err.code === "ERR_CANCELED") return false;
+      setAttachmentError(attachmentFailureMessage(err, "Could not permanently delete recoverable files."));
+      return false;
+    } finally {
+      if (attachmentRequestAbortRef.current === controller) {
+        attachmentRequestAbortRef.current = null;
+        setAttachmentAction(null);
+      }
+    }
+  }
+
   async function handleRestoreAttachment(attachment) {
     const targetSessionId = sessionId;
     const targetDocumentId = selectedId;
@@ -1521,7 +1604,10 @@ export default function WorkspacePage() {
                 onQuestionChange={setQuestion}
                 onCreateSession={handleCreateSession}
                 onDeleteSession={handleDeleteSession}
+                onPermanentlyRemoveAllRecoverableAttachments={handlePermanentlyRemoveAllRecoverableAttachments}
+                onPermanentlyRemoveRecoverableAttachment={handlePermanentlyRemoveRecoverableAttachment}
                 onRemoveAttachment={handleRemoveAttachment}
+                onRemoveTemporaryAttachments={handleRemoveTemporaryAttachments}
                 onRestoreAttachment={handleRestoreAttachment}
                 onSaveAttachment={handleSaveAttachment}
                 onRenameSession={handleRenameSession}
