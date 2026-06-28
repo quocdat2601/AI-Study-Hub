@@ -162,12 +162,25 @@ function normalizeArrayContent(parsed, materialType) {
   return content;
 }
 
-const MAX_BACK_WORDS = 30;
+const MAX_BACK_WORDS = 25;
 
 function truncateToWords(text, maxWords) {
   const words = String(text || '').trim().split(/\s+/);
   if (words.length <= maxWords) return String(text || '').trim();
-  return words.slice(0, maxWords).join(' ') + '…';
+  // Find a natural break point — stop at last complete sentence within limit
+  const truncated = words.slice(0, maxWords).join(' ');
+  const lastPeriod = truncated.lastIndexOf('.');
+  if (lastPeriod > truncated.length * 0.5) {
+    return truncated.slice(0, lastPeriod + 1); // cut at sentence boundary
+  }
+  return truncated + '.';
+}
+
+function isBackComplete(text) {
+  const t = text.trim();
+  if (!t) return false;
+  // Complete if ends with sentence-ending punctuation
+  return /[.!?。…]$/.test(t);
 }
 
 function normalizeFlashcardItems(items) {
@@ -181,7 +194,15 @@ function normalizeFlashcardItems(items) {
         MAX_BACK_WORDS
       ),
     }))
-    .filter((item) => item.front && item.back);
+    .filter((item) => {
+      if (!item.front) return false;
+      const cleanBack = item.back.replace(/[…\.]+/g, '').trim();
+      if (cleanBack.length <= 1) return false;
+      // ADD: reject backs that look mid-sentence (end with a conjunction or preposition)
+      const midSentenceEndings = /\b(và|hoặc|là|của|để|cho|với|trong|từ|đến|bằng|qua|về|như|mà|hay|khi|tại|theo|vì|do|nên|thì|nhưng|còn|vẫn|đang|sẽ|đã|làm|có|được|bị|các|những|một|này|đó)\.?$/i;
+      if (midSentenceEndings.test(item.back.trim())) return false;
+      return true;
+    });
 }
 
 function stripOptionPrefix(text) {
@@ -473,7 +494,7 @@ const OLLAMA_MAX_BATCH_ATTEMPTS = {
 };
 
 const GEMINI_MATERIAL_MAX_CHARS = 15000;
-const MATERIAL_CHUNK_WINDOW_CHARS = 8000;
+const MATERIAL_CHUNK_WINDOW_CHARS = 1800;
 
 const QUIZ_JSON_EXAMPLE = `{
   "question": "Thời kỳ nào phương thức sản xuất tư bản hình thành ở Anh?",
@@ -491,18 +512,21 @@ function assertMaterialTargetCount(content, materialType, { provider, model }) {
   const target = MATERIAL_TARGETS[materialType];
   if (!target || content.length >= target) return;
 
-  const label = materialType === 'flashcard' ? 'thẻ ghi nhớ' : 'câu hỏi trắc nghiệm';
-  console.error(
+  // const label = materialType === 'flashcard' ? 'thẻ ghi nhớ' : 'câu hỏi trắc nghiệm';
+  // console.error(
+  //   `${materialType} incomplete: got ${content.length}/${target}. Provider=${provider}, model=${model}`
+  // );
+  // const err = createError(
+  //   500,
+  //   materialType === 'flashcard'
+  //     ? `AI returned ${content.length} flashcards but ${target} are required`
+  //     : `AI returned ${content.length} quiz questions but ${target} are required`
+  // );
+  // err.publicMessage = `Chỉ tạo được ${content.length}/${target} ${label}. Hãy thử lại hoặc chọn mô hình Gemini để đạt đủ số lượng.`;
+  // throw err;
+  console.warn(
     `${materialType} incomplete: got ${content.length}/${target}. Provider=${provider}, model=${model}`
   );
-  const err = createError(
-    500,
-    materialType === 'flashcard'
-      ? `AI returned ${content.length} flashcards but ${target} are required`
-      : `AI returned ${content.length} quiz questions but ${target} are required`
-  );
-  err.publicMessage = `Chỉ tạo được ${content.length}/${target} ${label}. Hãy thử lại hoặc chọn mô hình Gemini để đạt đủ số lượng.`;
-  throw err;
 }
 
 function normalizeDedupeText(text) {
@@ -634,7 +658,7 @@ function buildMaterialPrompts({ materialType, documentContext, count }) {
 
 BẮT BUỘC: JSON phải có CẢ HAI khóa "front" VÀ "back". Chỉ trả "front" mà thiếu "back" là KHÔNG HỢP LỆ.
 - front: tối đa 12 từ, kết thúc bằng dấu ?
-- back: tối đa 15 từ, trả lời trực tiếp`
+- back: tối đa 12 từ, câu HOÀN CHỈNH, không bị cắt giữa chừng`
       : `VÍ DỤ FORMAT HỢP LỆ:
 [
   {"front": "Vệ tinh tự nhiên duy nhất của Trái Đất tên là gì?", "back": "Mặt Trăng."},
@@ -652,7 +676,7 @@ QUY TẮC BẮT BUỘC NHẤT NHẤT:
 2. NGÔN NGỮ: BẮT BUỘC mặt trước và mặt sau phải được viết hoàn toàn bằng tiếng Việt tự nhiên, chính xác. Chỉ các thuật ngữ kỹ thuật chuyên ngành hoặc tên riêng nước ngoài mới được giữ nguyên tiếng Anh (ví dụ: React, API, DNA). Tuyệt đối không để mặt trước tiếng Việt nhưng mặt sau lại dùng toàn bộ bằng tiếng Anh.
 3. NGẮN GỌN & HIỆU QUẢ:
    - Mặt trước (front): Tối đa 15 từ.
-   - Mặt sau (back): Tối đa 15 từ. KHÔNG giải thích dài dòng. Tránh các từ thừa như "đáp án là", "câu trả lời là".
+   - Mặt sau (back): Tối đa 12 từ. Câu trả lời phải HOÀN CHỈNH, không bị cắt giữa chừng. Ưu tiên câu ngắn và đầy đủ ý hơn câu dài bị cụt. Tránh các từ thừa như "đáp án là", "câu trả lời là".
 4. CHỈ TRẢ VỀ JSON THUẦN TÚY: Dùng đúng khóa "front" và "back" (KHÔNG dùng Q/A). Không markdown, không backtick, không lời dẫn.
 5. Tuyệt đối KHÔNG tự động chèn hoặc giữ nguyên các thẻ giữ chỗ từ tài liệu nguồn.
 
@@ -781,9 +805,10 @@ function buildBatchContextFromChunks(chunks, { attempt, maxAttempts, docTitle })
   if (!sorted.length) return null;
 
   const numChunks = sorted.length;
-  const startIdx = numChunks <= 1
-    ? 0
-    : Math.floor((attempt * numChunks) / Math.max(1, maxAttempts)) % numChunks;
+  // const startIdx = numChunks <= 1
+  //   ? 0
+  //   : Math.floor((attempt * numChunks) / Math.max(1, maxAttempts)) % numChunks;
+  const startIdx = attempt % numChunks;
 
   const parts = [];
   let usedChars = 0;
@@ -935,8 +960,16 @@ async function generateOllamaBatches({
   const usageMetadata = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let consecutiveEmpty = 0;
   let consecutiveDuplicate = 0;
+  const MAX_CONSECUTIVE_DUPLICATES = 8;
 
   for (let attempt = 0; attempt < maxAttempts && mergedItems.length < targetCount; attempt += 1) {
+    // Stop early if document is exhausted
+    if (consecutiveDuplicate >= MAX_CONSECUTIVE_DUPLICATES) {
+      console.warn(
+        `Ollama ${materialType}: document exhausted after ${consecutiveDuplicate} consecutive duplicates, stopping early with ${mergedItems.length}/${targetCount} items`
+      );
+      break;
+    }
     const sliceAttempt = attempt + (consecutiveDuplicate > 0 ? mergedItems.length + consecutiveDuplicate : 0);
     const batchText = buildBatchDocumentContext({
       documentChunks,
@@ -1136,7 +1169,13 @@ class StudyMaterialService {
       fallbackText: text,
     });
 
-    const targetCount = MATERIAL_TARGETS[materialType];
+    // ADD: scale target down for short documents
+    const rawTarget = MATERIAL_TARGETS[materialType];
+    const targetCount = (documentChunks.length && rawTarget)
+      ? Math.min(rawTarget, Math.max(3, documentChunks.length - 1))
+      : rawTarget;
+
+    // const targetCount = MATERIAL_TARGETS[materialType];
     const { systemPrompt, userPrompt } = buildMaterialPrompts({
       materialType,
       documentContext,
@@ -1162,7 +1201,8 @@ class StudyMaterialService {
           userPrompt: batchUserPrompt,
           format: 'json',
           options: {
-            num_predict: materialType === 'flashcard' ? 512 : 2048,
+            num_predict: materialType === 'flashcard' ? 1024 : 2048,
+            num_ctx: 8192,
             temperature,
           },
         });

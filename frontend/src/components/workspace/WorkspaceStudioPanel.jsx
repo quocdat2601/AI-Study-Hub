@@ -627,7 +627,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
               <div className="flex min-h-full flex-col items-center justify-center gap-6 pb-6">
                 {/* Card 3D container */}
                 <div
-                  className="group relative h-64 w-full cursor-pointer perspective-1000"
+                  className="group relative min-h-64 w-full cursor-pointer perspective-1000"
                   onClick={() => setIsFlipped(!isFlipped)}
                 >
                   <div
@@ -636,8 +636,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                     {/* Front Side */}
                     <div className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-indigo-100 bg-white p-6 backface-hidden">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mặt Trước (Front)</span>
-                      <div className="flex flex-1 items-center justify-center py-4">
-                        <p className="m-0 text-center text-base font-semibold leading-relaxed text-slate-800">
+                      <div className="flex flex-1 items-center justify-center py-4 min-h-0">
+                        <p className="m-0 text-center text-base font-semibold leading-relaxed text-slate-800 overflow-y-auto max-h-32">
                           {content[activeCardIndex]?.front}
                         </p>
                       </div>
@@ -647,8 +647,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                     {/* Back Side */}
                     <div className="absolute inset-0 flex flex-col justify-between rounded-2xl border border-indigo-100 bg-indigo-900 p-6 backface-hidden rotate-y-180">
                       <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Mặt Sau (Back)</span>
-                      <div className="flex flex-1 items-center justify-center py-4">
-                        <p className="m-0 text-center text-base leading-relaxed text-white">
+                      <div className="flex flex-1 items-center justify-center py-4 min-h-0">
+                        <p className="m-0 text-center text-base leading-relaxed text-white overflow-y-auto max-h-32">
                           {content[activeCardIndex]?.back}
                         </p>
                       </div>
