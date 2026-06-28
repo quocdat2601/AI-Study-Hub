@@ -11,8 +11,8 @@ class TagModel {
     if (!raw) return [];
 
     const names = String(raw)
-      .split(',')
-      .map((tag) => tag.trim().toLowerCase())
+      .split(/[,\n]/)
+      .map((tag) => tag.trim().toLowerCase().replace(/\s+/g, ' '))
       .filter((tag) => tag && tag.length <= 50);
 
     return [...new Set(names)].slice(0, 10);
@@ -23,6 +23,31 @@ class TagModel {
       .map((row) => row.tags)
       .filter(Boolean)
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Liệt kê tag kèm số tài liệu (từ view tag_usage) — cho Topic Picker & autocomplete
+  static async list({ q, limit = 50 } = {}) {
+    let query = supabase
+      .from('tag_usage')
+      .select('id, name, doc_count')
+      .order('doc_count', { ascending: false })
+      .order('name', { ascending: true })
+      .limit(Math.min(Math.max(Number(limit) || 50, 1), 200));
+
+    const search = String(q || '').trim().toLowerCase();
+    if (search) {
+      query = query.ilike('name', `${search}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Tên các tag phổ biến nhất — truyền vào prompt auto-tag để model ưu tiên tái dùng
+  static async topByUsageNames(limit = 50) {
+    const rows = await this.list({ limit });
+    return rows.map((row) => row.name);
   }
 
   static async findOrCreateByName(name) {

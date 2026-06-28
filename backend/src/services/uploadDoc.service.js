@@ -8,6 +8,7 @@ const notificationService = require('./notification.service');
 const supabaseService = require('./supabase.service');
 const documentTextService = require('./document-text.service');
 const documentThumbnailService = require('./document-thumbnail.service');
+const aiTagService = require('./ai-tag.service');
 const activityService = require('./activity.service');
 const createError = require('../utils/createError');
 const { buildSafeStorageFileName } = require('../utils/sanitizeFileName');
@@ -174,6 +175,14 @@ async function upload({
 
     if (tags) {
       await tagModel.setForDocument(savedDocument.id, tags);
+    } else if (savedDocument?.extraction_status === 'ready') {
+      // Không nhập tag thủ công → AI auto-tag (best-effort, không chặn upload)
+      await aiTagService.autoTagDocument({
+        userId,
+        docId: savedDocument.id,
+        title: savedDocument.title,
+        text: savedDocument.extracted_text,
+      }).catch((err) => console.error('Auto-tag failed:', err.message));
     }
 
     const savedDocumentWithRelations = documentScope === 'session'

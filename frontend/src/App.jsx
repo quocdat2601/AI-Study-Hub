@@ -17,6 +17,7 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import OnboardingPage from "./pages/OnboardingPage.jsx";
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
@@ -70,6 +71,14 @@ function AppRoutes() {
         <Route
           path="/community/users/:userId"
           element={<CommunityUserProfilePage />}
+        />
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <OnboardingPage />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="/dashboard"

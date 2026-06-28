@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import RouteSkeleton from "./RouteSkeleton.jsx";
 
 export default function ProtectedRoute({ children }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading && !isAuthenticated) {
@@ -21,6 +21,11 @@ export default function ProtectedRoute({ children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // User mới (không phải admin) chưa hoàn tất onboarding → ép qua /onboarding
+  if (user && user.role !== "admin" && !user.onboarded && location.pathname !== "/onboarding") {
+    return <Navigate to="/onboarding" replace />;
   }
 
   return children;
