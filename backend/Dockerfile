@@ -28,7 +28,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund
 
 COPY . .
 
