@@ -512,18 +512,21 @@ function assertMaterialTargetCount(content, materialType, { provider, model }) {
   const target = MATERIAL_TARGETS[materialType];
   if (!target || content.length >= target) return;
 
-  const label = materialType === 'flashcard' ? 'thẻ ghi nhớ' : 'câu hỏi trắc nghiệm';
-  console.error(
+  // const label = materialType === 'flashcard' ? 'thẻ ghi nhớ' : 'câu hỏi trắc nghiệm';
+  // console.error(
+  //   `${materialType} incomplete: got ${content.length}/${target}. Provider=${provider}, model=${model}`
+  // );
+  // const err = createError(
+  //   500,
+  //   materialType === 'flashcard'
+  //     ? `AI returned ${content.length} flashcards but ${target} are required`
+  //     : `AI returned ${content.length} quiz questions but ${target} are required`
+  // );
+  // err.publicMessage = `Chỉ tạo được ${content.length}/${target} ${label}. Hãy thử lại hoặc chọn mô hình Gemini để đạt đủ số lượng.`;
+  // throw err;
+  console.warn(
     `${materialType} incomplete: got ${content.length}/${target}. Provider=${provider}, model=${model}`
   );
-  const err = createError(
-    500,
-    materialType === 'flashcard'
-      ? `AI returned ${content.length} flashcards but ${target} are required`
-      : `AI returned ${content.length} quiz questions but ${target} are required`
-  );
-  err.publicMessage = `Chỉ tạo được ${content.length}/${target} ${label}. Hãy thử lại hoặc chọn mô hình Gemini để đạt đủ số lượng.`;
-  throw err;
 }
 
 function normalizeDedupeText(text) {
@@ -957,8 +960,16 @@ async function generateOllamaBatches({
   const usageMetadata = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let consecutiveEmpty = 0;
   let consecutiveDuplicate = 0;
+  const MAX_CONSECUTIVE_DUPLICATES = 8;
 
   for (let attempt = 0; attempt < maxAttempts && mergedItems.length < targetCount; attempt += 1) {
+    // Stop early if document is exhausted
+    if (consecutiveDuplicate >= MAX_CONSECUTIVE_DUPLICATES) {
+      console.warn(
+        `Ollama ${materialType}: document exhausted after ${consecutiveDuplicate} consecutive duplicates, stopping early with ${mergedItems.length}/${targetCount} items`
+      );
+      break;
+    }
     const sliceAttempt = attempt + (consecutiveDuplicate > 0 ? mergedItems.length + consecutiveDuplicate : 0);
     const batchText = buildBatchDocumentContext({
       documentChunks,
@@ -1158,7 +1169,13 @@ class StudyMaterialService {
       fallbackText: text,
     });
 
-    const targetCount = MATERIAL_TARGETS[materialType];
+    // ADD: scale target down for short documents
+    const rawTarget = MATERIAL_TARGETS[materialType];
+    const targetCount = (documentChunks.length && rawTarget)
+      ? Math.min(rawTarget, Math.max(3, documentChunks.length - 1))
+      : rawTarget;
+
+    // const targetCount = MATERIAL_TARGETS[materialType];
     const { systemPrompt, userPrompt } = buildMaterialPrompts({
       materialType,
       documentContext,
