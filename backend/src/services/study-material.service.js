@@ -162,15 +162,24 @@ function normalizeArrayContent(parsed, materialType) {
   return content;
 }
 
+const MAX_BACK_WORDS = 30;
+
+function truncateToWords(text, maxWords) {
+  const words = String(text || '').trim().split(/\s+/);
+  if (words.length <= maxWords) return String(text || '').trim();
+  return words.slice(0, maxWords).join(' ') + '…';
+}
+
 function normalizeFlashcardItems(items) {
   return items
     .map((item) => ({
       front: String(
         item?.front || item?.question || item?.q || item?.Q || item?.term || item?.prompt || item?.title || ''
       ).trim(),
-      back: String(
-        item?.back || item?.answer || item?.a || item?.A || item?.definition || item?.response || item?.reply || item?.meaning || ''
-      ).trim(),
+      back: truncateToWords(
+        item?.back || item?.answer || item?.a || item?.A || item?.definition || item?.response || item?.reply || item?.meaning || '',
+        MAX_BACK_WORDS
+      ),
     }))
     .filter((item) => item.front && item.back);
 }
@@ -516,7 +525,7 @@ function isSimilarKey(a, b) {
   const minLen = Math.min(a.length, b.length);
   if (minLen < 20) return false; // too short to be meaningful
   const shorter = a.length <= b.length ? a : b;
-  const longer  = a.length <= b.length ? b : a;
+  const longer = a.length <= b.length ? b : a;
   return longer.startsWith(shorter);
 }
 
@@ -642,8 +651,8 @@ QUY TẮC BẮT BUỘC NHẤT NHẤT:
    - MẶT SAU (back): Câu trả lời và giải thích trực tiếp, ngắn gọn BẰNG TIẾNG VIỆT cho câu hỏi ở mặt trước.
 2. NGÔN NGỮ: BẮT BUỘC mặt trước và mặt sau phải được viết hoàn toàn bằng tiếng Việt tự nhiên, chính xác. Chỉ các thuật ngữ kỹ thuật chuyên ngành hoặc tên riêng nước ngoài mới được giữ nguyên tiếng Anh (ví dụ: React, API, DNA). Tuyệt đối không để mặt trước tiếng Việt nhưng mặt sau lại dùng toàn bộ bằng tiếng Anh.
 3. NGẮN GỌN & HIỆU QUẢ:
-   - Mặt trước (front): Tối đa 25 từ.
-   - Mặt sau (back): Tối đa 25 từ. Tránh các từ thừa như "đáp án là", "câu trả lời là".
+   - Mặt trước (front): Tối đa 15 từ.
+   - Mặt sau (back): Tối đa 15 từ. KHÔNG giải thích dài dòng. Tránh các từ thừa như "đáp án là", "câu trả lời là".
 4. CHỈ TRẢ VỀ JSON THUẦN TÚY: Dùng đúng khóa "front" và "back" (KHÔNG dùng Q/A). Không markdown, không backtick, không lời dẫn.
 5. Tuyệt đối KHÔNG tự động chèn hoặc giữ nguyên các thẻ giữ chỗ từ tài liệu nguồn.
 
