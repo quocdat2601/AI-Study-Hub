@@ -9,7 +9,6 @@ export const dashboardSidebarItems = [
   { id: "study-sets", icon: "book", label: "Study Sets", labelKey: "nav.studySets", to: "/library" },
   { id: "documents", icon: "document", label: "Documents", labelKey: "nav.documents", to: "/documents" },
   { id: "study-resources", icon: "compass", label: "Explore Docs", labelKey: "nav.studyResources", to: "/public-documents" },
-  { id: "community", icon: "community", label: "Community", labelKey: "nav.community", to: "/community" },
   { id: "ai-workspace", icon: "chat", label: "AI Workspace", labelKey: "nav.aiWorkspace", to: "/workspace" },
   ...(String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true" ? [
     { id: "shared", icon: "compass", label: "Shared", to: "/shared" },
@@ -159,18 +158,8 @@ function DefaultSidebar({
       className={className || "sticky top-0 flex h-screen w-[248px] shrink-0 flex-col border-r border-slate-200/80 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-950"}
       aria-label="Dashboard navigation"
     >
-      <Link className="no-caret mb-6 flex items-center gap-3 no-underline" to="/dashboard">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white shadow-[0_8px_20px_rgba(79,70,229,0.28)]">
-          A
-        </span>
-        <span className="min-w-0">
-          <strong className="block truncate text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-100">AI Study Hub</strong>
-          <small className="block truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">Academic Pro</small>
-        </span>
-      </Link>
-
       <button
-        className="no-caret mb-6 flex min-h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-indigo-600 px-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
+        className="no-caret mb-5 flex min-h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-indigo-600 px-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition hover:bg-indigo-700 active:scale-[0.98]"
         onClick={() => openUpload()}
         type="button"
       >
@@ -262,8 +251,8 @@ function ControlledSidebar({
   const pathname = useLocation().pathname;
   const initials = getInitials(userName);
   const activeId = activeSection || "";
-  const { user } = useAuth();
   const { t } = useTranslation();
+  const { openUpload } = useUploadDocModal();
 
   return (
     <aside
@@ -276,39 +265,29 @@ function ControlledSidebar({
     >
       {onToggleCollapse ? (
         <button
-          className="absolute right-[-13px] top-1/2 z-10 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
+          className="mb-3 flex h-9 w-full items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
           aria-label={isCollapsed ? "Show sidebar" : "Hide sidebar"}
           onClick={onToggleCollapse}
           type="button"
         >
-          {isCollapsed ? ">" : "<"}
+          {isCollapsed ? ">" : <span className="inline-flex items-center gap-2">{"<"} <span>Hide</span></span>}
         </button>
       ) : null}
 
-      <Link className={isCollapsed ? "mb-5 flex items-center justify-center no-underline" : "mb-5 flex items-center gap-3 no-underline"} to="/dashboard">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4648d4] text-sm font-black text-white shadow-[0_8px_20px_rgba(70,72,212,0.22)]">
-          A
-        </span>
-        {!isCollapsed ? (
-          <span className="min-w-0">
-            <strong className="block truncate text-[15px] font-bold tracking-tight text-[#172033]">AI Study Hub</strong>
-            <small className="block truncate text-[11px] font-medium text-[#66758a]">Study workspace</small>
-          </span>
-        ) : null}
-      </Link>
-
       {showNewDocument ? (
-        <Link
+        <button
           className={
             isCollapsed
               ? "mb-5 flex min-h-9 w-full items-center justify-center rounded-md bg-[#4648d4] text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
               : "mb-5 flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[#4648d4] px-3 text-[13px] font-extrabold text-white no-underline shadow-[0_8px_18px_rgba(70,72,212,0.22)] transition hover:bg-[#383ac4]"
           }
-          to={newDocumentTo}
+          onClick={openUpload}
+          type="button"
+          title={newDocumentLabel}
         >
           <span>+</span>
           {!isCollapsed ? <b className="overflow-hidden text-ellipsis whitespace-nowrap">{newDocumentLabel}</b> : null}
-        </Link>
+        </button>
       ) : null}
 
       <nav className="grid content-start gap-2">
@@ -349,18 +328,6 @@ function ControlledSidebar({
       </nav>
 
       <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
-        {user?.role === "admin" && (pathname.startsWith("/admin") || activeSection) ? (
-          <Link
-            className={navItemClass(isCollapsed, false)}
-            to="/dashboard"
-          >
-            <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
-              <SidebarIcon name="dashboard" />
-            </span>
-            {!isCollapsed ? <b className="truncate text-[#4648d4]">Student View</b> : null}
-          </Link>
-        ) : null}
-
         <div className={isCollapsed ? "flex justify-center" : "flex items-center gap-2 px-1"}>
           <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
             {initials}

@@ -34,10 +34,7 @@ function AppRoutes() {
   const navigate = useNavigate();
   const isSharedChatPreview = location.pathname.startsWith("/shared/chat/");
   const publicAuthRoutes = ["/", "/login", "/forgot-password", "/reset-password"];
-  const dashboardShellRoutes = ["/dashboard", "/account", "/documents", "/documents/trash", "/library", "/admin", "/shared"];
   const shouldShowAppNav = !publicAuthRoutes.includes(location.pathname)
-    && !dashboardShellRoutes.includes(location.pathname)
-    && !location.pathname.startsWith("/public-documents")
     && !isSharedChatPreview;
 
   async function handleLogout() {
@@ -179,6 +176,7 @@ function AppRoutes() {
           isAuthenticated={isAuthenticated}
           isLoading={isLoading}
           onLogout={handleLogout}
+          role={user?.role}
           workspacePath={user?.role === "admin" ? "/admin" : "/dashboard"}
         />
       ) : null}

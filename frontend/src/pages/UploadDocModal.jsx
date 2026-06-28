@@ -22,7 +22,7 @@ function VisibilityOption({ active, disabled, label, description, onClick, tone 
   return (
     <button
       aria-pressed={active}
-      className={`flex min-h-[82px] flex-1 items-start gap-3 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${active ? activeClass : inactiveClass}`}
+      className={`flex min-h-[58px] flex-1 items-start gap-2 rounded-xl border p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${active ? activeClass : inactiveClass}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
@@ -190,19 +190,19 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 p-4 backdrop-blur-[2px] dark:bg-black/60">
       <div
-        className="w-full max-w-[600px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] dark:border dark:border-slate-700 dark:bg-slate-900"
+        className="flex max-h-[92vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] dark:border dark:border-slate-700 dark:bg-slate-900"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-doc-title"
       >
-        <header className="bg-gradient-to-r from-[#4648d4] to-[#5b5ef0] px-6 py-5 text-white">
+        <header className="bg-gradient-to-r from-[#4648d4] to-[#5b5ef0] px-5 py-3.5 text-white">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="m-0 text-xs font-bold uppercase tracking-wide text-white/80">Upload</p>
-              <h2 id="upload-doc-title" className="m-0 mt-1 text-xl font-bold">
+              <h2 id="upload-doc-title" className="m-0 mt-0.5 text-lg font-bold">
                 Add New Document
               </h2>
-              <p className="m-0 mt-1 text-sm text-white/85">
+              <p className="m-0 mt-0.5 text-sm text-white/85">
                 PDF, DOCX, or image up to {UPLOAD_DOC_MAX_SIZE_MB}MB
               </p>
             </div>
@@ -218,16 +218,16 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
           </div>
         </header>
 
-        <div className="px-6 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {!file ? (
             <button
-              className="group flex w-full cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-[#c7d2fe] bg-[#f8faff] px-6 py-12 text-center transition hover:border-[#4648d4] hover:bg-[#f3f5ff] dark:border-slate-600 dark:bg-slate-800/60 dark:hover:border-indigo-500 dark:hover:bg-slate-800"
+              className="group flex w-full cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-[#c7d2fe] bg-[#f8faff] px-5 py-7 text-center transition hover:border-[#4648d4] hover:bg-[#f3f5ff] dark:border-slate-600 dark:bg-slate-800/60 dark:hover:border-indigo-500 dark:hover:bg-slate-800"
               onClick={() => inputRef.current?.click()}
               onDragOver={(event) => event.preventDefault()}
               onDrop={handleDrop}
               type="button"
             >
-              <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#4648d4] text-3xl text-white shadow-[0_10px_24px_rgba(70,72,212,0.35)] transition group-hover:scale-105">
+              <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4648d4] text-2xl text-white shadow-[0_10px_24px_rgba(70,72,212,0.35)] transition group-hover:scale-105">
                 ↑
               </span>
               <strong className="text-[#172033] dark:text-slate-100">Drop your file here</strong>
@@ -292,11 +292,11 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
             type="file"
           />
 
-          <div className="mt-5 grid gap-4">
-            <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
+          <div className="mt-4 grid gap-3">
+            <label className="grid gap-1.5 text-sm font-bold text-[#344154] dark:text-slate-300">
               Document Title
               <input
-                className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/15 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/15 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 disabled={isUploading}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Lecture Notes Week 3"
@@ -304,11 +304,11 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
               />
             </label>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-bold text-[#344154] dark:text-slate-300">
                 Subject
                 <select
-                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  className="rounded-xl border border-[#dbe3ed] bg-white px-3 py-2 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   disabled={isUploading}
                   onChange={(event) => setSubjectId(event.target.value)}
                   value={subjectId}
@@ -322,11 +322,11 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm font-bold text-[#344154] dark:text-slate-300">
+              <label className="grid gap-1.5 text-sm font-bold text-[#344154] dark:text-slate-300">
                 Tags
                 <div className="relative">
                   <input
-                    className="w-full rounded-xl border border-[#dbe3ed] bg-white px-3 py-2.5 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-xl border border-[#dbe3ed] bg-white px-3 py-2 text-sm font-normal text-[#172033] outline-none focus:border-[#4648d4] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                     disabled={isUploading}
                     onChange={(event) => setTags(event.target.value)}
                     placeholder="database, machine learning"
@@ -353,7 +353,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
               </label>
             </div>
 
-            <div className="rounded-2xl border border-[#e5e9ef] bg-[#fafbff] p-4 dark:border-slate-700 dark:bg-slate-800/60">
+            <div className="rounded-2xl border border-[#e5e9ef] bg-[#fafbff] p-3 dark:border-slate-700 dark:bg-slate-800/60">
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="m-0 text-sm font-black text-[#344154] dark:text-slate-200">Visibility</h3>
@@ -361,11 +361,11 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
                     {isPublic ? "Public" : "Private"}
                   </span>
                 </div>
-                <p className="m-0 mt-1 text-xs leading-relaxed text-[#66758a] dark:text-slate-400">
+                <p className="m-0 mt-1 text-xs leading-snug text-[#66758a] dark:text-slate-400">
                   Choose whether this document stays in your library or can appear on the public landing page.
                 </p>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2" role="group" aria-label="Document visibility">
+              <div className="mt-2 grid gap-2 sm:grid-cols-2" role="group" aria-label="Document visibility">
                 <VisibilityOption
                   active={!isPublic}
                   description="Only you and invited people can access it."
@@ -393,7 +393,7 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
           ) : null}
         </div>
 
-        <footer className="flex justify-end gap-3 border-t border-[#e5e9ef] bg-[#fafbff] px-6 py-4 dark:border-slate-700 dark:bg-slate-800/60">
+        <footer className="flex justify-end gap-3 border-t border-[#e5e9ef] bg-[#fafbff] px-5 py-3 dark:border-slate-700 dark:bg-slate-800/60">
           {isUploading ? (
             <button
               className="rounded-xl border border-[#dbe3ed] bg-white px-4 py-2.5 text-sm font-bold text-[#344154] cursor-pointer dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"

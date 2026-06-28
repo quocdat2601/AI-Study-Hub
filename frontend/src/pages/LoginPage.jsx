@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 const POST_LOGIN_REDIRECT_KEY = "aiStudyHub.postLoginRedirect";
+const ADMIN_ALLOWED_PREFIXES = ["/admin"];
 
 function messageFromError(err) {
   return err.response?.data?.error || err.message || "Something went wrong. Please try again.";
@@ -23,6 +24,30 @@ function clearStoredRedirect() {
   } catch {
     // Session storage can be unavailable in restricted browser modes.
   }
+}
+
+function getPathname(destination) {
+  if (!destination) return "";
+  if (typeof destination === "string") return destination.split(/[?#]/)[0] || "/";
+  return destination.pathname || "";
+}
+
+function pathMatches(pathname, prefixes) {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function sanitizeDestinationForRole(destination, role) {
+  const fallback = role === "admin" ? "/admin" : "/dashboard";
+  const pathname = getPathname(destination);
+
+  if (!pathname || pathname === "/login") return fallback;
+
+  if (role === "admin") {
+    return pathMatches(pathname, ADMIN_ALLOWED_PREFIXES) ? destination : fallback;
+  }
+
+  if (pathname.startsWith("/admin")) return fallback;
+  return destination;
 }
 
 export default function LoginPage() {
@@ -52,14 +77,14 @@ export default function LoginPage() {
 
   const destination = useMemo(() => {
     if (location.state?.from?.pathname) {
-      return {
+      return sanitizeDestinationForRole({
         pathname: location.state.from.pathname,
         search: location.state.from.search || "",
         hash: location.state.from.hash || "",
-      };
+      }, user?.role);
     }
     const storedRedirect = readStoredRedirect();
-    if (storedRedirect) return storedRedirect;
+    if (storedRedirect) return sanitizeDestinationForRole(storedRedirect, user?.role);
     return user?.role === "admin" ? "/admin" : "/dashboard";
   }, [location.state, user]);
 
@@ -131,12 +156,12 @@ export default function LoginPage() {
           setSuccess("Account created. Check your email to confirm your account, then log in.");
         } else {
           clearStoredRedirect();
-          navigate(destination, { replace: true });
+          navigate(sanitizeDestinationForRole(destination, result.user?.role || user?.role), { replace: true });
         }
       } else {
-        await login({ email: form.email, password: form.password });
+        const loggedInUser = await login({ email: form.email, password: form.password });
         clearStoredRedirect();
-        navigate(destination, { replace: true });
+        navigate(sanitizeDestinationForRole(destination, loggedInUser?.role), { replace: true });
       }
     } catch (err) {
       const nextError = messageFromError(err);

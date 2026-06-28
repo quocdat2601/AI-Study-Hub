@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import DashboardSidebar from "../components/dashboard/DashboardSidebar.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import {
   createAdminSubject,
@@ -20,6 +21,17 @@ import { renderMarkdownBody } from "../components/community/communityUtils.js";
 import { useToast } from "../contexts/ToastContext.jsx";
 
 const emptySubject = { name: "", code: "", description: "" };
+const ADMIN_SIDEBAR_COLLAPSED_KEY = "aiStudyHub.adminSidebarCollapsed";
+
+const adminSidebarItems = [
+  { id: "dashboard", icon: "dashboard", label: "Dashboard" },
+  { id: "users", icon: "users", label: "Users" },
+  { id: "documents", icon: "document", label: "Documents" },
+  { id: "subjects", icon: "book", label: "Subjects" },
+  { id: "reports", icon: "reports", label: "Reports" },
+  { id: "activity-logs", icon: "activity", label: "Activity Logs" },
+  { id: "settings", icon: "settings", label: "Settings" },
+];
 
 const STATUS_CLASSES = {
   active: "bg-[#e8f5ee] text-[#087443]",
@@ -27,10 +39,10 @@ const STATUS_CLASSES = {
 };
 
 const metricStyles = {
-  totalUsers: { icon: "users", bg: "bg-[#ecebff]", color: "text-[#4648d4]", delta: "+12%" },
-  documentsProcessed: { icon: "doc", bg: "bg-[#fff1dc]", color: "text-[#b66a00]", delta: "+5.2%" },
-  aiQueries: { icon: "chip", bg: "bg-[#e5f0ff]", color: "text-[#3868a8]", delta: "Stable" },
-  systemErrors: { icon: "alert", bg: "bg-[#fff0f0]", color: "text-[#dc2626]", delta: "-2%" },
+  totalUsers: { icon: "users", bg: "bg-[#ecebff]", color: "text-[#4648d4]", subtitle: "Current total" },
+  documentsProcessed: { icon: "doc", bg: "bg-[#fff1dc]", color: "text-[#b66a00]", subtitle: "Ready or indexed" },
+  aiQueries: { icon: "chip", bg: "bg-[#e5f0ff]", color: "text-[#3868a8]", subtitle: "User prompts logged" },
+  systemErrors: { icon: "alert", bg: "bg-[#fff0f0]", color: "text-[#dc2626]", subtitle: "Extraction failures" },
 };
 
 function messageFromError(err) {
@@ -313,30 +325,43 @@ function AdminSidebar({
 function BarChart({ data }) {
   const values = data?.length ? data : [];
   const max = Math.max(...values.map((item) => item.value), 1);
-  const points = values.map((item, index) => {
-    const x = 18 + index * (252 / Math.max(values.length - 1, 1));
-    const y = 116 - (item.value / max) * 80;
-    return `${x},${y}`;
-  }).join(" ");
+  const yTicks = [max, Math.round(max / 2), 0];
+
+  if (!values.length || values.every((item) => Number(item.value || 0) === 0)) {
+    return (
+      <div className="mt-5 flex h-[170px] items-center justify-center rounded-md border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
+        No user registrations in this period.
+      </div>
+    );
+  }
 
   return (
-    <div className="mt-5 h-[170px]">
-      <div className="relative h-[132px]">
-        <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 288 132" preserveAspectRatio="none" aria-hidden="true">
-          <polyline points={points} fill="none" stroke="#9b9cec" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <div className="absolute inset-x-0 bottom-0 grid h-[104px] grid-cols-7 items-end gap-2 px-1">
+    <div className="mt-5 grid h-[170px] grid-cols-[34px_1fr] gap-2">
+      <div className="flex h-[132px] flex-col justify-between text-right text-[10px] font-semibold text-[#66758a]">
+        {yTicks.map((tick, index) => <span key={`${tick}-${index}`}>{tick}</span>)}
+      </div>
+      <div>
+        <div className="relative h-[132px] border-b border-l border-[#d9dde6]">
+          <div className="absolute inset-0 grid grid-rows-2">
+            <span className="border-b border-[#eef0f3]" />
+            <span />
+          </div>
+          <div className="absolute inset-x-2 bottom-0 grid h-[112px] grid-cols-7 items-end gap-2">
           {values.map((item, index) => (
             <span
-              className={index === values.length - 1 ? "rounded-t-md bg-[#4648d4]" : "rounded-t-md bg-[#cbcafa]"}
+              className={index === values.length - 1 ? "rounded-t-md bg-[#4648d4]" : "rounded-t-md bg-[#a7a8f4]"}
               key={item.key || item.label}
-              style={{ height: `${Math.max(22, (item.value / max) * 86)}px`, opacity: 0.65 + index * 0.05 }}
-            />
+              style={{ height: `${Math.max(4, (item.value / max) * 104)}px` }}
+              title={`${item.label}: ${item.value}`}
+            >
+              <span className="sr-only">{item.label}: {item.value}</span>
+            </span>
           ))}
+          </div>
         </div>
-      </div>
-      <div className="mt-2 grid grid-cols-7 text-center text-[10px] text-[#464554]">
-        {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
+        <div className="mt-2 grid grid-cols-7 text-center text-[10px] text-[#464554]">
+          {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
+        </div>
       </div>
     </div>
   );
@@ -353,6 +378,14 @@ function AreaChart({ data }) {
   const line = points.map((point) => `${point.x},${point.y}`).join(" ");
   const area = points.length ? `8,124 ${line} 280,124` : "";
 
+  if (!values.length || values.every((item) => Number(item.value || 0) === 0)) {
+    return (
+      <div className="mt-4 flex h-[166px] items-center justify-center rounded-md border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
+        No document uploads in this period.
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 rounded-md border border-[#d9dde6] bg-[#f7f9fb] p-2">
       <svg className="h-[150px] w-full" viewBox="0 0 288 132" preserveAspectRatio="none" aria-label="Document uploads chart">
@@ -364,8 +397,15 @@ function AreaChart({ data }) {
         </defs>
         <polygon points={area} fill="url(#adminUploadArea)" />
         <polyline points={line} fill="none" stroke="#4648d4" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        {points.length ? <circle cx={points[Math.max(0, points.length - 2)].x} cy={points[Math.max(0, points.length - 2)].y} r="4" fill="#4648d4" stroke="#cbcafa" strokeWidth="4" /> : null}
+        {points.map((point, index) => (
+          <circle key={values[index]?.key || values[index]?.label || index} cx={point.x} cy={point.y} r="3" fill="#4648d4">
+            <title>{values[index]?.label}: {values[index]?.value}</title>
+          </circle>
+        ))}
       </svg>
+      <div className="grid grid-cols-7 text-center text-[10px] text-[#464554]">
+        {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
+      </div>
     </div>
   );
 }
@@ -375,7 +415,7 @@ function ChartCard({ title, children, action }) {
     <article className="rounded-lg border border-[#c7c4d7] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <header className="flex items-center justify-between">
         <h2 className="m-0 text-base font-extrabold text-[#191c1e]">{title}</h2>
-        <span className="text-[#344154]">{action}</span>
+        {action ? <span className="text-[#344154]">{action}</span> : null}
       </header>
       {children}
     </article>
@@ -392,8 +432,8 @@ function MetricCard({ label, value, metricKey }) {
       <div>
         <p className="m-0 text-[10px] font-black uppercase tracking-[0.7px] text-[#464554]">{label}</p>
         <strong className="mt-1 block text-xl leading-none text-[#191c1e]">{value}</strong>
-        <small className={style.delta.includes("-") ? "mt-1 block text-[11px] font-bold text-[#dc2626]" : "mt-1 block text-[11px] font-bold text-[#4648d4]"}>
-          {style.delta}
+        <small className="mt-1 block text-[11px] font-bold text-[#66758a]">
+          {style.subtitle}
         </small>
       </div>
     </article>
@@ -419,6 +459,7 @@ function AdminOverview({ data }) {
   const metrics = data?.metrics || {};
   const subjects = data?.subjects || [];
   const activities = data?.recentActivity || [];
+  const subjectTotal = subjects.reduce((sum, subject) => sum + Number(subject.documentCount || subject.count || 0), 0);
 
   return (
     <div className="grid gap-5">
@@ -428,10 +469,10 @@ function AdminOverview({ data }) {
       </header>
 
       <section className="grid gap-5 lg:grid-cols-2">
-        <ChartCard title="User Growth" action="⌁">
+        <ChartCard title="User Growth">
           <BarChart data={data?.charts?.userGrowth || []} />
         </ChartCard>
-        <ChartCard title="Document Uploads" action="⇧">
+        <ChartCard title="Document Uploads">
           <AreaChart data={data?.charts?.documentUploads || []} />
         </ChartCard>
       </section>
@@ -452,13 +493,28 @@ function AdminOverview({ data }) {
           <div className="mt-5 grid gap-4">
             {subjects.length ? subjects.map((subject) => (
               <div key={subject.id || subject.code}>
+                {(() => {
+                  const count = Number(subject.documentCount || subject.count || 0);
+                  const percentage = subjectTotal > 0
+                    ? Number.isFinite(Number(subject.percentage))
+                      ? Number(subject.percentage)
+                      : Math.round((count / subjectTotal) * 100)
+                    : 0;
+                  return (
+                    <>
                 <div className="mb-2 flex items-center justify-between text-xs">
                   <span className="font-bold text-[#191c1e]">{subject.name}</span>
-                  <span className="text-[#464554]">{subject.percentage}%</span>
+                  <span className="text-[#464554]">
+                    {count} docs
+                    {subjectTotal > 0 ? ` · ${percentage}%` : ""}
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-[#eef0f3]">
-                  <span className="block h-full rounded-full bg-[#6366e8]" style={{ width: `${subject.percentage}%` }} />
+                  <span className="block h-full rounded-full bg-[#6366e8]" style={{ width: `${percentage}%` }} />
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             )) : <p className="m-0 text-sm text-[#464554]">No subject activity yet.</p>}
           </div>
@@ -473,8 +529,11 @@ function AdminOverview({ data }) {
               <div className="grid grid-cols-[34px_1fr] gap-3 border-b border-[#eef0f3] px-5 py-4 last:border-b-0" key={activity.id}>
                 <span className="mt-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#ecebff] text-xs font-black text-[#4648d4]">+</span>
                 <div>
-                  <p className="m-0 text-xs font-bold leading-snug text-[#191c1e]">{activity.title}</p>
-                  <small className="mt-1 block text-[11px] text-[#464554]">{timeAgo(activity.created_at)}</small>
+                  <p className="m-0 text-xs font-bold leading-snug text-[#191c1e]">{getFriendlyActivity(activity)}</p>
+                  {activity.title ? (
+                    <small className="mt-0.5 block truncate text-[10px] text-[#66758a]">{activity.title}</small>
+                  ) : null}
+                  <small className="mt-1 block text-[11px] text-[#464554]">{timeAgo(activity.created_at || activity.createdAt)}</small>
                 </div>
               </div>
             )) : <p className="m-0 p-5 text-sm text-[#464554]">No recent activity.</p>}
@@ -488,7 +547,13 @@ function AdminOverview({ data }) {
 export default function AdminPage() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(ADMIN_SIDEBAR_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const [overview, setOverview] = useState(null);
   
   // Data lists
@@ -523,6 +588,14 @@ export default function AdminPage() {
   const [processingAction, setProcessingAction] = useState(null);
   const { addToast } = useToast();
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ADMIN_SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed));
+    } catch {
+      // Local storage can be unavailable in restricted browser modes.
+    }
+  }, [isSidebarCollapsed]);
+
   const showSuccess = useCallback((msg) => {
     addToast({ type: "success", title: "Success", message: msg });
   }, [addToast]);
@@ -534,8 +607,8 @@ export default function AdminPage() {
   const displayName = getDisplayName(user);
   
   const contentClass = isSidebarCollapsed
-    ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6 h-full overflow-y-auto"
-    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8 h-full overflow-y-auto";
+    ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
+    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
 
   const loadAdminData = useCallback(async () => {
     setIsLoading(true);
@@ -1779,21 +1852,41 @@ export default function AdminPage() {
   }
 
   return (
-    <main className={`grid h-screen overflow-hidden bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out ${
+    <main className={`grid min-h-[calc(100vh-65px)] bg-[#f7f9fb] text-[#191c1e] transition-[grid-template-columns] duration-200 ease-out ${
       isSidebarCollapsed ? "[grid-template-columns:64px_minmax(0,1fr)]" : "[grid-template-columns:224px_minmax(0,1fr)]"
     }`}>
-      <AdminSidebar
+      <DashboardSidebar
         activeSection={activeSection}
         isCollapsed={isSidebarCollapsed}
+        items={adminSidebarItems}
+        newDocumentLabel="New Document"
+        onLogout={logout}
         onSectionChange={setActiveSection}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+        showNewDocument={false}
         userName={displayName}
-        onLogout={logout}
       />
 
-      <section className={contentClass}>
+      <section className="min-w-0 overflow-x-hidden">
+        <div className={contentClass}>
         {renderContent()}
+        </div>
       </section>
     </main>
   );
+}
+
+function getFriendlyActivity(activity) {
+  const raw = activity?.title || activity?.action || activity?.event_type || activity?.type || "Platform activity";
+  const normalized = String(raw).replace(/[._-]+/g, " ").trim();
+  const lower = normalized.toLowerCase();
+
+  if (lower.includes("purge")) return "Document cleanup completed";
+  if (lower.includes("upload")) return "Document uploaded";
+  if (lower.includes("chat")) return "Chat activity recorded";
+  if (lower.includes("user") && lower.includes("register")) return "New user registered";
+  if (lower.includes("subject")) return "Subject configuration changed";
+  if (lower.includes("error") || lower.includes("failed")) return "Processing issue detected";
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
