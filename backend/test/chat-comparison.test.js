@@ -623,7 +623,7 @@ test('comparison fallback evidence includes chunks from both documents', async (
   assert.equal(evidence.insufficient, false);
 });
 
-test('comparison_all_documents reason still overrides documentScope when no explicit names match', () => {
+test('generic two-document wording resolves both documents when exactly two are active', () => {
   const documents = [
     { id: 1, title: 'Tài liệu A' },
     { id: 2, title: 'Tài liệu B' },
@@ -641,7 +641,8 @@ test('comparison_all_documents reason still overrides documentScope when no expl
     intent: context.intent,
   });
 
-  assert.equal(scope.reason, 'comparison_all_documents');
+  assert.equal(scope.reason, 'generic_two_document_reference');
+  assert.equal(scope.type, 'comparison');
   assert.deepEqual(
     scope.documentIds.slice().sort((a, b) => a - b),
     [1, 2]

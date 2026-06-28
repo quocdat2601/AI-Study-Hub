@@ -470,7 +470,7 @@ function filterChunksByDocumentIds(chunks, documentIds) {
 function detectOverviewIntent({ question, requestContext, documentScope }) {
   const normalized = chatContextService.normalizeComparable(question);
   const overviewPattern = /\b(what is .* (file|document).* about|what .* (file|document).* say|summari[sz]e|summary|main purpose|key points|main idea|overview)\b|noi dung chinh|tom tat|noi ve gi|file nay noi|tai lieu nay noi|tep nay noi/iu;
-  const comparisonOverviewPattern = /\b(compare|comparison|related|relationship|relation|similarities|differences)\b|so sanh|lien quan|khac nhau|hai file|hai tai lieu/iu;
+  const comparisonOverviewPattern = /\b(compare|comparison|related|relationship|relation|similarities|differences|both files|these two documents|both attached documents|the two attachments)\b|so sanh|lien quan|khac nhau|hai file|hai tai lieu|2 file|2 tai lieu|ca hai file|hai file doc/iu;
   const narrowFactualPattern = /\b(deadline|due date|invoice number|amount|price|cost|email|phone|address|date|who|when|where|how many|which requirement|status of|id)\b|ngay nao|bao nhieu|ai la|o dau|ma so|han nop/iu;
 
   if (requestContext.intent === 'comparison' && comparisonOverviewPattern.test(normalized)) {

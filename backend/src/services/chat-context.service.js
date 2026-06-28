@@ -159,6 +159,10 @@ const DOCUMENT_REFERENCE_STOP_WORDS = new Set([
 
 const PRIMARY_DOCUMENT_ALIAS_PATTERN = /\b(primary document|main document|primary file|main file)\b|tai lieu chinh|file chinh/iu;
 const CONTEXTUAL_DOCUMENT_PATTERN = /\b(this file|this attachment|current file|current attachment)\b|file nay|tep nay|tai lieu nay|tep dinh kem nay/iu;
+const GENERIC_TWO_DOCUMENT_PATTERN = /\b(?:2|two|both)\s+(?:files?|documents?|attachments?)\b|\bthese\s+two\s+(?:files?|documents?|attachments?)\b|\bthe\s+two\s+attachments?\b|(?:hai|ca hai|cả hai)\s+(?:file|tep|tai lieu|tài liệu|document|attachment)|2\s+(?:file|tep|tai lieu|tài liệu)\s+(?:nay|này|dang dinh kem|đang đính kèm|trong attachment)|hai\s+(?:file|tep|tai lieu|tài liệu)\s+(?:nay|này|trong attachment|dang dinh kem|đang đính kèm)|(?:file|tep|tai lieu|tài liệu)\s+doc\s+trong\s+attachment/iu;
+const DOC_TYPE_REFERENCE_PATTERN = /\b(?:docx?|word)\b|file\s+doc|tep\s+doc|tài liệu\s+doc|tai lieu\s+doc/iu;
+const MULTI_DOCUMENT_SUMMARY_PATTERN = /\b(?:summari[sz]e|summary|overview|main purpose|key points|main idea)\b|tom tat|tóm tắt|noi dung|nội dung|noi ve gi|nói về gì|khac nhau|khác nhau|diem khac|điểm khác|lien quan|liên quan/iu;
+const CLARIFICATION_PATTERN = /^(?:y toi la|ý tôi là|i mean|toi muon noi la|tôi muốn nói là|no,? i mean|clarification)\b/iu;
 const IMAGE_REFERENCE_PATTERN = /\b(image|photo|screenshot|picture|attached image|latest image|last image|anh|hinh|hinh anh|anh vua gui|hinh toi vua gui|anh toi vua gui)\b/iu;
 const LATEST_IMAGE_REFERENCE_PATTERN = /\b(latest image|last image|attached image|this image|the image|anh vua gui|hinh vua gui|hinh toi vua gui|anh toi vua gui|anh nay|hinh nay)\b/iu;
 const IMAGE_TEXT_QUESTION_PATTERN = /\b(?:what does (?:the )?(?:image|photo|screenshot) say|read (?:the )?(?:text|content)|text in (?:the )?(?:image|photo|screenshot)|written on (?:the )?(?:image|photo|screenshot)|image text|screenshot text|anh viet gi|hinh viet gi|hinh anh viet gi|anh co chu gi|hinh co chu gi|doc noi dung trong anh|doc chu trong anh|chu trong anh|noi dung trong anh|viet gi o tren do)\b/iu;
@@ -317,6 +321,42 @@ function isImageDocument(document) {
     || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/iu.test(getStorageFileName(document));
 }
 
+function isDocDocument(document) {
+  const mimeType = String(document?.cloud_files?.mime_type || document?.mime_type || '').toLowerCase();
+  const fileType = String(document?.fileType || document?.file_type || '').toLowerCase();
+  const title = String(document?.title || '');
+  const storageName = getStorageFileName(document);
+  return mimeType === 'application/msword'
+    || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    || fileType === 'doc'
+    || fileType === 'docx'
+    || /\.(docx?|DOCX?)$/u.test(title)
+    || /\.(docx?|DOCX?)$/u.test(storageName);
+}
+
+function hasGenericTwoDocumentReference(question) {
+  const normalized = normalizeComparable(question);
+  return GENERIC_TWO_DOCUMENT_PATTERN.test(normalized);
+}
+
+function isGenericTwoDocumentClarification(question) {
+  const normalized = normalizeComparable(question);
+  return CLARIFICATION_PATTERN.test(normalized) && hasGenericTwoDocumentReference(normalized);
+}
+
+function genericTwoDocumentCandidates(question, documents) {
+  const normalized = normalizeComparable(question);
+  const availableDocuments = documents || [];
+  if (!hasGenericTwoDocumentReference(normalized)) return null;
+
+  if (DOC_TYPE_REFERENCE_PATTERN.test(normalized)) {
+    const docMatches = availableDocuments.filter(isDocDocument);
+    if (docMatches.length) return docMatches;
+  }
+
+  return availableDocuments;
+}
+
 function classifyImageQuestion(question) {
   const normalized = normalizeComparable(question);
   const mentionsImage = IMAGE_REFERENCE_PATTERN.test(normalized);
@@ -409,6 +449,36 @@ function resolveContextualDocumentScope({ question, documents, primaryDocumentId
   return null;
 }
 
+function resolveGenericTwoDocumentScope({ question, documents, intent }) {
+  const candidates = genericTwoDocumentCandidates(question, documents);
+  if (!candidates) return null;
+
+  if (candidates.length === 2) {
+    return {
+      type: intent === 'comparison' ? 'comparison' : 'explicit_multi',
+      documentIds: candidates.map((document) => Number(document.id)),
+      matchingDocuments: [],
+      reason: DOC_TYPE_REFERENCE_PATTERN.test(normalizeComparable(question))
+        ? 'generic_two_doc_type_reference'
+        : 'generic_two_document_reference',
+    };
+  }
+
+  if (candidates.length > 2) {
+    return buildAmbiguousScope(
+      candidates.map((document) => ({ id: document.id, document })),
+      'ambiguous_generic_two_document_reference'
+    );
+  }
+
+  return {
+    type: 'comparison',
+    documentIds: candidates.map((document) => Number(document.id)),
+    matchingDocuments: [],
+    reason: 'generic_two_document_unavailable',
+  };
+}
+
 function resolveDocumentScope({
   question,
   documents,
@@ -460,6 +530,13 @@ function resolveDocumentScope({
     };
   }
 
+  const genericTwoDocumentScope = resolveGenericTwoDocumentScope({
+    question,
+    documents: availableDocuments,
+    intent,
+  });
+  if (genericTwoDocumentScope) return genericTwoDocumentScope;
+
   const imageContextual = resolveLatestImageScope({
     question,
     documents: availableDocuments,
@@ -509,8 +586,15 @@ function analyzeRequest({ question, history, documents }) {
   const formattingOnly = FORMAT_ONLY_PATTERN.test(cleanedQuestion);
   const topicMatch = cleanedQuestion.match(TOPIC_FOCUS_PATTERN);
   const topicFocus = topicMatch ? normalizeText(topicMatch[1]) : null;
-  const explicitComparison = COMPARISON_PATTERN.test(cleanedQuestion);
-  const inheritsComparison = (formattingOnly || topicFocus) && inherited.intent === 'comparison';
+  const genericTwoReference = hasGenericTwoDocumentReference(cleanedQuestion);
+  const genericTwoCandidates = genericTwoDocumentCandidates(cleanedQuestion, documents);
+  const genericTwoCandidateIds = genericTwoCandidates?.length === 2
+    ? genericTwoCandidates.map((document) => Number(document.id))
+    : [];
+  const genericTwoComparisonRequest = genericTwoReference && MULTI_DOCUMENT_SUMMARY_PATTERN.test(cleanedQuestion);
+  const clarification = isGenericTwoDocumentClarification(cleanedQuestion);
+  const explicitComparison = COMPARISON_PATTERN.test(cleanedQuestion) || genericTwoComparisonRequest;
+  const inheritsComparison = (formattingOnly || topicFocus || clarification) && inherited.intent === 'comparison';
   const intent = explicitComparison || inheritsComparison ? 'comparison' : 'question';
   const currentConstraints = detectResponseConstraints(cleanedQuestion);
   const responseConstraints = mergeConstraints(
@@ -528,7 +612,8 @@ function analyzeRequest({ question, history, documents }) {
   let comparedDocumentIds = [];
 
   if (intent === 'comparison') {
-    if (mentionedIds.length >= 2) comparedDocumentIds = mentionedIds;
+    if (genericTwoCandidateIds.length >= 2) comparedDocumentIds = genericTwoCandidateIds;
+    else if (mentionedIds.length >= 2) comparedDocumentIds = mentionedIds;
     else if (inheritsComparison && inheritedIds.length >= 2) comparedDocumentIds = inheritedIds;
     else comparedDocumentIds = [...availableIds];
     comparedDocumentIds = comparedDocumentIds.filter((id) => availableIds.has(id));
@@ -546,7 +631,10 @@ function analyzeRequest({ question, history, documents }) {
   const previousQuestion = normalizeText(inherited.substantiveQuestion);
   let substantiveQuestion = cleanedQuestion;
   let retrievalQuery = cleanedQuestion;
-  if (formattingOnly && previousQuestion) {
+  if (clarification && previousQuestion) {
+    substantiveQuestion = `${previousQuestion}\nClarification: ${cleanedQuestion}`;
+    retrievalQuery = substantiveQuestion;
+  } else if (formattingOnly && previousQuestion) {
     substantiveQuestion = previousQuestion;
     retrievalQuery = normalizeText(inherited.retrievalQuery) || previousQuestion;
   } else if (topicFocus && previousQuestion) {

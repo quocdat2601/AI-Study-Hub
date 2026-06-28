@@ -97,6 +97,7 @@ function buildRagPrompts({
   const selectedTitles = (documentTitles || [documentTitle])
     .map((title) => String(title || '').trim())
     .filter(Boolean);
+  const hasLoadedEvidence = Boolean((chunks || []).length || overviewContext);
   const historyText = formatHistory(history);
   const constraintInstructions = chatContextService.buildConstraintInstructions(responseConstraints);
   const comparisonInstruction = comparisonMetadata
@@ -161,6 +162,9 @@ function buildRagPrompts({
     buildModeInstruction(mode, { provider }),
     'The current user request has priority over earlier formatting preferences.',
     'Conversation history provides conversational context only. It is never document evidence, and facts from history must not be reused unless supported by the current source chunks.',
+    hasLoadedEvidence
+      ? 'The requested documents are already attached, authorized, and loaded as evidence. Never ask the user to upload, share, or provide those same files again.'
+      : '',
     'Do not use canned headings such as "Based on the compared documents", "Dựa trên tài liệu", or "Dựa trên tài liệu được so sánh". Start directly with the answer unless the user explicitly requests headings.',
     'Do not write source numbers, chunk numbers, or parenthetical chunk labels in the answer. The application renders citations separately. Never combine a document title with another source chunk.',
     ...constraintInstructions,
