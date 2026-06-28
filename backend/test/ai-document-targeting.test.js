@@ -273,6 +273,104 @@ test('relation wording classifies named documents as comparison scope', () => {
   assert.deepEqual(scope.documentIds, [301, 302]);
 });
 
+test('generic two-file reference resolves both active documents before contextual this-file fallback', () => {
+  const twoDocs = [
+    doc({ id: 401, title: 'Business.docx', cloud_files: { mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } }),
+    doc({ id: 402, title: 'Plan.docx', cloud_files: { mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } }),
+  ];
+  const analyzed = chatContext.analyzeRequest({
+    question: 'tóm tắt 2 file này, nội dung khác nhau chỗ nào, nói ngắn gọn thôi nhé',
+    history: [],
+    documents: twoDocs,
+  });
+  const scope = chatContext.resolveDocumentScope({
+    question: analyzed.retrievalQuery,
+    documents: twoDocs,
+    primaryDocumentId: 401,
+    intent: analyzed.intent,
+  });
+
+  assert.equal(analyzed.intent, 'comparison');
+  assert.equal(analyzed.comparisonUnavailable, false);
+  assert.equal(scope.type, 'comparison');
+  assert.equal(scope.reason, 'generic_two_document_reference');
+  assert.deepEqual(scope.documentIds, [401, 402]);
+});
+
+test('generic doc attachment wording filters to exactly two DOCX documents', () => {
+  const mixedDocs = [
+    doc({ id: 411, title: 'Business.docx', cloud_files: { mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } }),
+    doc({ id: 412, title: 'Order.pdf', cloud_files: { mime_type: 'application/pdf' } }),
+    doc({ id: 413, title: 'Plan.docx', cloud_files: { mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } }),
+  ];
+  const analyzed = chatContext.analyzeRequest({
+    question: 'ý tôi là 2 file doc trong attachment ấy',
+    history: [{
+      role: 'user',
+      content: 'tóm tắt 2 file này, nội dung khác nhau chỗ nào',
+      metadata: { intent: 'comparison', substantiveQuestion: 'tóm tắt 2 file này, nội dung khác nhau chỗ nào' },
+    }],
+    documents: mixedDocs,
+  });
+  const scope = chatContext.resolveDocumentScope({
+    question: analyzed.retrievalQuery,
+    documents: mixedDocs,
+    primaryDocumentId: 411,
+    intent: analyzed.intent,
+  });
+
+  assert.equal(analyzed.intent, 'comparison');
+  assert.equal(scope.type, 'comparison');
+  assert.equal(scope.reason, 'generic_two_doc_type_reference');
+  assert.deepEqual(scope.documentIds, [411, 413]);
+  assert.match(analyzed.substantiveQuestion, /tóm tắt 2 file này/iu);
+  assert.match(analyzed.substantiveQuestion, /Clarification:/u);
+});
+
+test('generic two-file reference with more than two active documents asks for clarification', () => {
+  const threeDocs = [
+    doc({ id: 421, title: 'Business.docx' }),
+    doc({ id: 422, title: 'Order.pdf' }),
+    doc({ id: 423, title: 'Plan.txt' }),
+  ];
+  const analyzed = chatContext.analyzeRequest({
+    question: 'compare these two documents',
+    history: [],
+    documents: threeDocs,
+  });
+  const scope = chatContext.resolveDocumentScope({
+    question: analyzed.retrievalQuery,
+    documents: threeDocs,
+    primaryDocumentId: 421,
+    intent: analyzed.intent,
+  });
+
+  assert.equal(analyzed.intent, 'comparison');
+  assert.equal(scope.type, 'ambiguous');
+  assert.equal(scope.reason, 'ambiguous_generic_two_document_reference');
+  assert.deepEqual(scope.matchingDocuments.map((item) => item.id), [421, 422, 423]);
+});
+
+test('generic two-file comparison with only one active document remains unavailable', () => {
+  const oneDoc = [doc({ id: 431, title: 'Business.docx' })];
+  const analyzed = chatContext.analyzeRequest({
+    question: 'tóm tắt 2 file này và khác nhau chỗ nào',
+    history: [],
+    documents: oneDoc,
+  });
+  const scope = chatContext.resolveDocumentScope({
+    question: analyzed.retrievalQuery,
+    documents: oneDoc,
+    primaryDocumentId: 431,
+    intent: analyzed.intent,
+  });
+
+  assert.equal(analyzed.intent, 'comparison');
+  assert.equal(scope.type, 'comparison');
+  assert.equal(scope.reason, 'generic_two_document_unavailable');
+  assert.deepEqual(scope.documentIds, [431]);
+});
+
 test('explicit multi coverage prevents one document from occupying all final slots', async (t) => {
   const manyBusinessChunks = [
     chunk(11, 101, 'Business attendance rules dashboard workflow alpha.'),
