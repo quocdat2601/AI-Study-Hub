@@ -17,13 +17,14 @@ function rememberReturnPath(location) {
 
 export default function SharedChatSnapshotPage() {
   const { token } = useParams();
-  const { isAuthenticated } = useAuth();
+  const { hasSession, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [payload, setPayload] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
+  const canUseProtectedSnapshotActions = isAuthenticated || hasSession;
 
   useEffect(() => {
     let active = true;
@@ -36,14 +37,16 @@ export default function SharedChatSnapshotPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!isAuthenticated || !payload || error) return;
+    if (!canUseProtectedSnapshotActions || !payload || error) return;
     registerSharedSnapshotOpen(token).catch(() => {
       // A recipient-history failure must not block the immutable public preview.
     });
-  }, [token, isAuthenticated, payload, error]);
+  }, [token, canUseProtectedSnapshotActions, payload, error]);
 
   async function importSnapshot() {
-    if (!isAuthenticated) {
+    if (isAuthLoading) return;
+
+    if (!canUseProtectedSnapshotActions) {
       rememberReturnPath(location);
       navigate("/login", { state: { from: location } });
       return;
@@ -65,7 +68,9 @@ export default function SharedChatSnapshotPage() {
   }
 
   async function downloadDocument(document) {
-    if (!isAuthenticated) {
+    if (isAuthLoading) return;
+
+    if (!canUseProtectedSnapshotActions) {
       rememberReturnPath(location);
       navigate("/login", { state: { from: location } });
       return;
@@ -90,8 +95,8 @@ export default function SharedChatSnapshotPage() {
           <h1 className="mt-1 text-2xl font-bold">{payload.snapshot.title}</h1>
           <p className="m-0 text-sm text-slate-500">Available until {new Date(payload.snapshot.expiresAt).toLocaleString()}</p>
           <div className="mt-4 flex gap-2">
-            <button className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50" disabled={isImporting} onClick={importSnapshot} type="button">
-              {isAuthenticated ? (isImporting ? "Importing..." : "Import and continue") : "Sign in to import"}
+            <button className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50" disabled={isImporting || isAuthLoading} onClick={importSnapshot} type="button">
+              {canUseProtectedSnapshotActions ? (isImporting ? "Importing..." : "Import and continue") : isAuthLoading ? "Checking session..." : "Sign in to import"}
             </button>
           </div>
         </header>
@@ -102,8 +107,8 @@ export default function SharedChatSnapshotPage() {
             {payload.documents.map((document) => (
               <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold" key={document.id}>
                 <span>{document.title}{document.isPrimary ? " (primary)" : ""}</span>
-                <button className="text-indigo-600 hover:underline" onClick={() => downloadDocument(document)} type="button">
-                  {isAuthenticated ? "Download" : "Sign in to download"}
+                <button className="text-indigo-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50" disabled={isAuthLoading} onClick={() => downloadDocument(document)} type="button">
+                  {canUseProtectedSnapshotActions ? "Download" : isAuthLoading ? "Checking session..." : "Sign in to download"}
                 </button>
               </div>
             ))}
