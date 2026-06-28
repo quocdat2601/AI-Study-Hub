@@ -5,6 +5,7 @@ const ChatModel = require('../models/chat.model');
 const documentService = require('./document.service');
 const chatService = require('./chat.service');
 const activityService = require('./activity.service');
+const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
 
 const POST_TYPES = new Set(['discussion', 'question', 'document_share', 'ai_study_log']);
@@ -98,7 +99,25 @@ function displayNameFromEmail(email) {
   return local.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function buildAuthor(user, statsByUserId = null) {
+async function resolveAvatarUrl(avatarPath, cache = null) {
+  const normalizedPath = String(avatarPath || '').trim();
+  if (!normalizedPath) return null;
+
+  if (cache?.has(normalizedPath)) {
+    return cache.get(normalizedPath);
+  }
+
+  try {
+    const signedUrl = await supabaseService.getSignedUrl(normalizedPath, 3600);
+    if (cache) cache.set(normalizedPath, signedUrl);
+    return signedUrl;
+  } catch {
+    if (cache) cache.set(normalizedPath, null);
+    return null;
+  }
+}
+
+async function buildAuthor(user, statsByUserId = null, avatarUrlCache = null) {
   if (!user) return null;
   const stats = statsByUserId?.get(String(user.id)) || null;
   return {
@@ -107,6 +126,7 @@ function buildAuthor(user, statsByUserId = null) {
     displayName: user.display_name || displayNameFromEmail(user.email),
     role: user.role,
     createdAt: user.created_at || null,
+    avatarUrl: await resolveAvatarUrl(user.avatar_path, avatarUrlCache),
     postCount: stats?.postCount || 0,
     utilityPoints: stats?.utilityPoints || 0,
   };
@@ -344,6 +364,7 @@ async function hydratePosts(posts, options = {}) {
     )
     : new Set();
   const authorStatsByUserId = await buildAuthorStatsByUserId(posts, visibleReplies, options);
+  const avatarUrlCache = new Map();
 
   return Promise.all((posts || []).map(async (post) => {
     const postReplyRows = repliesByPostId.get(post.id) || [];
@@ -354,17 +375,17 @@ async function hydratePosts(posts, options = {}) {
       const right = new Date(b.updated_at || b.created_at || 0).getTime();
       return right - left;
     })[0] || null;
-    const mappedReplies = postReplyRows.map((reply) => ({
+    const mappedReplies = await Promise.all(postReplyRows.map(async (reply) => ({
       id: reply.id,
       postId: reply.post_id,
       parentReplyId: reply.parent_reply_id || null,
-      parentReply: reply.parent_reply_id ? (() => {
+      parentReply: reply.parent_reply_id ? await (async () => {
         const parentReply = replyById.get(Number(reply.parent_reply_id));
         if (!parentReply || parentReply.status !== 'active') return null;
 
         return {
           id: parentReply.id,
-          author: buildAuthor(parentReply.users, authorStatsByUserId),
+          author: await buildAuthor(parentReply.users, authorStatsByUserId, avatarUrlCache),
           excerpt: summarizeText(parentReply.body, 140),
         };
       })() : null,
@@ -373,10 +394,10 @@ async function hydratePosts(posts, options = {}) {
       isAccepted: Boolean(reply.is_accepted),
       createdAt: reply.created_at,
       updatedAt: reply.updated_at,
-      author: buildAuthor(reply.users, authorStatsByUserId),
+      author: await buildAuthor(reply.users, authorStatsByUserId, avatarUrlCache),
       voteCount: buildVoteCount(replyVotesByReplyId.get(reply.id) || []),
       isUpvoted: viewerReplyVoteIds.has(Number(reply.id)),
-    }));
+    })));
 
     const documentAttachment = post.post_type === 'document_share'
       ? await buildDocumentAttachment(post.documents)
@@ -398,15 +419,15 @@ async function hydratePosts(posts, options = {}) {
       updatedAt: post.updated_at,
       subject: primarySubject,
       subjects: linkedSubjects,
-      author: buildAuthor(post.users, authorStatsByUserId),
+      author: await buildAuthor(post.users, authorStatsByUserId, avatarUrlCache),
       lastActivity: latestReply ? {
         at: latestReply.updated_at || latestReply.created_at,
         replyId: latestReply.id,
-        user: buildAuthor(latestReply.users, authorStatsByUserId),
+        user: await buildAuthor(latestReply.users, authorStatsByUserId, avatarUrlCache),
       } : {
         at: post.updated_at || post.created_at,
         replyId: null,
-        user: buildAuthor(post.users, authorStatsByUserId),
+        user: await buildAuthor(post.users, authorStatsByUserId, avatarUrlCache),
       },
       voteCount: buildVoteCount(postVotesByPostId.get(post.id) || []),
       isUpvoted: viewerPostVoteIds.has(Number(post.id)),
@@ -1014,14 +1035,14 @@ async function listReports({ status, limit }) {
   const reports = await CommunityModel.listReports(limit);
   const filtered = normalizedStatus ? reports.filter((report) => report.status === normalizedStatus) : reports;
 
-  return filtered.map((report) => ({
+  return Promise.all(filtered.map(async (report) => ({
     id: report.id,
     reason: report.reason,
     status: report.status,
     createdAt: report.created_at,
     resolvedAt: report.resolved_at,
-    reporter: buildAuthor(report.reporters),
-    resolver: buildAuthor(report.resolvers),
+    reporter: await buildAuthor(report.reporters, null, new Map()),
+    resolver: await buildAuthor(report.resolvers, null, new Map()),
     post: report.community_posts ? {
       id: report.community_posts.id,
       title: report.community_posts.title,
@@ -1036,7 +1057,7 @@ async function listReports({ status, limit }) {
       status: report.community_replies.status,
       postTitle: report.community_replies.community_posts?.title || report.community_replies['community_posts!community_replies_post_id_fkey']?.title,
     } : null,
-  }));
+  })));
 }
 
 async function updatePostModeration({ postId, adminUserId, status }) {
@@ -1171,12 +1192,31 @@ async function listTopContributors(limit = 5) {
 
   if (error) throw error;
 
+  const userIds = [...new Set((data || []).map((row) => String(row.id)).filter(Boolean))];
+  const avatarUrlByUserId = new Map();
+  const avatarPathCache = new Map();
+
+  if (userIds.length) {
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('id, avatar_path')
+      .in('id', userIds);
+
+    if (userError) throw userError;
+
+    await Promise.all((users || []).map(async (user) => {
+      const avatarUrl = await resolveAvatarUrl(user.avatar_path, avatarPathCache);
+      avatarUrlByUserId.set(String(user.id), avatarUrl);
+    }));
+  }
+
   return (data || []).map((row) => ({
     id: row.id,
     email: row.email,
     displayName: row.display_name || displayNameFromEmail(row.email),
     role: row.role,
     createdAt: row.created_at,
+    avatarUrl: avatarUrlByUserId.get(String(row.id)) || null,
     postCount: Number(row.post_count || 0) + Number(row.reply_count || 0),
     utilityPoints: Number(row.utility_points || 0),
     score: Number(row.utility_points || 0),

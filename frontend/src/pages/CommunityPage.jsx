@@ -1,6 +1,7 @@
 import React, { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import CommunityBanner from "../components/community/CommunityBanner.jsx";
+import CommunityAvatar from "../components/community/CommunityAvatar.jsx";
 import CommunityFeedRow from "../components/community/CommunityFeedRow.jsx";
 import CommunityPageShell from "../components/community/CommunityPageShell.jsx";
 import { buildCommunityPanelSearch, normalizeCommunityPanel } from "../components/community/communityPanelUtils.js";
@@ -397,8 +398,19 @@ export default function CommunityPage() {
               else if (index === 2) rankBg = "bg-[radial-gradient(circle_at_top,#b45309,#78350f)] text-white shadow-sm";
 
               return (
-                <div className="grid grid-cols-[44px_1fr_auto] items-center gap-3 rounded-2xl border border-[#e4e0d8] bg-[#faf8f5] px-4 py-4 transition hover:translate-y-[-2px] hover:shadow-md hover:border-[#c9c4b8]" key={person.id}>
-                  <span className={cx("flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold", rankBg)}>{index + 1}</span>
+                <div className="grid grid-cols-[56px_1fr_auto] items-center gap-3 rounded-2xl border border-[#e4e0d8] bg-[#faf8f5] px-4 py-4 transition hover:translate-y-[-2px] hover:shadow-md hover:border-[#c9c4b8]" key={person.id}>
+                  <div className="relative h-11 w-11">
+                    <CommunityAvatar
+                      avatarUrl={person.avatarUrl}
+                      displayName={person.displayName}
+                      email={person.email}
+                      variant="light"
+                      className="h-11 w-11 border border-[#e8e4dc]"
+                    />
+                    <span className={cx("absolute -bottom-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-black", rankBg)}>
+                      {index + 1}
+                    </span>
+                  </div>
                   <div>
                     <strong className="block text-sm font-bold text-[#1a1a2e]">{person.displayName}</strong>
                     <span className="text-xs text-[#8c857e]">
