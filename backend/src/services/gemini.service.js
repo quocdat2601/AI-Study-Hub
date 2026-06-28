@@ -162,9 +162,44 @@ async function* streamDocumentChunks({
   }
 }
 
+// Sinh 3–5 tag chủ đề cho tài liệu; ưu tiên tái dùng tag đã có (knownTags) để giữ vocabulary sạch.
+async function generateTags({ title, text, knownTags = [], model = modelName }) {
+  if (!genAI) {
+    const err = new Error('Gemini API key is not configured');
+    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const knownList = (knownTags || []).slice(0, 50).join(', ');
+  const snippet = String(text || '').slice(0, 6000);
+  const prompt = [
+    'You label study documents with topic tags.',
+    'Return ONLY a JSON array of 3 to 5 short lowercase topic tags (strings). No prose, no code fences.',
+    'Prefer reusing tags from this existing list when they fit; only invent a new tag when none fits:',
+    knownList || '(no existing tags yet)',
+    '',
+    `Document title: ${title || 'Untitled'}`,
+    '',
+    `Document content:\n${snippet || '(no extracted text)'}`,
+  ].join('\n');
+
+  const response = await withTimeout(
+    genAI.models.generateContent({ model, contents: prompt }),
+    GEMINI_TIMEOUT_MS
+  );
+
+  return {
+    text: response.text || '',
+    usageMetadata: extractUsageMetadata(response),
+    model,
+  };
+}
+
 module.exports = {
   queryDocument,
   queryDocumentChunks,
   generateText,
   streamDocumentChunks,
+  generateTags,
 };

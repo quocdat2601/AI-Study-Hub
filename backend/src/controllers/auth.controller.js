@@ -1,8 +1,12 @@
 const accountService = require('../services/account.service');
+const preferenceService = require('../services/preference.service');
 
 async function getMe(req, res, next) {
   try {
-    const account = await accountService.getAccount(req.user.id);
+    const [account, onboarding] = await Promise.all([
+      accountService.getAccount(req.user.id),
+      preferenceService.getStatus(req.user.id),
+    ]);
 
     res.json({
       user: {
@@ -17,6 +21,8 @@ async function getMe(req, res, next) {
         last_login_at: account.profile.lastLoginAt,
         created_at: account.profile.createdAt,
         storage_limit_bytes: account.storage.limit,
+        onboarded: onboarding.onboarded,
+        goal: onboarding.goal,
       },
     });
   } catch (err) {

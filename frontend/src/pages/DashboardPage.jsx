@@ -20,6 +20,8 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import useUploadDoc from "../hooks/useUploadDoc.js";
 import { getDashboardData } from "../services/dashboardApi.js";
 import { listSubjects } from "../services/subjectApi.js";
+import { getRecommendations } from "../services/onboardingApi.js";
+import { listTrendingDocuments } from "../services/documentApi.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
 import { getDisplayName } from "../lib/userDisplay.js";
 
@@ -83,6 +85,26 @@ function getRedirectPath(section) {
   return DASHBOARD_REDIRECTS[String(section || "").trim()] || "";
 }
 
+function SuggestionCard({ item, badge }) {
+  return (
+    <Link
+      to="/documents"
+      className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 no-underline transition hover:border-indigo-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-indigo-600"
+    >
+      <div className="flex items-start gap-2">
+        <DocumentFileIcon className="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" />
+        <strong className="line-clamp-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {item.title}
+        </strong>
+      </div>
+      {badge}
+      <span className="mt-auto text-xs text-slate-400">
+        {item.subject || item.fileType} · {item.viewCount} lượt xem
+      </span>
+    </Link>
+  );
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const location = useLocation();
@@ -90,20 +112,28 @@ export default function DashboardPage() {
   const redirectPath = getRedirectPath(location.state?.activeSection);
   const [dashboard, setDashboard] = useState(null);
   const [subjects, setSubjects] = useState([]);
+  const [recommendations, setRecommendations] = useState({ reason: null, items: [] });
+  const [trending, setTrending] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [dashboardData, subjectList] = await Promise.all([
+      const [dashboardData, subjectList, recs, trendingDocs] = await Promise.all([
         getDashboardData(),
         listSubjects(),
+        getRecommendations(8).catch(() => ({ reason: null, items: [] })),
+        listTrendingDocuments(8).catch(() => []),
       ]);
       setDashboard(dashboardData);
       setSubjects(subjectList);
+      setRecommendations(recs);
+      setTrending(trendingDocs);
     } catch {
       setDashboard(null);
       setSubjects([]);
+      setRecommendations({ reason: null, items: [] });
+      setTrending([]);
     } finally {
       setIsLoading(false);
     }
@@ -197,6 +227,59 @@ export default function DashboardPage() {
           icon={<MessagesIcon className="h-5 w-5" />}
         />
       </section>
+
+      {!isLoading && recommendations.reason === "matched" && recommendations.items.length > 0 && (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between">
+            <SectionTitle icon={<SparklesIcon className="h-[18px] w-[18px]" />}>
+              Gợi ý cho bạn
+            </SectionTitle>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {recommendations.items.map((item) => {
+              const reasonText = item.subjectMatch && item.subjectName
+                ? `Vì bạn học môn ${item.subjectName}`
+                : item.matchedTags?.[0]
+                  ? `Vì bạn chọn ${item.matchedTags[0]}`
+                  : null;
+              return (
+                <SuggestionCard
+                  key={item.id}
+                  item={item}
+                  badge={reasonText ? (
+                    <span className="inline-flex w-fit items-center rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                      {reasonText}
+                    </span>
+                  ) : null}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {!isLoading && trending.length > 0 && (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex items-center justify-between">
+            <SectionTitle icon={<SparklesIcon className="h-[18px] w-[18px]" />}>
+              Tài liệu nổi bật
+            </SectionTitle>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {trending.map((item) => (
+              <SuggestionCard
+                key={item.id}
+                item={item}
+                badge={(
+                  <span className="inline-flex w-fit items-center rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    Đang thịnh hành
+                  </span>
+                )}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
         <article className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-900">
