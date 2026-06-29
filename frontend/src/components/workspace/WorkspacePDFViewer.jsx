@@ -10,6 +10,7 @@ export default function WorkspacePDFViewer() {
   const {
     selectedDocument,
     pdfBlobUrl,
+    pdfUrl,
     isPdfLoading,
     pdfLoadError,
     setCurrentPage,
@@ -77,11 +78,27 @@ export default function WorkspacePDFViewer() {
     );
   }
 
+  const docMime = selectedDocument?.cloud_files?.mime_type || selectedDocument?.mime_type || "";
+  const docTitle = selectedDocument?.title || selectedDocument?.name || "";
+  const isPdf = selectedDocument?.type === "PDF" || docMime.includes("pdf") || docTitle.toLowerCase().endsWith(".pdf");
+  const isDocx = selectedDocument?.type === "DOCX" || docMime.includes("word") || docMime.includes("msword") || docTitle.toLowerCase().endsWith(".docx") || docTitle.toLowerCase().endsWith(".doc");
+
   if (viewMode === "text") {
     return <WorkspaceTextView document={selectedDocument} />;
   }
 
-  if (selectedDocument.type !== "PDF") {
+  if (isDocx && pdfUrl) {
+    return (
+      <iframe
+        title="Document Preview"
+        className="w-full border-0 bg-white"
+        src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(pdfUrl)}`}
+        style={{ minHeight: "calc(100vh - 165px)" }}
+      />
+    );
+  }
+
+  if (!isPdf) {
     return <WorkspaceTextView document={selectedDocument} />;
   }
 

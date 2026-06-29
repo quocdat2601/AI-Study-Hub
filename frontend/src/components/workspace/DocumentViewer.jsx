@@ -44,7 +44,7 @@ function mapTextDocument(document) {
   };
 }
 
-function ViewToggle({ disabledPdf, setViewMode, viewMode }) {
+function ViewToggle({ disabledPdf, setViewMode, viewMode, isPdf, isDocx }) {
   return (
     <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
       <button
@@ -55,7 +55,7 @@ function ViewToggle({ disabledPdf, setViewMode, viewMode }) {
         onClick={() => setViewMode("pdf")}
         type="button"
       >
-        PDF
+        {isPdf ? "PDF" : (isDocx ? "Document" : "Viewer")}
       </button>
       <button
         className={viewMode === "text"
@@ -78,6 +78,7 @@ function PdfBody({
   isPdfLoading,
   onReloadPdf,
   pdfBlobUrl,
+  docxSignedUrl,
   pdfLoadError,
   selectedDocument,
   setCurrentPage,
@@ -137,7 +138,22 @@ function PdfBody({
     );
   }
 
-  if (viewMode === "text" || documentType !== "PDF") {
+  if (viewMode === "text") {
+    return <WorkspaceTextView document={textDocument} />;
+  }
+
+  if (documentType === "DOCX" && docxSignedUrl) {
+    return (
+      <iframe
+        title="Document Preview"
+        className="w-full border-0 bg-white"
+        src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docxSignedUrl)}`}
+        style={{ minHeight: "calc(100vh - 165px)" }}
+      />
+    );
+  }
+
+  if (documentType !== "PDF") {
     return <WorkspaceTextView document={textDocument} />;
   }
 
@@ -208,6 +224,7 @@ export default function DocumentViewer({
   onReloadPdf,
   onReprocess,
   pdfBlobUrl,
+  docxSignedUrl,
   pdfLoadError,
   processResult,
   selectedDocument,
@@ -253,11 +270,15 @@ export default function DocumentViewer({
     link.click();
   }
 
+  const isPdf = documentType === "PDF";
+  const isDocx = documentType === "DOCX";
+  const isPreviewable = isPdf || isDocx;
+
   return (
     <section className={`flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm ${className}`}>
       <header className="shrink-0 border-b border-slate-200 bg-white">
         <div className="flex min-h-14 items-center gap-3 px-4 py-2">
-          <ViewToggle disabledPdf={documentType !== "PDF"} setViewMode={setViewMode} viewMode={viewMode} />
+          <ViewToggle disabledPdf={!isPreviewable} setViewMode={setViewMode} viewMode={viewMode} isPdf={isPdf} isDocx={isDocx} />
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <FileTextIcon className="shrink-0 text-indigo-600" size={15} />
@@ -375,6 +396,7 @@ export default function DocumentViewer({
             isPdfLoading={isPdfLoading}
             onReloadPdf={onReloadPdf}
             pdfBlobUrl={pdfBlobUrl}
+            docxSignedUrl={docxSignedUrl}
             pdfLoadError={pdfLoadError}
             selectedDocument={selectedDocument}
             setCurrentPage={setCurrentPage}
