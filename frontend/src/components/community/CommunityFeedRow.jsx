@@ -56,7 +56,7 @@ export default function CommunityFeedRow({
   const visibleSubjectList = subjectList.length
     ? subjectList
     : (getSafeText(subject.code) || getSafeText(subject.name) ? [subject] : []);
-  const isSolved = Boolean(safeThread.isSolved);
+  const isSolved = Boolean(safeThread.solved || safeThread.isSolved);
   const AuthorLinkComponent = authorProfileHref ? LinkComponent : "span";
   const authorLinkProps = authorProfileHref
     ? (typeof AuthorLinkComponent === "string" ? { href: authorProfileHref } : { to: authorProfileHref })

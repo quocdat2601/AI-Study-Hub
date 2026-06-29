@@ -64,8 +64,8 @@ function SidebarIcon({ name }) {
     ),
     settings: (
       <>
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
         <circle cx="12" cy="12" r="3" />
-        <path d="M19 12h2M3 12h2M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5" />
       </>
     ),
     logout: (
@@ -242,6 +242,8 @@ function ControlledSidebar({
   onSectionChange,
   onToggleCollapse,
   userName,
+  avatarUrl,
+  userPlan,
   newDocumentTo = "/documents?upload=true",
   newDocumentLabel = "New Document",
   showNewDocument = true,
@@ -327,13 +329,24 @@ function ControlledSidebar({
         })}
       </nav>
 
-      <div className="mt-auto grid gap-3 border-t border-[#c7c4d7] pt-3">
+      <div className="mt-auto grid gap-1 border-t border-[#c7c4d7] pt-3">
         <div className={isCollapsed ? "flex justify-center" : "flex items-center gap-2 px-1"}>
-          <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
-            {initials}
-          </span>
+          {avatarUrl ? (
+            <img alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" src={avatarUrl} />
+          ) : (
+            <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#b66a00] text-[10px] font-black text-white">
+              {initials}
+            </span>
+          )}
           {!isCollapsed && <strong className="block min-w-0 truncate text-xs text-[#172033]">{userName || "User"}</strong>}
         </div>
+
+        <Link className={navItemClass(isCollapsed, pathname === "/account")} to="/account">
+          <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
+            <SidebarIcon name="settings" />
+          </span>
+          {!isCollapsed ? <b className="truncate">{t("nav.settings")}</b> : null}
+        </Link>
 
         {onLogout ? (
           <button

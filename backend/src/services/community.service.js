@@ -832,11 +832,11 @@ async function addReply({ postId, userId, body, parentReplyId }) {
   });
 
   if (String(post.user_id) !== String(userId)) {
-    notify(post.user_id, 'community_reply', `Someone replied to your post "${post.title}"`, normalizedPostId);
+    await notify(post.user_id, 'community_reply', `Someone replied to your post "${post.title}"`, normalizedPostId);
   }
 
   if (parentReply && String(parentReply.user_id) !== String(userId)) {
-    notify(parentReply.user_id, 'community_reply', `Someone replied to your comment on "${post.title}"`, normalizedPostId);
+    await notify(parentReply.user_id, 'community_reply', `Someone replied to your comment on "${post.title}"`, normalizedPostId);
   }
 
   return getPublicPostById(normalizedPostId);
@@ -873,7 +873,7 @@ async function togglePostVote({ postId, userId }) {
   });
 
   if (voted && String(post.user_id) !== String(userId)) {
-    notify(post.user_id, 'community_upvote', `Someone upvoted your post "${post.title}"`, normalizedPostId);
+    await notify(post.user_id, 'community_upvote', `Someone upvoted your post "${post.title}"`, normalizedPostId);
   }
 
   const [hydrated] = await hydratePosts([post], {
@@ -920,7 +920,7 @@ async function toggleReplyVote({ replyId, userId }) {
   if (voted && String(reply.user_id) !== String(userId)) {
     const post = await CommunityModel.findPostById(reply.post_id);
     if (post) {
-      notify(reply.user_id, 'community_upvote', `Someone upvoted your reply on "${post.title}"`, reply.post_id);
+      await notify(reply.user_id, 'community_upvote', `Someone upvoted your reply on "${post.title}"`, reply.post_id);
     }
   }
 
@@ -964,7 +964,7 @@ async function acceptReply({ postId, replyId, userId }) {
   });
 
   if (String(reply.user_id) !== String(userId)) {
-    notify(reply.user_id, 'community_accepted', `Your reply was accepted as the answer on "${post.title}"`, normalizedPostId);
+    await notify(reply.user_id, 'community_accepted', `Your reply was accepted as the answer on "${post.title}"`, normalizedPostId);
   }
 
   return getPublicPostById(normalizedPostId);

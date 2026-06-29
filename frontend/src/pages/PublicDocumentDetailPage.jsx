@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   getPublicDocument,
   getPublicDocumentSignedUrl,
@@ -16,6 +16,8 @@ export default function PublicDocumentDetailPage() {
   const location = useLocation();
   const { addToast } = useToast();
   const { isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const backSubjectId = searchParams.get("backSubjectId") || "";
 
   const [doc, setDoc] = useState(null);
   const [comments, setComments] = useState([]);
@@ -42,10 +44,20 @@ export default function PublicDocumentDetailPage() {
       try {
         const docData = await getPublicDocument(id);
         setDoc(docData);
+        
+        const docMime = docData?.cloud_files?.mime_type || "";
+        const docTitle = docData?.title || "";
+        const isDocPdf = docMime.includes("pdf") || docTitle.toLowerCase().endsWith(".pdf");
+        const isDocDocx = docMime.includes("wordprocessingml") || docMime.includes("msword") || docTitle.toLowerCase().endsWith(".docx") || docTitle.toLowerCase().endsWith(".doc");
+        setViewMode(isDocPdf || isDocDocx ? "pdf" : "text");
 
-        // Fetch signed url for preview
-        const urlData = await getPublicDocumentSignedUrl(id);
-        setSignedUrl(urlData.signedUrl);
+        // Use signed url from docData directly if present, otherwise fetch
+        if (docData.signedUrl) {
+          setSignedUrl(docData.signedUrl);
+        } else {
+          const urlData = await getPublicDocumentSignedUrl(id);
+          setSignedUrl(urlData.signedUrl);
+        }
       } catch (err) {
         addToast({
           type: "error",
@@ -186,7 +198,12 @@ export default function PublicDocumentDetailPage() {
       const { signedUrl: downloadUrl } = await getPublicDocumentSignedUrl(id);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = doc?.title || "study-resource.pdf";
+      const ext = isPdf ? ".pdf" : (isDocx ? ".docx" : "");
+      let downloadName = doc?.title || "study-resource";
+      if (ext && !downloadName.toLowerCase().endsWith(ext)) {
+        downloadName += ext;
+      }
+      link.download = downloadName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -283,27 +300,29 @@ export default function PublicDocumentDetailPage() {
 
   const documentType = doc.cloud_files?.mime_type || "";
   const isPdf = documentType.includes("pdf") || doc.title.toLowerCase().endsWith(".pdf");
+  const isDocx = documentType.includes("wordprocessingml") || documentType.includes("msword") || doc.title.toLowerCase().endsWith(".docx") || doc.title.toLowerCase().endsWith(".doc");
+  const isPreviewable = isPdf || isDocx;
 
   return renderPage(
       <section className="flex flex-col gap-6">
         {/* Back Link */}
         <div className="flex items-center justify-between">
           <Link
-            to="/public-documents"
+            to={backSubjectId ? `/public-documents?subjectId=${backSubjectId}` : "/public-documents"}
             className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 no-underline transition hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400"
           >
-            ← Back to Catalog
+            {backSubjectId ? "← Back to Subject" : "← Back to Catalog"}
           </Link>
           <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
             <button
               onClick={() => setViewMode("pdf")}
-              disabled={!isPdf}
+              disabled={!isPreviewable}
               className={`cursor-pointer rounded-md border-0 px-3 py-1.5 text-xs font-semibold transition ${viewMode === "pdf"
                   ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-400"
                   : "bg-transparent text-slate-500 hover:text-slate-800 disabled:opacity-40"
                 }`}
             >
-              PDF Viewer
+              {isPdf ? "PDF Viewer" : "Document Viewer"}
             </button>
             <button
               onClick={() => setViewMode("text")}
@@ -327,12 +346,20 @@ export default function PublicDocumentDetailPage() {
             </p>
 
             <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-              {viewMode === "pdf" && isPdf && signedUrl ? (
-                <iframe
-                  title="Document Preview"
-                  className="h-full w-full border-0"
-                  src={`${signedUrl}#toolbar=0&navpanes=0`}
-                />
+              {viewMode === "pdf" && isPreviewable && signedUrl ? (
+                isPdf ? (
+                  <iframe
+                    title="Document Preview"
+                    className="h-full w-full border-0"
+                    src={`${signedUrl}#toolbar=0&navpanes=0`}
+                  />
+                ) : (
+                  <iframe
+                    title="Document Preview"
+                    className="h-full w-full border-0"
+                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(signedUrl)}`}
+                  />
+                )
               ) : (
                 <div className="h-full overflow-y-auto p-6 text-sm leading-relaxed text-slate-800 dark:text-slate-200">
                   <h3 className="m-0 mb-4 text-base font-extrabold text-slate-900 dark:text-slate-100">
@@ -341,7 +368,7 @@ export default function PublicDocumentDetailPage() {
                   {doc.extracted_text ? (
                     <p className="whitespace-pre-line">{doc.extracted_text}</p>
                   ) : (
-                    <p className="italic text-slate-400">No raw text summary was indexed for this document.</p>
+                    <p className="italic text-slate-450">No raw text summary was indexed for this document.</p>
                   )}
                 </div>
               )}
@@ -391,7 +418,7 @@ export default function PublicDocumentDetailPage() {
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Download PDF
+                    {isPdf ? "Download PDF" : (isDocx ? "Download DOCX" : "Download File")}
                   </button>
                 </div>
               </div>

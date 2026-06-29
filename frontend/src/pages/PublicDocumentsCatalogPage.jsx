@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { searchPublicDocuments } from "../services/documentApi.js";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { searchPublicDocuments, getPublicDocument } from "../services/documentApi.js";
 import { listPublicSubjects, listSubjects } from "../services/subjectApi.js";
 import { addBookmark, removeBookmark, listBookmarks } from "../services/bookmarkApi.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
@@ -23,7 +23,19 @@ export default function PublicDocumentsCatalogPage() {
   
   // Search & filter states
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSubjectId = searchParams.get("subjectId") || "";
+  const setSelectedSubjectId = (id) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) {
+        next.set("subjectId", id);
+      } else {
+        next.delete("subjectId");
+      }
+      return next;
+    });
+  };
   const [activeLetter, setActiveLetter] = useState("All");
   const [sortBy, setSortBy] = useState("views"); // views, downloads, newest
   const [page, setPage] = useState(1);
@@ -497,7 +509,10 @@ export default function PublicDocumentsCatalogPage() {
                   return (
                     <Link
                       key={doc.id}
-                      to={`/public-documents/${doc.id}`}
+                      to={`/public-documents/${doc.id}${selectedSubjectId ? `?backSubjectId=${selectedSubjectId}` : ""}`}
+                      onMouseEnter={() => {
+                        getPublicDocument(doc.id).catch(() => {});
+                      }}
                       className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:scale-[1.02] hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-900"
                     >
                       {/* Thumbnail / Header */}

@@ -29,13 +29,24 @@ export async function searchPublicDocuments(params = {}) {
   return response.data;
 }
 
+const publicDocumentCache = {};
+const publicSignedUrlCache = {};
+
 export async function getPublicDocument(id) {
+  if (publicDocumentCache[id]) {
+    return publicDocumentCache[id];
+  }
   const response = await api.get(`/public/documents/${id}`);
+  publicDocumentCache[id] = response.data;
   return response.data;
 }
 
 export async function getPublicDocumentSignedUrl(id) {
+  if (publicSignedUrlCache[id]) {
+    return publicSignedUrlCache[id];
+  }
   const response = await api.get(`/public/documents/${id}/signed-url`);
+  publicSignedUrlCache[id] = response.data;
   return response.data;
 }
 
