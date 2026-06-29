@@ -26,7 +26,7 @@ import {
   saveChatDocumentToLibrary,
   uploadChatDocument,
 } from "../services/chatApi.js";
-import { listDocuments } from "../services/documentApi.js";
+import { listDocuments, getDocumentSignedUrl } from "../services/documentApi.js";
 import { isUploadDocTimeoutError, validateUploadDocFile } from "../services/uploadDocApi.js";
 import { fetchWorkspacePdf } from "../services/workspaceApi.js";
 import {
@@ -215,6 +215,7 @@ export default function WorkspacePage() {
   const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pdfLoadError, setPdfLoadError] = useState("");
+  const [docxSignedUrl, setDocxSignedUrl] = useState("");
   const [chatCollapsed, setChatCollapsed] = useState(false);
 
 
@@ -292,6 +293,7 @@ export default function WorkspacePage() {
     setCurrentPage(1);
     setTotalPages(1);
     setPdfLoadError("");
+    setDocxSignedUrl("");
 
     if (!selectedDocument) {
       pdfPreviewRequestRef.current += 1;
@@ -300,6 +302,25 @@ export default function WorkspacePage() {
     }
 
     const type = getDocumentType(selectedDocument);
+    if (type === "DOCX") {
+      pdfPreviewRequestRef.current += 1;
+      clearPdfBlob();
+      setViewMode("pdf");
+
+      setIsPdfLoading(true);
+      getDocumentSignedUrl(selectedDocument.id)
+        .then((data) => {
+          setDocxSignedUrl(data.signedUrl);
+        })
+        .catch((err) => {
+          setPdfLoadError(err.response?.data?.error || "Could not load document preview");
+        })
+        .finally(() => {
+          setIsPdfLoading(false);
+        });
+      return;
+    }
+
     if (type !== "PDF") {
       pdfPreviewRequestRef.current += 1;
       clearPdfBlob();
@@ -1547,6 +1568,7 @@ export default function WorkspacePage() {
           onReloadPdf={() => selectedDocument && loadPdfPreview(selectedDocument.id)}
           onReprocess={handleProcess}
           pdfBlobUrl={pdfBlobUrl}
+          docxSignedUrl={docxSignedUrl}
           pdfLoadError={pdfLoadError}
           processResult={processResult}
           selectedDocument={selectedDocument}
