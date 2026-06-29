@@ -30,7 +30,6 @@ const adminSidebarItems = [
   { id: "subjects", icon: "book", label: "Subjects" },
   { id: "reports", icon: "reports", label: "Reports" },
   { id: "activity-logs", icon: "activity", label: "Activity Logs" },
-  { id: "settings", icon: "settings", label: "Settings" },
 ];
 
 const STATUS_CLASSES = {
@@ -228,7 +227,6 @@ function AdminSidebar({
     { id: "subjects", icon: "subject", label: "Subjects" },
     { id: "reports", icon: "reports", label: "Reports" },
     { id: "activity-logs", icon: "activity", label: "Activity Logs" },
-    { id: "settings", icon: "settings", label: "Settings" },
   ];
 
   return (

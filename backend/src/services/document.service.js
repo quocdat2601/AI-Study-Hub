@@ -325,9 +325,9 @@ async function updateDocument({ document, title, subjectId, tags }) {
 
 async function deleteDocument({ document, userId }) {
   const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId });
-  if (!importedSessionId && await chatModel.countActiveSessionsByPrimaryDocument(document.id)) {
-    throw createError(409, 'This document is the primary document of an active chat session. Keep the chat or delete the session first.');
-  }
+  const deletedPrimarySessionIds = importedSessionId
+    ? [importedSessionId]
+    : await deleteOwnedPrimarySessionsForDocument({ document, userId });
 
   const storagePath = document.cloud_files?.storage_path;
 
@@ -379,7 +379,11 @@ async function deleteDocument({ document, userId }) {
 
 
 
-  return { message: 'Document deleted successfully' };
+  return {
+    message: 'Document deleted successfully',
+    sessionDeleted: deletedPrimarySessionIds.length > 0,
+    sessionIds: deletedPrimarySessionIds,
+  };
 
 }
 
@@ -400,6 +404,26 @@ async function deleteImportedForkForPrimaryDocument({ document, userId }) {
     metadata: { documentId: document.id },
   });
   return session.id;
+}
+
+async function deleteOwnedPrimarySessionsForDocument({ document, userId }) {
+  const sessions = await chatModel.listActiveOwnedSessionsByPrimaryDocument(document.id, userId);
+  const deletedSessionIds = [];
+  for (const session of sessions) {
+    await chatModel.softRemoveAllSessionDocuments(session.id, userId);
+    const deleted = await chatModel.softDeleteOwnedSession(session.id, userId);
+    if (deleted?.id) {
+      deletedSessionIds.push(deleted.id);
+      activityService.log({
+        userId,
+        action: 'chat.session.delete_with_primary_document',
+        targetType: 'chat_session',
+        targetId: deleted.id,
+        metadata: { documentId: document.id },
+      });
+    }
+  }
+  return deletedSessionIds;
 }
 
 
@@ -590,9 +614,9 @@ async function softDeleteDocument({ document, userId }) {
     throw createError(403, 'You can only delete your own documents');
   }
   const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId });
-  if (!importedSessionId && await chatModel.countActiveSessionsByPrimaryDocument(document.id)) {
-    throw createError(409, 'This document is the primary document of an active chat session. Keep the chat or delete the session first.');
-  }
+  const deletedPrimarySessionIds = importedSessionId
+    ? [importedSessionId]
+    : await deleteOwnedPrimarySessionsForDocument({ document, userId });
   await documentModel.softDelete(document.id);
 
   activityService.log({
@@ -604,12 +628,13 @@ async function softDeleteDocument({ document, userId }) {
   });
 
   return {
-    message: importedSessionId
-      ? 'Document and imported chat session moved to trash'
+    message: deletedPrimarySessionIds.length
+      ? 'Document and related chat session moved to trash'
       : 'Document moved to trash',
     documentDeleted: true,
-    sessionDeleted: Boolean(importedSessionId),
-    sessionId: importedSessionId,
+    sessionDeleted: deletedPrimarySessionIds.length > 0,
+    sessionId: deletedPrimarySessionIds[0] || null,
+    sessionIds: deletedPrimarySessionIds,
   };
 }
 

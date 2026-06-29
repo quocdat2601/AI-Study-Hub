@@ -8,7 +8,7 @@ async function processDocument(req, res, next) {
     res.json(await aiService.processDocument({
       id: req.params.id,
       userId: req.user.id,
-      force: true,
+      force: req.body?.force !== false,
     }));
   } catch (err) {
     next(err);

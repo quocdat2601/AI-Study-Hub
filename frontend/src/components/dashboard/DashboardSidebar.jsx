@@ -6,13 +6,11 @@ import { useAuth } from "../../contexts/AuthContext.jsx";
 
 export const dashboardSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard", labelKey: "nav.dashboard", to: "/dashboard" },
-  { id: "study-sets", icon: "book", label: "Study Sets", labelKey: "nav.studySets", to: "/library" },
   { id: "documents", icon: "document", label: "Documents", labelKey: "nav.documents", to: "/documents" },
   { id: "ai-workspace", icon: "chat", label: "AI Workspace", labelKey: "nav.aiWorkspace", to: "/workspace" },
   ...(String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true" ? [
     { id: "shared", icon: "compass", label: "Shared", to: "/shared" },
   ] : []),
-  { id: "analytics", icon: "analytics", label: "Analytics", labelKey: "nav.analytics", to: "/dashboard" },
 ];
 
 function SidebarIcon({ name }) {

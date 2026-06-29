@@ -8,6 +8,7 @@ import DocumentViewer from "../components/workspace/DocumentViewer.jsx";
 import WorkspaceResizeHandle from "../components/workspace/WorkspaceResizeHandle.jsx";
 import useWorkspaceLayout from "../hooks/useWorkspaceLayout.js";
 import useChatAttachmentQueue from "../hooks/useChatAttachmentQueue.js";
+import useUploadDoc from "../hooks/useUploadDoc.js";
 import {
   attachChatDocument,
   createChatSession,
@@ -221,6 +222,18 @@ export default function WorkspacePage() {
     () => documents.find((doc) => Number(doc.id) === Number(selectedId)) || null,
     [documents, selectedId]
   );
+  const handleWorkspaceUploaded = useCallback(async (result) => {
+    const nextDocuments = await loadWorkspaceDocuments();
+    setDocuments(nextDocuments || []);
+    cacheWorkspaceState({ documents: nextDocuments || [] });
+
+    const uploadedId = result?.document?.id || result?.id;
+    if (uploadedId) {
+      cacheWorkspaceState({ selectedId: uploadedId });
+      navigate(`/workspace/documents/${uploadedId}`);
+    }
+  }, [navigate]);
+  const uploadDoc = useUploadDoc({ onUploaded: handleWorkspaceUploaded });
   const geminiModels = modelStatus?.gemini?.models || availableModels.filter((model) => model.startsWith("gemini-"));
   const ollamaModels = modelStatus?.ollama?.allowedModels || availableModels.filter((model) => model.startsWith("qwen"));
   const isOllamaModel = (selectedModel || usage?.model || "").startsWith("qwen") || usage?.provider === "ollama";
@@ -1516,6 +1529,7 @@ export default function WorkspacePage() {
           collapsed={sidebarCollapsed}
           documents={documents}
           isLoadingDocs={isLoadingDocs}
+          onNewDocument={uploadDoc.open}
           onSelectDocument={selectDocument}
           onToggleCollapse={toggleSidebarCollapsed}
           selectedId={selectedId}

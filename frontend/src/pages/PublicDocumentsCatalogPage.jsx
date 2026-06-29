@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { searchPublicDocuments } from "../services/documentApi.js";
 import { listPublicSubjects, listSubjects } from "../services/subjectApi.js";
 import { addBookmark, removeBookmark, listBookmarks } from "../services/bookmarkApi.js";
+import { processDocumentForAi } from "../services/aiApi.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 
@@ -32,6 +33,7 @@ export default function PublicDocumentsCatalogPage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [preparingAiDocId, setPreparingAiDocId] = useState(null);
   const { addToast } = useToast();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -165,17 +167,22 @@ export default function PublicDocumentsCatalogPage() {
     }
 
     const isBookmarked = bookmarkedIds.has(docId);
+    setPreparingAiDocId(docId);
     try {
       if (!isBookmarked) {
         await addBookmark(docId);
+        setBookmarkedIds((current) => new Set([...current, Number(docId)]));
       }
-      navigate(`/workspace?docId=${docId}`);
-    } catch (_err) {
+      await processDocumentForAi(docId, { force: false });
+      navigate(`/workspace/documents/${docId}`);
+    } catch (err) {
       addToast({
         type: "error",
-        title: "Error",
-        message: "Failed to open document in AI Workspace.",
+        title: "Could not prepare AI chat",
+        message: err.response?.data?.error || "This document is still processing or has no readable text yet. Please try again shortly.",
       });
+    } finally {
+      setPreparingAiDocId(null);
     }
   }
 
@@ -569,9 +576,10 @@ export default function PublicDocumentsCatalogPage() {
                           <button
                             type="button"
                             onClick={(e) => handleStudyWithAI(e, doc.id)}
-                            className="cursor-pointer rounded bg-indigo-650 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-indigo-750"
+                            disabled={preparingAiDocId === doc.id}
+                            className="cursor-pointer rounded bg-indigo-650 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-indigo-750 disabled:cursor-wait disabled:opacity-70"
                           >
-                            Study with AI
+                            {preparingAiDocId === doc.id ? "Preparing..." : "Study with AI"}
                           </button>
                         </div>
                       </div>

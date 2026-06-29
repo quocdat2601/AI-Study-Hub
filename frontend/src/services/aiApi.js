@@ -3,8 +3,8 @@ import { supabase } from "../lib/supabase.js";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-export async function processDocumentForAi(id) {
-  const response = await api.post(`/ai/documents/${id}/process`, {}, { timeout: 90000 });
+export async function processDocumentForAi(id, options = {}) {
+  const response = await api.post(`/ai/documents/${id}/process`, options, { timeout: 90000 });
   return response.data;
 }
 

@@ -37,7 +37,7 @@ class DocumentModel {
     if (sharedError) throw sharedError;
 
     const sharedDocs = (shares || [])
-      .map((share) => share.documents)
+      .map((share) => share.documents ? { ...share.documents, access_via: 'share' } : null)
       .filter((doc) => doc && !doc.deleted_at);
 
     // Fetch bookmarked public documents
@@ -55,11 +55,12 @@ class DocumentModel {
     if (bookmarkError) throw bookmarkError;
 
     const bookmarkedDocs = (bookmarks || [])
-      .map((b) => b.documents)
+      .map((b) => b.documents ? { ...b.documents, access_via: 'bookmark' } : null)
       .filter((doc) => doc && !doc.deleted_at);
 
     const byId = new Map();
-    [...(ownedDocs || []), ...sharedDocs, ...bookmarkedDocs].forEach((doc) => byId.set(doc.id, doc));
+    [...(ownedDocs || []).map((doc) => ({ ...doc, access_via: 'owner' })), ...sharedDocs, ...bookmarkedDocs]
+      .forEach((doc) => byId.set(doc.id, doc));
 
     return [...byId.values()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }

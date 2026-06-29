@@ -13,6 +13,7 @@ import {
   updateDocumentVisibility,
 } from "../services/documentApi.js";
 import { listSubjects } from "../services/subjectApi.js";
+import { removeBookmark } from "../services/bookmarkApi.js";
 import EditDocumentModal from "./EditDocumentModal.jsx";
 import ShareDocumentModal from "./ShareDocumentModal.jsx";
 
@@ -40,6 +41,10 @@ function canManageDocument(doc, user) {
 function getVisibilityLabel(doc, isOwner) {
   if (!isOwner) return "Shared";
   return doc.is_public ? "Public" : "Private";
+}
+
+function isBookmarkedDocument(doc, isOwner) {
+  return !isOwner && doc?.access_via === "bookmark";
 }
 
 function getVisibilityTone(doc, isOwner) {
@@ -148,7 +153,7 @@ export default function DocumentsPage() {
     [search, subjectFilter]
   );
 
-  const { documents, isLoading, error, reload } = useDocuments(queryParams);
+  const { documents, setDocuments, isLoading, error, reload } = useDocuments(queryParams);
   const uploadDoc = useUploadDoc({ onUploaded: () => reload() });
 
   const ownedCount = documents.filter((doc) => canManageDocument(doc, user)).length;
@@ -201,6 +206,7 @@ export default function DocumentsPage() {
         title: "Moved to trash",
         message: `"${doc.title}" was moved to trash. Restore it from Trash within 30 days.`,
       });
+      setDocuments((current) => current.filter((item) => Number(item.id) !== Number(doc.id)));
       reload();
     } catch (err) {
       const message = err.response?.data?.error || "Could not move document to trash.";
@@ -228,6 +234,27 @@ export default function DocumentsPage() {
       addToast({ type: "error", title: "Visibility update failed", message });
     } finally {
       setUpdatingVisibilityId(null);
+    }
+  }
+
+  async function handleRemoveBookmark(doc) {
+    const ok = window.confirm(`Remove "${doc.title}" from My Documents?`);
+    if (!ok) return;
+
+    setActionError("");
+    try {
+      await removeBookmark(doc.id);
+      setDocuments((current) => current.filter((item) => Number(item.id) !== Number(doc.id)));
+      addToast({
+        type: "success",
+        title: "Removed from My Documents",
+        message: `"${doc.title}" was removed from your bookmarked documents.`,
+      });
+      reload();
+    } catch (err) {
+      const message = err.response?.data?.error || "Could not remove bookmark.";
+      setActionError(message);
+      addToast({ type: "error", title: "Remove failed", message });
     }
   }
 
@@ -372,6 +399,8 @@ export default function DocumentsPage() {
                           <ActionButton onClick={() => setSharingDoc(doc)} tone="share">Share</ActionButton>
                           <ActionButton onClick={() => handleDelete(doc)} tone="danger">Delete</ActionButton>
                         </>
+                      ) : isBookmarkedDocument(doc, isOwner) ? (
+                        <ActionButton onClick={() => handleRemoveBookmark(doc)} tone="danger">Unbookmark</ActionButton>
                       ) : null}
                     </div>
                   </div>
