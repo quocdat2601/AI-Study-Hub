@@ -122,8 +122,12 @@ ${optionsText}`;
     displayText += `\n\nLựa chọn của tôi: ${userLetter ? `${userLetter}. ` : ""}${userAnswer}`;
   }
 
-  displayText += "\n\nHãy giải thích chủ đề này chi tiết hơn.";
-
+  // displayText += "\n\nHãy giải thích chủ đề này chi tiết hơn.";
+  displayText += `\n\nHãy phân tích chi tiết câu hỏi trắc nghiệm này:
+1. Giải thích lý do tại sao đáp án chính xác lại đúng dựa trên tài liệu nguồn.
+2. Phân tích ngắn gọn tính đúng/sai của các phương án còn lại (đặc biệt nhấn mạnh lý do phương án tôi chọn chưa chính xác nếu tôi trả lời sai).
+3. Hướng dẫn mẹo tư duy nhanh hoặc từ khóa mấu chốt để áp dụng phương pháp loại trừ cho câu hỏi này.`;
+  
   const questionForApi = `${displayText}
 
 [studio-quiz-meta]
