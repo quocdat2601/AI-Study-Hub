@@ -474,6 +474,18 @@ class ChatModel {
     return count || 0;
   }
 
+  static async listActiveOwnedSessionsByPrimaryDocument(documentId, userId) {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('primary_document_id', Number(documentId))
+      .eq('user_id', userId)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async softDeleteOwnedSession(sessionId, userId) {
     const now = new Date().toISOString();
     const { data, error } = await supabase

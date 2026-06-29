@@ -165,6 +165,23 @@ async function processDocument({
   let extractionError = doc.extraction_error || null;
   let savedDoc = doc;
 
+  if (!force) {
+    const existingChunks = await documentChunkModel.findByDocumentId(doc.id);
+    if (
+      existingChunks.length
+      && extractionStatus === 'ready'
+      && documentTextService.isExtractedTextUseful(existingText)
+    ) {
+      return {
+        document: savedDoc,
+        chunkCount: existingChunks.length,
+        status: 'ready',
+        overviewStatus: null,
+        alreadyProcessed: true,
+      };
+    }
+  }
+
   if (
     force
     || extractionStatus !== 'ready'
@@ -809,6 +826,14 @@ function isDocumentReadyForRag(doc) {
   return documentTextService.isExtractedTextUseful(doc.extracted_text);
 }
 
+function canAutoProcessDocumentForUser(doc, userId) {
+  return doc?.document_scope !== 'shared'
+    && (
+      String(doc?.user_id) === String(userId)
+      || (doc?.document_scope === 'library' && doc?.is_public === true)
+    );
+}
+
 async function canUseDocumentThroughOwnedSession({ document, session, userId }) {
   if (!document || !session || String(session.user_id) !== String(userId)) {
     return false;
@@ -866,7 +891,7 @@ async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
       session_link_id: link.id || null,
     };
 
-    if (!isDocumentReadyForRag(documentWithSessionLink)) {
+    if (!isDocumentReadyForRag(documentWithSessionLink) && !canAutoProcessDocumentForUser(documentWithSessionLink, userId)) {
       excluded.notReady += 1;
       excluded.notReadyIds.push(documentWithSessionLink.id);
       excluded.notReadyDocuments.push(documentWithSessionLink);
@@ -917,8 +942,7 @@ async function loadSessionChunks({
 
   for (const doc of documents) {
     let chunks = chunksByDocument.get(Number(doc.id)) || [];
-    const canAutoProcessDocument = doc.document_scope !== 'shared'
-      && String(doc.user_id) === String(userId);
+    const canAutoProcessDocument = canAutoProcessDocumentForUser(doc, userId);
 
     if (!chunks.length && allowAutoProcess && canAutoProcessDocument) {
       try {
@@ -1331,7 +1355,7 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
     sessionId: session.id,
     userId,
     sendEvent,
-    allowAutoProcess: !overviewIntent,
+    allowAutoProcess: true,
   });
   const excludedAttachments = {
     ...excluded,

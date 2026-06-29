@@ -7,6 +7,7 @@ import {
   addDocumentComment
 } from "../services/documentApi.js";
 import { addBookmark, removeBookmark, listBookmarks } from "../services/bookmarkApi.js";
+import { processDocumentForAi } from "../services/aiApi.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 
@@ -30,6 +31,7 @@ export default function PublicDocumentDetailPage() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
+  const [isPreparingAi, setIsPreparingAi] = useState(false);
 
   // Form states
   const [newComment, setNewComment] = useState("");
@@ -177,17 +179,22 @@ export default function PublicDocumentDetailPage() {
       return;
     }
 
+    setIsPreparingAi(true);
     try {
       if (!isBookmarked) {
         await addBookmark(id);
+        setBookmarkedIds((current) => new Set([...current, Number(id)]));
       }
-      navigate(`/workspace?docId=${id}`);
-    } catch (_err) {
+      await processDocumentForAi(id, { force: false });
+      navigate(`/workspace/documents/${id}`);
+    } catch (err) {
       addToast({
         type: "error",
-        title: "Error",
-        message: "Failed to open document in AI Workspace."
+        title: "Could not prepare AI chat",
+        message: err.response?.data?.error || "This document is still processing or has no readable text yet. Please try again shortly."
       });
+    } finally {
+      setIsPreparingAi(false);
     }
   }
 
@@ -387,12 +394,13 @@ export default function PublicDocumentDetailPage() {
               <div className="grid gap-3">
                 <button
                   onClick={handleStudyWithAI}
-                  className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-600 px-[18px] font-black text-white shadow-sm transition hover:bg-indigo-700"
+                  disabled={isPreparingAi}
+                  className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-600 px-[18px] font-black text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70"
                 >
                   <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  Chat with Document
+                  {isPreparingAi ? "Preparing AI chat..." : "Chat with Document"}
                 </button>
 
                 <div className="grid grid-cols-2 gap-3">

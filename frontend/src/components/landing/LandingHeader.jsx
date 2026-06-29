@@ -28,7 +28,6 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
   const location = useLocation();
   const libraryPath = workspacePath || "/dashboard";
   const isAdmin = role === "admin" || libraryPath === "/admin";
-  const libraryLabel = isAuthenticated && isAdmin ? "Admin Dashboard" : "My library";
   const coursePath = "/public-documents";
 
   return (
@@ -44,33 +43,23 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
           {isAuthenticated && isAdmin ? (
             <>
-              <NavLink isActive={location.pathname === libraryPath} to={libraryPath}>
-                {libraryLabel}
-              </NavLink>
               <NavLink isActive={location.pathname === "/community" || location.pathname.startsWith("/community/")} to="/community">
                 Community
+              </NavLink>
+              <NavLink isActive={location.pathname === coursePath} to={coursePath}>
+                Courses
               </NavLink>
               <NavLink isActive={location.pathname.startsWith("/admin")} to="/admin">
                 Admin Console
               </NavLink>
             </>
-          ) : isAuthenticated ? (
-            <>
-              <NavLink isActive={location.pathname === libraryPath} to={libraryPath}>
-                {libraryLabel}
-              </NavLink>
-              <NavLink isActive={location.pathname === "/community" || location.pathname.startsWith("/community/")} to="/community">
-                Community
-              </NavLink>
-              <NavLink isActive={location.pathname === "/documents"} to="/documents">
-                My documents
-              </NavLink>
-              <NavLink isActive={location.pathname === coursePath} to={coursePath}>
-                Courses
-              </NavLink>
-            </>
           ) : (
             <>
+              {isAuthenticated ? (
+                <NavLink isActive={location.pathname === libraryPath} to={libraryPath}>
+                  My library
+                </NavLink>
+              ) : null}
               <NavLink isActive={location.pathname === "/community" || location.pathname.startsWith("/community/")} to="/community">
                 Community
               </NavLink>

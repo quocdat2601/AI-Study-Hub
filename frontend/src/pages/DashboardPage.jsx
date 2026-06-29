@@ -32,7 +32,6 @@ const CONTINUE_ICON_STYLES = [
 ];
 
 const DASHBOARD_REDIRECTS = {
-  "study-sets": "/library",
   documents: "/documents",
   "ai-workspace": "/workspace",
   settings: "/account",
