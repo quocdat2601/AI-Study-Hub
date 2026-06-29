@@ -38,13 +38,14 @@ test('chat-context.service exports resolveDocumentScope', () => {
 test('image question classifier prioritizes OCR text questions over visual image questions', () => {
   assert.equal(
     chatContext.classifyImageQuestion('hình ảnh tôi vừa gửi viết gì ở trên đó?'),
-    'image_text_question'
+    'image_text_transcription'
   );
-  assert.equal(chatContext.classifyImageQuestion('ảnh có chữ gì?'), 'image_text_question');
-  assert.equal(chatContext.classifyImageQuestion('đọc chữ trong ảnh'), 'image_text_question');
-  assert.equal(chatContext.classifyImageQuestion('nội dung chữ trong screenshot'), 'image_text_question');
-  assert.equal(chatContext.classifyImageQuestion('what does the image say?'), 'image_text_question');
-  assert.equal(chatContext.classifyImageQuestion('read the text in the image'), 'image_text_question');
+  assert.equal(chatContext.classifyImageQuestion('ảnh có chữ gì?'), 'image_text_transcription');
+  assert.equal(chatContext.classifyImageQuestion('đọc chữ trong ảnh'), 'image_text_transcription');
+  assert.equal(chatContext.classifyImageQuestion('nội dung chữ trong screenshot'), 'image_text_transcription');
+  assert.equal(chatContext.classifyImageQuestion('what does the image say?'), 'image_text_transcription');
+  assert.equal(chatContext.classifyImageQuestion('read the text in the image'), 'image_text_transcription');
+  assert.equal(chatContext.classifyImageQuestion('tra loi cau hoi trong anh moi nhat toi gui'), 'image_question_answering');
   assert.equal(chatContext.classifyImageQuestion('trong ảnh có vật gì?'), 'image_visual_question');
   assert.equal(chatContext.classifyImageQuestion('mô tả bức ảnh'), 'image_visual_question');
   assert.equal(chatContext.classifyImageQuestion('biểu đồ này thể hiện gì?'), 'image_visual_question');
@@ -172,7 +173,7 @@ test('askSession image text question uses OCR chunks instead of visual limitatio
   ]);
   t.mock.method(embeddingService, 'embedQuery', async () => ({ embedding: [], model: 'mock' }));
   t.mock.method(aiProviderService, 'generateAnswer', async (args) => {
-    assert.equal(args.imageQuestionType, 'image_text_question');
+    assert.equal(args.imageQuestionType, 'image_text_transcription');
     assert.ok(args.chunks.length > 0, 'OCR chunks should be sent to provider');
     assert.ok(args.chunks.every(c => Number(c.doc_id) === 2), 'Only image chunks should be used');
     return { answer: 'Tren hinh co ghi: Tong tien thanh toan la 250000 VND.' };
@@ -396,3 +397,136 @@ test('askDocumentStream does not throw undefined reference', async (t) => {
 
   assert.ok(true, 'Stream request completed without error');
 });
+
+test('latest image question resolves newest image and answers OCR multiple choice', async (t) => {
+  const docs = [
+    doc({ id: 1, title: 'Primary.docx', origin_session_id: 77, created_at: '2026-01-01T00:00:00Z' }),
+    doc({
+      id: 2,
+      title: 'pasted-older-100111.png',
+      origin_session_id: 77,
+      created_at: '2026-01-02T00:00:00Z',
+      extracted_text: 'Older image text',
+      cloud_files: { mime_type: 'image/png', storage_path: 'user-1/pasted-older-100111.png' },
+    }),
+    doc({
+      id: 3,
+      title: 'pasted-newest-205712.png',
+      origin_session_id: 77,
+      created_at: '2026-01-03T00:00:00Z',
+      extracted_text: 'Question: What is 2 + 2? A. 3 B. 4 C. 5 D. 6',
+      cloud_files: { mime_type: 'image/png', storage_path: 'user-1/pasted-newest-205712.png' },
+    }),
+  ];
+
+  t.mock.method(chatModel, 'findOwnedSession', async () => ({ id: 77, user_id: 'student-1', primary_document_id: 1 }));
+  t.mock.method(chatModel, 'listActiveSessionDocumentLinks', async () => docs.map((item) => ({ doc_id: item.id })));
+  t.mock.method(chatModel, 'touchSession', async () => true);
+  t.mock.method(documentModel, 'findActiveById', async (id) => docs.find((item) => Number(item.id) === Number(id)));
+  t.mock.method(documentModel, 'touchSessionDocuments', async () => true);
+  t.mock.method(chatModel, 'getRecentMessages', async () => []);
+  t.mock.method(chatModel, 'addMessage', async (_sessionId, role, content, metadata = {}) => ({ id: role === 'user' ? 100 : 101, role, content, metadata }));
+  t.mock.method(documentTextService, 'isExtractedTextUseful', (text) => !!text);
+
+  const chunks = [
+    { id: 'older', doc_id: 2, content: 'Older image text', metadata: { documentId: 2 } },
+    { id: 'newest', doc_id: 3, content: 'Question: What is 2 + 2? A. 3 B. 4 C. 5 D. 6', metadata: { documentId: 3 } },
+  ];
+  t.mock.method(documentChunkModel, 'findByDocumentIds', async () => chunks);
+  t.mock.method(documentChunkModel, 'findByDocumentId', async (id) => chunks.filter((chunk) => Number(chunk.doc_id) === Number(id)));
+  t.mock.method(documentChunkModel, 'matchByEmbedding', async () => [
+    { id: 'newest', doc_id: 3, content: 'Question: What is 2 + 2? A. 3 B. 4 C. 5 D. 6', metadata: { documentId: 3 }, score: 0.94 },
+  ]);
+  t.mock.method(documentChunkModel, 'matchByEmbeddingAcrossDocuments', async () => [
+    { id: 'newest', doc_id: 3, content: 'Question: What is 2 + 2? A. 3 B. 4 C. 5 D. 6', metadata: { documentId: 3 }, score: 0.94 },
+  ]);
+  t.mock.method(embeddingService, 'embedQuery', async () => ({ embedding: [], model: 'mock' }));
+  t.mock.method(aiProviderService, 'generateAnswer', async (args) => {
+    assert.equal(args.imageQuestionType, 'image_multiple_choice_question');
+    assert.match(args.question, /tra loi cau hoi/i);
+    assert.ok(args.chunks.every((chunk) => Number(chunk.doc_id) === 3));
+    return { answer: 'Question: What is 2 + 2? Selected option: B. 4. Explanation: 2 + 2 equals 4.' };
+  });
+  t.mock.method(aiProviderService, 'sanitizeAnswerCitationAttribution', (answer) => answer);
+  t.mock.method(aiUsageService, 'resolveModel', () => ({ provider: 'gemini', model: 'gemini-1.5-flash' }));
+  t.mock.method(aiUsageService, 'assertQuota', async () => {});
+  t.mock.method(aiUsageService, 'logGeminiRequest', async () => {});
+  t.mock.method(aiUsageService, 'getUsage', async () => ({}));
+
+  const result = await aiService.askSession({
+    sessionId: 77,
+    userId: 'student-1',
+    question: 'tra loi cau hoi trong anh moi nhat toi gui',
+    mode: 'hybrid',
+    model: 'gemini-1.5-flash',
+  });
+
+  assert.equal(result.answer.includes('B. 4'), true);
+  assert.deepEqual([...new Set(result.sources.map((source) => Number(source.documentId)))], [3]);
+});
+
+test('filename suffix clarification inherits previous image question task', async (t) => {
+  const docs = [
+    doc({ id: 1, title: 'Primary.docx', origin_session_id: 77 }),
+    doc({
+      id: 3,
+      title: 'pasted-newest-205712.png',
+      origin_session_id: 77,
+      extracted_text: 'Question: Which option is correct? A. Alpha B. Beta C. Gamma D. Delta',
+      cloud_files: { mime_type: 'image/png', storage_path: 'user-1/pasted-newest-205712.png' },
+    }),
+  ];
+
+  t.mock.method(chatModel, 'findOwnedSession', async () => ({ id: 77, user_id: 'student-1', primary_document_id: 1 }));
+  t.mock.method(chatModel, 'listActiveSessionDocumentLinks', async () => docs.map((item) => ({ doc_id: item.id })));
+  t.mock.method(chatModel, 'touchSession', async () => true);
+  t.mock.method(documentModel, 'findActiveById', async (id) => docs.find((item) => Number(item.id) === Number(id)));
+  t.mock.method(documentModel, 'touchSessionDocuments', async () => true);
+  t.mock.method(chatModel, 'getRecentMessages', async () => [
+    {
+      id: 10,
+      role: 'user',
+      content: 'tra loi cau hoi trong anh moi nhat toi gui',
+      metadata: {
+        imageQuestionType: 'image_question_answering',
+        substantiveQuestion: 'tra loi cau hoi trong anh moi nhat toi gui',
+        retrievalQuery: 'tra loi cau hoi trong anh moi nhat toi gui',
+      },
+    },
+  ]);
+  t.mock.method(chatModel, 'addMessage', async (_sessionId, role, content, metadata = {}) => ({ id: role === 'user' ? 100 : 101, role, content, metadata }));
+  t.mock.method(documentTextService, 'isExtractedTextUseful', (text) => !!text);
+
+  const chunks = [
+    { id: 'newest', doc_id: 3, content: 'Question: Which option is correct? A. Alpha B. Beta C. Gamma D. Delta', metadata: { documentId: 3 } },
+  ];
+  t.mock.method(documentChunkModel, 'findByDocumentIds', async () => chunks);
+  t.mock.method(documentChunkModel, 'findByDocumentId', async (id) => chunks.filter((chunk) => Number(chunk.doc_id) === Number(id)));
+  t.mock.method(documentChunkModel, 'matchByEmbedding', async () => chunks);
+  t.mock.method(documentChunkModel, 'matchByEmbeddingAcrossDocuments', async () => chunks);
+  t.mock.method(embeddingService, 'embedQuery', async () => ({ embedding: [], model: 'mock' }));
+  t.mock.method(aiProviderService, 'generateAnswer', async (args) => {
+    assert.equal(args.imageQuestionType, 'image_multiple_choice_question');
+    assert.match(args.question, /Clarification: 205712/);
+    assert.doesNotMatch(args.question, /^205712$/);
+    return { answer: 'Selected option: B. Beta. Short explanation.' };
+  });
+  t.mock.method(aiProviderService, 'sanitizeAnswerCitationAttribution', (answer) => answer);
+  t.mock.method(aiUsageService, 'resolveModel', () => ({ provider: 'gemini', model: 'gemini-1.5-flash' }));
+  t.mock.method(aiUsageService, 'assertQuota', async () => {});
+  t.mock.method(aiUsageService, 'logGeminiRequest', async () => {});
+  t.mock.method(aiUsageService, 'getUsage', async () => ({}));
+
+  const result = await aiService.askSession({
+    sessionId: 77,
+    userId: 'student-1',
+    question: '205712',
+    mode: 'hybrid',
+    model: 'gemini-1.5-flash',
+  });
+
+  assert.equal(result.answer.includes('Beta'), true);
+  assert.deepEqual([...new Set(result.sources.map((source) => Number(source.documentId)))], [3]);
+});
+
+

@@ -163,12 +163,15 @@ const GENERIC_TWO_DOCUMENT_PATTERN = /\b(?:2|two|both)\s+(?:files?|documents?|at
 const DOC_TYPE_REFERENCE_PATTERN = /\b(?:docx?|word)\b|file\s+doc|tep\s+doc|tài liệu\s+doc|tai lieu\s+doc/iu;
 const MULTI_DOCUMENT_SUMMARY_PATTERN = /\b(?:summari[sz]e|summary|overview|main purpose|key points|main idea)\b|tom tat|tóm tắt|noi dung|nội dung|noi ve gi|nói về gì|khac nhau|khác nhau|diem khac|điểm khác|lien quan|liên quan/iu;
 const CLARIFICATION_PATTERN = /^(?:y toi la|ý tôi là|i mean|toi muon noi la|tôi muốn nói là|no,? i mean|clarification)\b/iu;
-const IMAGE_REFERENCE_PATTERN = /\b(image|photo|screenshot|picture|attached image|latest image|last image|anh|hinh|hinh anh|anh vua gui|hinh toi vua gui|anh toi vua gui)\b/iu;
-const LATEST_IMAGE_REFERENCE_PATTERN = /\b(latest image|last image|attached image|this image|the image|anh vua gui|hinh vua gui|hinh toi vua gui|anh toi vua gui|anh nay|hinh nay)\b/iu;
+const IMAGE_REFERENCE_PATTERN = /\b(image|photo|screenshot|picture|attached image|latest image|last image|most recent screenshot|anh|hinh|hinh anh|anh vua gui|hinh toi vua gui|anh toi vua gui)\b/iu;
+const LATEST_IMAGE_REFERENCE_PATTERN = /\b(latest image|last image|most recent image|most recent screenshot|newest image|newest screenshot|anh moi nhat|hinh moi nhat|hinh moi nhat toi gui|anh vua gui|hinh vua gui|hinh toi vua gui|anh toi vua gui|anh vua gui gan nhat|hinh vua gui gan nhat|latest screenshot|last screenshot)\b/iu;
 const IMAGE_TEXT_QUESTION_PATTERN = /\b(?:what does (?:the )?(?:image|photo|screenshot) say|read (?:the )?(?:text|content)|text in (?:the )?(?:image|photo|screenshot)|written on (?:the )?(?:image|photo|screenshot)|image text|screenshot text|anh viet gi|hinh viet gi|hinh anh viet gi|anh co chu gi|hinh co chu gi|doc noi dung trong anh|doc chu trong anh|chu trong anh|noi dung trong anh|viet gi o tren do)\b/iu;
 const IMAGE_VISUAL_QUESTION_PATTERN = /\b(?:what is in (?:the )?(?:image|photo|screenshot)|describe (?:the )?(?:image|photo|screenshot|layout)|what objects?|object|layout|diagram|chart|graph|visual|picture show|anh co vat gi|hinh co vat gi|trong anh co gi|trong hinh co gi|mo ta bo cuc|bo cuc hinh|bieu do(?:\s+\w+){0,4}\s+the hien gi|so do(?:\s+\w+){0,4}\s+the hien gi)\b/iu;
 const IMAGE_TEXT_VERB_PATTERN = /\b(viet|chu|doc|text|say|read|written|transcribe|ocr)\b/iu;
 const IMAGE_VISUAL_VERB_PATTERN = /\b(vat|object|objects|bo cuc|layout|mo ta|describe|bieu do|chart|graph|diagram|visual)\b/iu;
+const IMAGE_QUESTION_ANSWERING_PATTERN = /\b(?:answer|solve|choose|pick|select|question in (?:the )?(?:image|photo|screenshot)|answer the question in (?:the )?(?:image|photo|screenshot)|tra loi cau hoi trong anh|tra loi cau hoi trong hinh|giai cau trong hinh|giai cau trong anh|chon dap an trong screenshot|chon dap an trong anh|dap an trong anh|cau hoi trong anh|cau hoi trong hinh)\b/iu;
+const IMAGE_SUMMARY_PATTERN = /\b(?:summari[sz]e (?:the )?(?:image|photo|screenshot)|tom tat anh|tom tat hinh|noi dung chinh trong anh|noi dung chinh trong hinh)\b/iu;
+const SHORT_DOCUMENT_CLARIFICATION_PATTERN = /^[a-z0-9][a-z0-9_.\-\s()]{1,48}$/iu;
 
 function getStorageFileName(document) {
   const storagePath = String(document?.cloud_files?.storage_path || '');
@@ -360,17 +363,49 @@ function genericTwoDocumentCandidates(question, documents) {
 function classifyImageQuestion(question) {
   const normalized = normalizeComparable(question);
   const mentionsImage = IMAGE_REFERENCE_PATTERN.test(normalized);
+  if (IMAGE_QUESTION_ANSWERING_PATTERN.test(normalized)) {
+    return 'image_question_answering';
+  }
+  if (IMAGE_SUMMARY_PATTERN.test(normalized)) {
+    return 'image_summary';
+  }
   if (
     IMAGE_TEXT_QUESTION_PATTERN.test(normalized)
     || (mentionsImage && IMAGE_TEXT_VERB_PATTERN.test(normalized))
   ) {
-    return 'image_text_question';
+    return 'image_text_transcription';
   }
   if (
     IMAGE_VISUAL_QUESTION_PATTERN.test(normalized)
     || (mentionsImage && IMAGE_VISUAL_VERB_PATTERN.test(normalized))
   ) {
     return 'image_visual_question';
+  }
+  return null;
+}
+
+function findInheritedImageTask(history, question) {
+  const normalizedQuestion = normalizeComparable(question);
+  const isShortClarification = SHORT_DOCUMENT_CLARIFICATION_PATTERN.test(normalizedQuestion)
+    && !IMAGE_REFERENCE_PATTERN.test(normalizedQuestion)
+    && !IMAGE_QUESTION_ANSWERING_PATTERN.test(normalizedQuestion)
+    && !IMAGE_TEXT_QUESTION_PATTERN.test(normalizedQuestion)
+    && !IMAGE_VISUAL_QUESTION_PATTERN.test(normalizedQuestion);
+  if (!isShortClarification) return null;
+
+  const recent = getRecentConversation(history);
+  for (let index = recent.length - 1; index >= 0; index -= 1) {
+    const message = recent[index];
+    if (message.role !== 'user') continue;
+    const metadata = message.metadata || {};
+    const imageQuestionType = metadata.imageQuestionType;
+    if (!imageQuestionType) continue;
+    return {
+      imageQuestionType,
+      substantiveQuestion: normalizeText(metadata.substantiveQuestion || message.content),
+      retrievalQuery: normalizeText(metadata.retrievalQuery || metadata.substantiveQuestion || message.content),
+      responseConstraints: metadata.responseConstraints || {},
+    };
   }
   return null;
 }
@@ -399,9 +434,16 @@ function resolveLatestImageScope({ question, documents, primaryDocumentId, focus
   const candidates = nonPrimaryImages.length ? nonPrimaryImages : imageDocuments;
 
   if (LATEST_IMAGE_REFERENCE_PATTERN.test(normalizedQuestion) || candidates.length === 1) {
+    const timestampOf = (document) => new Date(
+      document.session_link_added_at
+        || document.attached_at
+        || document.added_at
+        || document.created_at
+        || document.updated_at
+        || 0
+    ).getTime();
     const latest = candidates.slice().sort((a, b) => (
-      new Date(b.created_at || b.updated_at || 0).getTime()
-      - new Date(a.created_at || a.updated_at || 0).getTime()
+      timestampOf(b) - timestampOf(a)
       || Number(b.id) - Number(a.id)
     ))[0];
     return {
@@ -723,5 +765,6 @@ module.exports = {
   resolveDocumentScope,
   isImageDocument,
   classifyImageQuestion,
+  findInheritedImageTask,
   stripStudioMetaFromDisplay,
 };

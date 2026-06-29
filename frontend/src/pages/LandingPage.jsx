@@ -31,6 +31,7 @@ export default function LandingPage() {
         isAuthenticated={isAuthenticated}
         isLoading={isLoading}
         onLogout={handleLogout}
+        role={user?.role}
         workspacePath={workspacePath}
       />
 

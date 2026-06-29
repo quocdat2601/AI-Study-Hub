@@ -8,6 +8,7 @@ import WorkspaceNotebook from "./WorkspaceNotebook.jsx";
 import { loadNotebookNotes } from "../../utils/workspaceNotebook.js";
 import { DownloadIcon, FileTextIcon } from "./WorkspaceIcons.jsx";
 import { getStatusLabel, getSubjectLabel } from "./workspaceDisplay.js";
+import { formatFileSize } from "../../lib/formatFileSize.js";
 
 function getDocumentType(document) {
   const mime = document?.cloud_files?.mime_type || document?.mime_type || "";
@@ -15,6 +16,21 @@ function getDocumentType(document) {
   if (mime.includes("pdf") || title.toLowerCase().endsWith(".pdf")) return "PDF";
   if (mime.includes("word") || title.toLowerCase().endsWith(".docx")) return "DOCX";
   return document?.file_type || document?.type || "DOC";
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getFileSize(document) {
+  return document?.cloud_files?.size_bytes || document?.fileSizeBytes || document?.size_bytes || 0;
 }
 
 function mapTextDocument(document) {
@@ -203,12 +219,14 @@ export default function DocumentViewer({
   zoom,
 }) {
   const [showNotebookPanel, setShowNotebookPanel] = useState(false);
+  const [showProperties, setShowProperties] = useState(false);
   const [notebookCount, setNotebookCount] = useState(0);
   const documentType = getDocumentType(selectedDocument);
 
   useEffect(() => {
     setNotebookCount(0);
     setShowNotebookPanel(false);
+    setShowProperties(false);
     if (!selectedDocument?.id) return undefined;
 
     let isMounted = true;
@@ -277,6 +295,18 @@ export default function DocumentViewer({
 
           {selectedDocument ? (
             <button
+              className={showProperties
+                ? "cursor-pointer rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
+                : "cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"}
+              onClick={() => setShowProperties((value) => !value)}
+              type="button"
+            >
+              Properties
+            </button>
+          ) : null}
+
+          {selectedDocument ? (
+            <button
               className="cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isProcessing}
               onClick={onReprocess}
@@ -308,6 +338,28 @@ export default function DocumentViewer({
             <DownloadIcon size={14} />
           </button>
         </div>
+        {selectedDocument && showProperties ? (
+          <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 text-[11px] text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <span className="block font-bold uppercase tracking-wide text-slate-400">Subject</span>
+              <strong className="mt-0.5 block truncate text-slate-800">{getSubjectLabel(selectedDocument)}</strong>
+            </div>
+            <div>
+              <span className="block font-bold uppercase tracking-wide text-slate-400">File</span>
+              <strong className="mt-0.5 block truncate text-slate-800">
+                {documentType} · {formatFileSize(getFileSize(selectedDocument))}
+              </strong>
+            </div>
+            <div>
+              <span className="block font-bold uppercase tracking-wide text-slate-400">Created</span>
+              <strong className="mt-0.5 block truncate text-slate-800">{formatDateTime(selectedDocument.created_at)}</strong>
+            </div>
+            <div>
+              <span className="block font-bold uppercase tracking-wide text-slate-400">Status</span>
+              <strong className="mt-0.5 block truncate text-slate-800">{getStatusLabel(selectedDocument)}</strong>
+            </div>
+          </div>
+        ) : null}
       </header>
 
       <div className="workspace-scrollbar workspace-selectable relative min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">

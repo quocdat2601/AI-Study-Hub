@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import WorkspaceDocumentListItem from "./WorkspaceDocumentListItem.jsx";
 import {
   ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   FilterIcon,
   PlusIcon,
   SearchIcon,
@@ -93,11 +92,12 @@ export default function DocumentSidebar({
       <div className="relative shrink-0" style={{ width: 0 }}>
         <button
           aria-label="Expand document sidebar"
-          className="absolute left-0 top-1/2 z-30 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-md transition hover:border-[#5b4fd4] hover:text-[#5b4fd4]"
+          aria-expanded="false"
+          className="absolute left-0 top-1/2 z-30 flex h-9 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-slate-600 shadow-sm transition hover:border-[#5b4fd4] hover:bg-indigo-50 hover:text-[#5b4fd4]"
           onClick={onToggleCollapse}
           type="button"
         >
-          <ChevronRightIcon size={16} />
+          {">"}
         </button>
       </div>
     );
@@ -105,22 +105,32 @@ export default function DocumentSidebar({
 
   return (
     <aside
-      className="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm"
+      className="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm transition-[width,opacity] duration-200 ease-out"
       style={{ width }}
     >
       <button
         aria-label="Collapse document sidebar"
-        className="absolute -right-3 top-1/2 z-30 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#5b4fd4] hover:text-[#5b4fd4]"
+        aria-expanded="true"
+        className="absolute -right-[13px] top-1/2 z-30 flex h-9 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-slate-600 shadow-sm transition hover:border-[#5b4fd4] hover:bg-indigo-50 hover:text-[#5b4fd4]"
         onClick={onToggleCollapse}
         type="button"
       >
-        <ChevronLeftIcon size={14} />
+        {"<"}
       </button>
 
       <div className="px-4 pb-4 pt-5">
-        <div className="mb-4">
-          <p className="no-caret m-0 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
-          <h1 className="no-caret m-0 mt-1 truncate text-[18px] font-extrabold text-slate-900">My Documents</h1>
+        <div className="mb-4 flex items-start gap-3">
+          <Link
+            aria-label="Back to dashboard"
+            className="no-caret mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 no-underline transition hover:border-[#5b4fd4] hover:bg-indigo-50 hover:text-[#5b4fd4]"
+            to="/dashboard"
+          >
+            {"<"}
+          </Link>
+          <div className="min-w-0">
+            <p className="no-caret m-0 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
+            <h1 className="no-caret m-0 mt-1 truncate text-[18px] font-extrabold text-slate-900">My Documents</h1>
+          </div>
         </div>
 
         {onNewDocument ? (

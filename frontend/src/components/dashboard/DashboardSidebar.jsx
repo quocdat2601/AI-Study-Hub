@@ -8,7 +8,6 @@ export const dashboardSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard", labelKey: "nav.dashboard", to: "/dashboard" },
   { id: "study-sets", icon: "book", label: "Study Sets", labelKey: "nav.studySets", to: "/library" },
   { id: "documents", icon: "document", label: "Documents", labelKey: "nav.documents", to: "/documents" },
-  { id: "study-resources", icon: "compass", label: "Explore Docs", labelKey: "nav.studyResources", to: "/public-documents" },
   { id: "ai-workspace", icon: "chat", label: "AI Workspace", labelKey: "nav.aiWorkspace", to: "/workspace" },
   ...(String(import.meta.env.VITE_CHAT_SNAPSHOT_SHARING_ENABLED || "false") === "true" ? [
     { id: "shared", icon: "compass", label: "Shared", to: "/shared" },
@@ -265,12 +264,13 @@ function ControlledSidebar({
     >
       {onToggleCollapse ? (
         <button
-          className="mb-3 flex h-9 w-full items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.08)] transition hover:border-[#4648d4] hover:text-[#4648d4]"
-          aria-label={isCollapsed ? "Show sidebar" : "Hide sidebar"}
+          className="absolute right-[-13px] top-1/2 z-20 flex h-9 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-[#344154] shadow-[0_2px_8px_rgba(20,31,48,0.12)] transition hover:border-[#4648d4] hover:text-[#4648d4] focus:outline-none focus:ring-2 focus:ring-[#4648d4]/30 active:scale-95"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isCollapsed}
           onClick={onToggleCollapse}
           type="button"
         >
-          {isCollapsed ? ">" : <span className="inline-flex items-center gap-2">{"<"} <span>Hide</span></span>}
+          {isCollapsed ? ">" : "<"}
         </button>
       ) : null}
 

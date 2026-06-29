@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import DashboardShell from "../components/dashboard/DashboardShell.jsx";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { searchPublicDocuments } from "../services/documentApi.js";
-import { listSubjects } from "../services/subjectApi.js";
+import { listPublicSubjects, listSubjects } from "../services/subjectApi.js";
 import { addBookmark, removeBookmark, listBookmarks } from "../services/bookmarkApi.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 
 function FolderIcon({ className = "h-5 w-5" }) {
@@ -33,30 +33,37 @@ export default function PublicDocumentsCatalogPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
   const { addToast } = useToast();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Load subjects
   useEffect(() => {
     async function loadSubjects() {
       try {
-        const data = await listSubjects();
+        const data = isAuthenticated ? await listSubjects() : await listPublicSubjects();
         setSubjects(data || []);
       } catch (err) {
         console.error("Failed to load subjects:", err);
       }
     }
     loadSubjects();
-  }, []);
+  }, [isAuthenticated]);
 
   // Load bookmarks
   const loadBookmarks = useCallback(async () => {
+    if (!isAuthenticated) {
+      setBookmarkedIds(new Set());
+      return;
+    }
+
     try {
       const data = await listBookmarks();
       setBookmarkedIds(new Set((data || []).map((b) => b.doc_id)));
     } catch (err) {
       console.error("Failed to load bookmarks:", err);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     loadBookmarks();
@@ -105,6 +112,12 @@ export default function PublicDocumentsCatalogPage() {
   async function handleBookmarkClick(e, docId) {
     e.preventDefault();
     e.stopPropagation();
+
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
+      return;
+    }
+
     const isBookmarked = bookmarkedIds.has(docId);
     try {
       if (isBookmarked) {
@@ -145,6 +158,12 @@ export default function PublicDocumentsCatalogPage() {
   async function handleStudyWithAI(e, docId) {
     e.preventDefault();
     e.stopPropagation();
+
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
+      return;
+    }
+
     const isBookmarked = bookmarkedIds.has(docId);
     try {
       if (!isBookmarked) {
@@ -169,8 +188,7 @@ export default function PublicDocumentsCatalogPage() {
     return sub.name.trim().toUpperCase().startsWith(activeLetter.toUpperCase());
   });
 
-  return (
-    <DashboardShell>
+  const pageContent = (
       <section className="flex flex-col gap-6">
         {/* Render global hero banner ONLY if NOT browsing a subject folder */}
         {!selectedSubjectId && (
@@ -590,6 +608,13 @@ export default function PublicDocumentsCatalogPage() {
           </div>
         )}
       </section>
-    </DashboardShell>
+  );
+
+  return (
+    <main className="min-h-[calc(100vh-65px)] bg-slate-50 px-4 py-6 md:px-8">
+      <div className="mx-auto w-full max-w-6xl">
+        {pageContent}
+      </div>
+    </main>
   );
 }

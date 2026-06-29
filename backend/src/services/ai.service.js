@@ -74,6 +74,28 @@ function isImageDocument(doc) {
   return chatContextService.isImageDocument(doc);
 }
 
+function isOcrTextImageQuestion(type) {
+  return [
+    'image_text_question',
+    'image_text_transcription',
+    'image_question_answering',
+    'image_multiple_choice_question',
+    'image_summary',
+  ].includes(type);
+}
+
+function detectMultipleChoiceFromOcrChunks(chunks = []) {
+  const text = chunks
+    .map((chunk) => String(chunk.promptContent || chunk.content || ''))
+    .join('\n')
+    .slice(0, 6000);
+  const optionMatches = text.match(/(?:^|\n|\s)(?:[A-D][).:]|[1-4][).:])\s+\S+/giu) || [];
+  const hasQuestionMark = /[?？]|(?:cau hoi|question|chon|choose|select|dap an|answer)/iu.test(
+    chatContextService.normalizeComparable(text)
+  );
+  return hasQuestionMark && optionMatches.length >= 2;
+}
+
 function estimatePromptTokens({
   question,
   chunks,
@@ -369,6 +391,8 @@ function buildAssistantMetadata({
       retrievalQuery: requestContext.retrievalQuery,
       responseConstraints: requestContext.responseConstraints,
       comparisonDebug: requestContext.comparisonDebug || null,
+      imageQuestionType: requestContext.imageQuestionType || null,
+      inheritedImageTask: requestContext.inheritedImageTask || null,
     } : {}),
     ...(comparisonMetadata ? { comparison: comparisonMetadata } : {}),
   };
@@ -777,8 +801,12 @@ async function saveAssistantAnswer({
 }
 
 function isDocumentReadyForRag(doc) {
-  return doc.extraction_status === 'ready'
-    && documentTextService.isExtractedTextUseful(doc.extracted_text);
+  const extractionReady = doc.extraction_status === 'ready'
+    || doc.status === 'indexed'
+    || doc.indexing_status === 'ready';
+  if (!extractionReady) return false;
+  if (doc.document_scope === 'shared') return true;
+  return documentTextService.isExtractedTextUseful(doc.extracted_text);
 }
 
 async function canUseDocumentThroughOwnedSession({ document, session, userId }) {
@@ -831,13 +859,20 @@ async function resolveAuthorizedSessionDocuments({ sessionId, userId }) {
       excluded.inaccessible += 1;
       continue;
     }
-    if (!isDocumentReadyForRag(document)) {
+    const attachmentOrder = link.added_at || link.created_at || link.updated_at || null;
+    const documentWithSessionLink = {
+      ...document,
+      session_link_added_at: attachmentOrder,
+      session_link_id: link.id || null,
+    };
+
+    if (!isDocumentReadyForRag(documentWithSessionLink)) {
       excluded.notReady += 1;
-      excluded.notReadyIds.push(document.id);
-      excluded.notReadyDocuments.push(document);
+      excluded.notReadyIds.push(documentWithSessionLink.id);
+      excluded.notReadyDocuments.push(documentWithSessionLink);
       continue;
     }
-    documents.push(document);
+    documents.push(documentWithSessionLink);
   }
 
   return { session, documents, excluded };
@@ -986,6 +1021,7 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
     session.id,
     chatContextService.MAX_HISTORY_MESSAGES
   );
+  const inheritedImageTask = chatContextService.findInheritedImageTask(storedHistory, cleanedQuestion);
   const requestContext = chatContextService.analyzeRequest({
     question: cleanedQuestion,
     history: storedHistory,
@@ -1006,9 +1042,24 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
     documentScope.documentIds = requestContext.comparedDocumentIds;
     documentScope.reason = 'inherited_comparison_scope';
   }
-  const imageQuestionType = chatContextService.classifyImageQuestion(cleanedQuestion);
+  let imageQuestionType = chatContextService.classifyImageQuestion(cleanedQuestion)
+    || inheritedImageTask?.imageQuestionType
+    || null;
+  if (inheritedImageTask?.substantiveQuestion && imageQuestionType) {
+    requestContext.substantiveQuestion = `${inheritedImageTask.substantiveQuestion}\nClarification: ${cleanedQuestion}`;
+    requestContext.retrievalQuery = inheritedImageTask.retrievalQuery || inheritedImageTask.substantiveQuestion;
+    requestContext.responseConstraints = {
+      ...(inheritedImageTask.responseConstraints || {}),
+      ...(requestContext.responseConstraints || {}),
+    };
+    requestContext.inheritedImageTask = {
+      imageQuestionType,
+      substantiveQuestion: inheritedImageTask.substantiveQuestion,
+    };
+  }
   logImageOcrDebug('scope', {
     imageQuestionType,
+    inheritedImageTask: Boolean(inheritedImageTask),
     documentScopeType: documentScope.type,
     documentScopeReason: documentScope.reason,
     documentIds: documentScope.documentIds,
@@ -1037,6 +1088,7 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
     responseConstraints: requestContext.responseConstraints,
     documentScope,
     comparisonDebug: requestContext.comparisonDebug,
+    imageQuestionType,
   };
   const userMessage = await chatModel.addMessage(
     session.id,
@@ -1197,7 +1249,7 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
       userMessage,
     });
   }
-  if (readyTargetedImage && imageQuestionType === 'image_text_question') {
+  if (readyTargetedImage && isOcrTextImageQuestion(imageQuestionType)) {
     requestContext.imageQuestionType = imageQuestionType;
     logImageOcrDebug('ready-image-text', {
       imageQuestionType,
@@ -1285,6 +1337,25 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
     ...excluded,
     notIndexed: chunkResult.skippedDocumentIds.length,
   };
+
+  if (readyTargetedImage && isOcrTextImageQuestion(requestContext.imageQuestionType)) {
+    const targetedChunks = chunkResult.allChunks.filter((chunk) => (
+      Number(chunk.doc_id || chunk.metadata?.documentId) === Number(readyTargetedImage.id)
+    ));
+    if (!targetedChunks.length) {
+      return saveSystemAskResponse({
+        answer: buildImageOcrLimitationAnswer(cleanedQuestion),
+        answerMode,
+        compatibilityDocument,
+        documents: [readyTargetedImage],
+        excludedAttachments,
+        processingError: 'No readable OCR chunks are available for this image',
+        requestContext,
+        session,
+        userMessage,
+      });
+    }
+  }
 
   if (!chunkResult.allChunks.length) {
     const answer = compatibilityDocument
@@ -1455,6 +1526,13 @@ async function prepareAsk({ primaryDocumentId, sessionId, userId, question, disp
   if (!relevantChunks.length) {
     throw createError(400, 'No ownership-valid document context is available for this question');
   }
+  if (
+    requestContext.imageQuestionType === 'image_question_answering'
+    && detectMultipleChoiceFromOcrChunks(relevantChunks)
+  ) {
+    requestContext.imageQuestionType = 'image_multiple_choice_question';
+  }
+
   if (requestContext.imageQuestionType) {
     logImageOcrDebug('selected-context', {
       imageQuestionType: requestContext.imageQuestionType,
@@ -1553,7 +1631,7 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
   try {
     generationResult = await aiProviderService.generateAnswer({
       provider: selectedProvider,
-      question: cleanedQuestion,
+      question: requestContext.substantiveQuestion || cleanedQuestion,
       documentTitle: compatibilityDocument?.title,
       documentTitles: documents.map((doc) => doc.title),
       chunks: relevantChunks,
@@ -1666,7 +1744,7 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
   try {
     for await (const event of aiProviderService.streamAnswer({
       provider: selectedProvider,
-      question: cleanedQuestion,
+      question: requestContext.substantiveQuestion || cleanedQuestion,
       documentTitle: compatibilityDocument?.title,
       documentTitles: documents.map((doc) => doc.title),
       chunks: relevantChunks,

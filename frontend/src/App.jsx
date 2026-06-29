@@ -136,19 +136,11 @@ function AppRoutes() {
         />
         <Route
           path="/public-documents"
-          element={
-            <ProtectedRoute>
-              <PublicDocumentsCatalogPage />
-            </ProtectedRoute>
-          }
+          element={<PublicDocumentsCatalogPage />}
         />
         <Route
           path="/public-documents/:id"
-          element={
-            <ProtectedRoute>
-              <PublicDocumentDetailPage />
-            </ProtectedRoute>
-          }
+          element={<PublicDocumentDetailPage />}
         />
         <Route
           path="/admin"

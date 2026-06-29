@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import DashboardShell from "../components/dashboard/DashboardShell.jsx";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import {
   getPublicDocument,
   getPublicDocumentSignedUrl,
@@ -8,12 +7,15 @@ import {
   addDocumentComment
 } from "../services/documentApi.js";
 import { addBookmark, removeBookmark, listBookmarks } from "../services/bookmarkApi.js";
+import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 
 export default function PublicDocumentDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { addToast } = useToast();
+  const { isAuthenticated } = useAuth();
 
   const [doc, setDoc] = useState(null);
   const [comments, setComments] = useState([]);
@@ -77,13 +79,18 @@ export default function PublicDocumentDetailPage() {
 
   // Load bookmarks
   const loadBookmarks = useCallback(async () => {
+    if (!isAuthenticated) {
+      setBookmarkedIds(new Set());
+      return;
+    }
+
     try {
       const data = await listBookmarks();
       setBookmarkedIds(new Set((data || []).map((b) => b.doc_id)));
     } catch (err) {
       console.error("Failed to load bookmarks:", err);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     loadBookmarks();
@@ -108,6 +115,11 @@ export default function PublicDocumentDetailPage() {
 
   // Toggle bookmark
   async function handleBookmarkToggle() {
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
+      return;
+    }
+
     setIsBookmarking(true);
     try {
       if (isBookmarked) {
@@ -148,6 +160,11 @@ export default function PublicDocumentDetailPage() {
 
   // Study with AI
   async function handleStudyWithAI() {
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
+      return;
+    }
+
     try {
       if (!isBookmarked) {
         await addBookmark(id);
@@ -201,6 +218,11 @@ export default function PublicDocumentDetailPage() {
     e.preventDefault();
     if (!newComment.trim()) return;
 
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
+      return;
+    }
+
     setIsSubmittingReview(true);
     try {
       const added = await addDocumentComment(id, newComment, newRating);
@@ -240,22 +262,29 @@ export default function PublicDocumentDetailPage() {
     );
   }
 
-  if (isLoading || !doc) {
+  function renderPage(content) {
     return (
-      <DashboardShell>
+      <main className="min-h-[calc(100vh-65px)] bg-slate-50 px-4 py-6 md:px-8">
+        <div className="mx-auto w-full max-w-6xl">
+          {content}
+        </div>
+      </main>
+    );
+  }
+
+  if (isLoading || !doc) {
+    return renderPage(
         <div className="flex min-h-[400px] flex-col items-center justify-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-650" />
           <p className="text-sm font-semibold text-slate-500">Loading document workspace...</p>
         </div>
-      </DashboardShell>
     );
   }
 
   const documentType = doc.cloud_files?.mime_type || "";
   const isPdf = documentType.includes("pdf") || doc.title.toLowerCase().endsWith(".pdf");
 
-  return (
-    <DashboardShell>
+  return renderPage(
       <section className="flex flex-col gap-6">
         {/* Back Link */}
         <div className="flex items-center justify-between">
@@ -488,6 +517,5 @@ export default function PublicDocumentDetailPage() {
           </div>
         </div>
       </section>
-    </DashboardShell>
   );
 }

@@ -214,6 +214,7 @@ export default function WorkspacePage() {
   const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pdfLoadError, setPdfLoadError] = useState("");
+  const [chatCollapsed, setChatCollapsed] = useState(false);
 
 
   const selectedDocument = useMemo(
@@ -1543,12 +1544,34 @@ export default function WorkspacePage() {
           zoom={zoom}
         />
 
-        <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} />
+        {!chatCollapsed ? <WorkspaceResizeHandle label="Resize AI chat panel" onMouseDown={onResizeChat} /> : null}
 
+        {chatCollapsed ? (
+          <div className="relative shrink-0" style={{ width: 0 }}>
+            <button
+              aria-label="Expand AI chat panel"
+              aria-expanded="false"
+              className="absolute right-0 top-1/2 z-30 flex h-9 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-slate-600 shadow-sm transition hover:border-[#5b4fd4] hover:bg-indigo-50 hover:text-[#5b4fd4]"
+              onClick={() => setChatCollapsed(false)}
+              type="button"
+            >
+              {"<"}
+            </button>
+          </div>
+        ) : (
         <div
-          className="flex h-full flex-col min-h-0 shrink-0 gap-2"
+          className="relative flex h-full min-h-0 shrink-0 flex-col gap-2 transition-[width,opacity] duration-200 ease-out"
           style={{ width: chatWidth }}
         >
+          <button
+            aria-label="Collapse AI chat panel"
+            aria-expanded="true"
+            className="absolute -left-[13px] top-1/2 z-30 flex h-9 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md border border-[#c7c4d7] bg-white text-sm font-bold text-slate-600 shadow-sm transition hover:border-[#5b4fd4] hover:bg-indigo-50 hover:text-[#5b4fd4]"
+            onClick={() => setChatCollapsed(true)}
+            type="button"
+          >
+            {">"}
+          </button>
           <div className="flex shrink-0 items-center justify-start border border-slate-200/60 bg-slate-50/80 p-1 rounded-xl gap-1">
             <button
               onClick={() => setRightActiveTab("chat")}
@@ -1640,6 +1663,7 @@ export default function WorkspacePage() {
             </div>
           </div>
         </div>
+        )}
       </main>
     </div>
   );

@@ -87,7 +87,10 @@ function ActionButton({ children, disabled = false, onClick, tone = "default" })
     <button
       className={`rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer transition disabled:cursor-not-allowed disabled:opacity-60 ${tones[tone]}`}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(event);
+      }}
       type="button"
     >
       {children}
@@ -106,7 +109,10 @@ function VisibilityToggleButton({ doc, disabled, onClick }) {
     <button
       className={`group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-black ring-1 transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${statusClass}`}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(event);
+      }}
       title={isPublic ? "Click to make this document private" : "Click to publish this document"}
       type="button"
     >
@@ -163,7 +169,7 @@ export default function DocumentsPage() {
   function handlePreview(doc) {
     setActionError("");
     cacheWorkspaceState({ selectedId: doc.id });
-    navigate("/workspace");
+    navigate(`/workspace/documents/${doc.id}`);
   }
 
   async function handleDownload(doc) {
@@ -310,8 +316,17 @@ export default function DocumentsPage() {
               const isOwner = canManageDocument(doc, user);
               return (
                 <article
-                  className="rounded-2xl border border-[#e5e9ef] bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:shadow-lg dark:hover:shadow-black/20"
+                  className="cursor-pointer rounded-2xl border border-[#e5e9ef] bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:shadow-lg dark:hover:shadow-black/20"
                   key={doc.id}
+                  onClick={() => handlePreview(doc)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handlePreview(doc);
+                    }
+                  }}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-start gap-4">

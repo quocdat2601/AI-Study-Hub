@@ -143,15 +143,40 @@ function buildRagPrompts({
       'Do not cite the overview itself. The application only cites real chunks.',
     ].join('\n')
     : '';
-  const imageInstruction = imageQuestionType === 'image_text_question'
+  const imageInstruction = imageQuestionType === 'image_multiple_choice_question'
     ? [
-      'The following evidence is OCR-extracted text from the user\'s attached image.',
-      'Answer what text appears in the image using this OCR evidence.',
-      'Do not claim that you cannot inspect the image.',
-      'If OCR text is incomplete, state only which parts are unclear.',
-      'Do not describe visual objects, layout, charts, or non-text content unless the OCR chunks explicitly contain that text.',
+      'The following evidence is OCR-extracted text from the user\'s selected image.',
+      'It contains a multiple-choice question.',
+      'Read the question and all answer choices.',
+      'Choose the best answer and explain briefly.',
+      'If an OCR segment is unclear, identify the unclear segment instead of inventing it.',
+      'Do not ask the user to provide the image or question again.',
+      mode === 'document_only'
+        ? 'In document_only mode, answer only if the OCR evidence contains enough information; otherwise say the evidence is insufficient.'
+        : 'In hybrid mode, you may use general study knowledge to choose among the OCR answer choices, but do not invent missing OCR text.',
     ].join('\n')
-    : imageQuestionType === 'image_visual_question'
+    : imageQuestionType === 'image_question_answering'
+      ? [
+        'The following evidence is OCR-extracted text from the user\'s selected image.',
+        'Answer the question contained in the OCR evidence and explain briefly.',
+        'Do not ask what question the user wants answered if the OCR evidence already contains a readable question.',
+        'Do not claim that you cannot inspect the image when OCR evidence is present.',
+      ].join('\n')
+      : imageQuestionType === 'image_text_transcription'
+        ? [
+          'The following evidence is OCR-extracted text from the user\'s attached image.',
+          'Answer what text appears in the image using this OCR evidence.',
+          'Do not claim that you cannot inspect the image.',
+          'If OCR text is incomplete, state only which parts are unclear.',
+          'Do not describe visual objects, layout, charts, or non-text content unless the OCR chunks explicitly contain that text.',
+        ].join('\n')
+        : imageQuestionType === 'image_summary'
+          ? [
+            'The following evidence is OCR-extracted text from the user\'s selected image.',
+            'Summarize the OCR text from the image. Do not describe visual objects or layout unless the OCR text states them.',
+            'Do not claim that the image is inaccessible when OCR evidence is present.',
+          ].join('\n')
+          : imageQuestionType === 'image_visual_question'
       ? [
         'This is a visual-image question, but this endpoint only receives text chunks.',
         'Do not pretend to inspect the image visually.',
@@ -179,7 +204,7 @@ function buildRagPrompts({
     retrievalQuery ? `Current retrieval topic (do not broaden it):\n${retrievalQuery}` : '',
     `Selected document titles:\n${selectedTitles.join('\n') || 'Untitled document'}`,
     overviewContext ? `Persisted document overview context:\n${overviewContext}` : '',
-    imageQuestionType === 'image_text_question'
+    imageQuestionType && imageQuestionType !== 'image_visual_question'
       ? `Retrieved OCR text chunks:\n${context || 'No OCR text chunks were available.'}`
       : `Retrieved source chunks:\n${context || 'No source chunks were available.'}`,
     `Current user question:\n${question}`,

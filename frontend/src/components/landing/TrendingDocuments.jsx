@@ -84,10 +84,10 @@ export default function TrendingDocuments() {
               Popular resources
             </p>
             <h2 className="m-0 text-3xl font-extrabold tracking-tight text-slate-900 md:text-[2rem]">
-              Trending at your university
+              Most viewed study documents
             </h2>
             <p className="mb-0 mt-2 text-base leading-relaxed text-slate-500">
-              The most viewed public documents from students on campus right now.
+              Public course notes and study files students are opening most right now.
             </p>
           </div>
 
@@ -110,7 +110,7 @@ export default function TrendingDocuments() {
             </button>
             <Link
               className="ml-1 inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 no-underline transition hover:text-indigo-800"
-              to="/documents"
+              to="/public-documents"
             >
               View all
               <span aria-hidden="true">-&gt;</span>
@@ -132,7 +132,7 @@ export default function TrendingDocuments() {
             </p>
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white no-underline transition hover:bg-indigo-700"
-              to="/documents"
+              to="/public-documents"
             >
               Browse documents
             </Link>
