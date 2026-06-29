@@ -3,7 +3,7 @@ import { useWorkspace } from "../../contexts/WorkspaceContext.jsx";
 import WorkspacePDFViewer from "./WorkspacePDFViewer.jsx";
 import { DownloadIcon, FileTextIcon } from "./WorkspaceIcons.jsx";
 
-function ViewToggle({ viewMode, setViewMode }) {
+function ViewToggle({ viewMode, setViewMode, isPdf, isDocx }) {
   return (
     <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
       <button
@@ -15,7 +15,7 @@ function ViewToggle({ viewMode, setViewMode }) {
         onClick={() => setViewMode("pdf")}
         type="button"
       >
-        PDF
+        {isPdf ? "PDF" : (isDocx ? "Document" : "Viewer")}
       </button>
       <button
         className={`cursor-pointer rounded-md border-0 px-3 py-1.5 text-[12px] font-semibold transition ${
@@ -68,13 +68,18 @@ export default function WorkspaceDocumentViewer({ className = "" }) {
     link.click();
   }
 
-  const showPdfControls = viewMode === "pdf" && selectedDocument?.type === "PDF";
+  const docMime = selectedDocument?.cloud_files?.mime_type || selectedDocument?.mime_type || "";
+  const docTitle = selectedDocument?.title || selectedDocument?.name || "";
+  const isPdf = selectedDocument?.type === "PDF" || docMime.includes("pdf") || docTitle.toLowerCase().endsWith(".pdf");
+  const isDocx = selectedDocument?.type === "DOCX" || docMime.includes("word") || docMime.includes("msword") || docTitle.toLowerCase().endsWith(".docx") || docTitle.toLowerCase().endsWith(".doc");
+
+  const showPdfControls = viewMode === "pdf" && isPdf;
 
   return (
     <section className={`flex flex-col overflow-hidden ${className}`}>
       <header className="shrink-0 rounded-t-xl border border-b-0 border-slate-200/80 bg-white">
         <div className="flex h-14 items-center gap-3 px-4">
-          <ViewToggle setViewMode={setViewMode} viewMode={viewMode} />
+          <ViewToggle setViewMode={setViewMode} viewMode={viewMode} isPdf={isPdf} isDocx={isDocx} />
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <FileTextIcon className="shrink-0 text-indigo-600" size={15} />
