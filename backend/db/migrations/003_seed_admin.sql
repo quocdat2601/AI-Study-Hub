@@ -2,10 +2,11 @@
 -- Generate hash locally:
 -- npm run hash:password -- YourAdminPassword123
 
-INSERT INTO users (email, password_hash, role)
+INSERT INTO users (email, password_hash, role, status)
 VALUES (
   'admin@aistudyhub.com',
-  'REPLACE_WITH_BCRYPT_HASH',
-  'admin'
+  '$2b$10$vtI3MwumK6cAXLORXQk6juXHIcjLieISiDqhTiaIG5/g5HCX92so2',
+  'admin',
+  'active'
 )
 ON CONFLICT (email) DO NOTHING;

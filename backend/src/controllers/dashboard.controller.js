@@ -1,9 +1,13 @@
-async function placeholder(req, res, next) {
+const dashboardService = require('../services/dashboard.service');
+
+async function getDashboardData(req, res, next) {
   try {
-    res.json({ message: 'dashboard module placeholder' });
+    res.json(await dashboardService.getDashboardData(req.user.id));
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { placeholder };
+module.exports = {
+  getDashboardData
+};

@@ -1,9 +1,16 @@
-async function placeholder(req, res, next) {
+const subjectService = require('../services/subject.service');
+
+/**
+ * List all subjects
+ */
+async function getAllSubjects(req, res, next) {
   try {
-    res.json({ message: 'subject module placeholder' });
+    res.json(await subjectService.listSubjects());
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { placeholder };
+module.exports = {
+  getAllSubjects
+};

@@ -1,0 +1,249 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext.jsx";
+import { supabase } from "../lib/supabase.js";
+import { BellIcon } from "./dashboard/DashboardIcons.jsx";
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "../services/notificationApi.js";
+
+function formatNotificationTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getNotificationLabel(type) {
+  if (type === "share") return "Document shared";
+  if (type === "community_reply") return "New reply";
+  if (type === "community_upvote") return "Post upvoted";
+  if (type === "community_accepted") return "Answer accepted";
+  return "Notification";
+}
+
+export default function NotificationBell() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const panelRef = useRef(null);
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadNotifications = useCallback(async () => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const data = await listNotifications();
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unreadCount || 0);
+    } catch (err) {
+      setNotifications([]);
+      setUnreadCount(0);
+      setError(err.response?.data?.error || "Could not load notifications.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNotifications();
+    const intervalId = window.setInterval(loadNotifications, 30000);
+    return () => window.clearInterval(intervalId);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const channel = supabase
+      .channel(`notifications-user-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadNotifications, user?.id]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    function handleClickOutside(event) {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  async function handleOpenPanel() {
+    const nextOpen = !isOpen;
+    setIsOpen(nextOpen);
+    if (nextOpen) await loadNotifications();
+  }
+
+  async function handleMarkAllRead() {
+    try {
+      await markAllNotificationsRead();
+      setNotifications((current) =>
+        current.map((item) => ({ ...item, is_read: true }))
+      );
+      setUnreadCount(0);
+    } catch (err) {
+      setError(err.response?.data?.error || "Could not mark all as read.");
+    }
+  }
+
+  async function handleNotificationClick(notification) {
+    try {
+      if (!notification.is_read) {
+        await markNotificationRead(notification.id);
+        setNotifications((current) =>
+          current.map((item) =>
+            item.id === notification.id ? { ...item, is_read: true } : item
+          )
+        );
+        setUnreadCount((count) => Math.max(0, count - 1));
+      }
+    } catch {
+      // Still navigate even if mark-read fails.
+    }
+
+    setIsOpen(false);
+    if (notification.ref_post_id) {
+      navigate(`/community/posts/${notification.ref_post_id}`);
+    } else if (
+      notification.type === "community_reply" ||
+      notification.type === "community_upvote" ||
+      notification.type === "community_accepted" ||
+      notification.message?.toLowerCase().includes("reply") ||
+      notification.message?.toLowerCase().includes("post")
+    ) {
+      navigate("/community");
+    } else {
+      navigate("/documents");
+    }
+  }
+
+  return (
+    <div className="relative" ref={panelRef}>
+      <button
+        className="relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-indigo-400"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+        onClick={handleOpenPanel}
+        type="button"
+      >
+        <BellIcon className="h-5 w-5" />
+
+        {unreadCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ef4444] px-1 text-[10px] font-bold text-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        ) : null}
+      </button>
+
+      {isOpen ? (
+        <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/40">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+            <div>
+              <strong className="text-sm text-slate-900 dark:text-slate-100">Notifications</strong>
+              {unreadCount > 0 ? (
+                <p className="m-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">{unreadCount} unread</p>
+              ) : null}
+            </div>
+            {unreadCount > 0 ? (
+              <button
+                className="cursor-pointer border-0 bg-transparent text-xs font-bold text-indigo-600 dark:text-indigo-400"
+                onClick={handleMarkAllRead}
+                type="button"
+              >
+                Mark all read
+              </button>
+            ) : null}
+          </div>
+
+          <div className="max-h-[320px] overflow-y-auto">
+            {isLoading ? (
+              <p className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">Loading...</p>
+            ) : error ? (
+              <p className="px-4 py-6 text-sm font-bold text-red-600 dark:text-red-300">{error}</p>
+            ) : notifications.length ? (
+              <ul className="m-0 list-none p-0">
+                {notifications.map((notification) => (
+                  <li key={notification.id}>
+                    <button
+                      className={`flex w-full cursor-pointer items-start gap-3 border-0 px-4 py-3 text-left transition hover:bg-indigo-50 dark:hover:bg-slate-800 ${notification.is_read ? "bg-white dark:bg-slate-900" : "bg-indigo-50 dark:bg-indigo-950/30"}`}
+                      onClick={() => handleNotificationClick(notification)}
+                      type="button"
+                    >
+                      <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-indigo-100 text-xs font-black text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300">
+                        {notification.type === "share" ? "S"
+                          : notification.type === "community_reply" ? "R"
+                          : notification.type === "community_upvote" ? "▲"
+                          : notification.type === "community_accepted" ? "✓"
+                          : "N"}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block text-sm text-slate-900 dark:text-slate-100">
+                          {getNotificationLabel(notification.type)}
+                        </strong>
+                        <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
+                          {notification.message}
+                        </span>
+                        <span className="mt-1 block text-xs text-slate-400 dark:text-slate-500">
+                          {formatNotificationTime(notification.created_at)}
+                        </span>
+                      </span>
+                      {!notification.is_read ? (
+                        <span className="mt-2 h-2 w-2 flex-none rounded-full bg-indigo-600 dark:bg-indigo-400" />
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="px-4 py-8 text-center">
+                <p className="m-0 text-sm font-bold text-slate-900 dark:text-slate-100">No notifications yet</p>
+                <p className="m-0 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  You will see alerts here when someone shares a document with you.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

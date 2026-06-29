@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   id                  SERIAL PRIMARY KEY,
   email               VARCHAR(255) NOT NULL UNIQUE,
   password_hash       VARCHAR(255) NOT NULL,
-  role                VARCHAR(10)  NOT NULL DEFAULT 'student'
-                        CHECK (role IN ('student', 'admin')),
+  role                VARCHAR(10)  NOT NULL DEFAULT 'user'
+                        CHECK (role IN ('user', 'admin')),
   status              VARCHAR(10)  NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active', 'disabled')),
   storage_limit_bytes BIGINT NOT NULL DEFAULT 524288000,

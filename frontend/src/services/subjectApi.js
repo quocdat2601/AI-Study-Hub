@@ -1,0 +1,13 @@
+import api from "./api.js";
+
+export async function listSubjects() {
+  const response = await api.get("/subjects");
+  return response.data;
+}
+
+export async function listPublicSubjects() {
+  const response = await api.get("/public/community/subjects", {
+    suppressAuthRedirect: true,
+  });
+  return response.data;
+}
