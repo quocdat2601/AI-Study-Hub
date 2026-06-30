@@ -87,7 +87,7 @@ function getRedirectPath(section) {
 function SuggestionCard({ item, badge }) {
   return (
     <Link
-      to="/documents"
+      to={`/public-documents/${item.id}`}
       className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 no-underline transition hover:border-indigo-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-indigo-600"
     >
       <div className="flex items-start gap-2">

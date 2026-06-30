@@ -99,4 +99,16 @@ router.get('/recommendations', verifyToken, onboardingController.getRecommendati
 router.get('/', verifyToken, onboardingController.getStatus);
 router.put('/', verifyToken, onboardingController.save);
 
+/**
+ * @swagger
+ * /api/onboarding/skip:
+ *   post:
+ *     summary: Skip onboarding (mark as onboarded without preferences)
+ *     tags: [Onboarding]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Skipped }
+ */
+router.post('/skip', verifyToken, onboardingController.skip);
+
 module.exports = router;
