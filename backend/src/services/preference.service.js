@@ -101,6 +101,23 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
   };
 }
 
+// Bỏ qua onboarding: chỉ đánh dấu đã onboard, không lưu sở thích → gợi ý rơi về trending
+async function skipOnboarding(userId) {
+  const prefs = await preferenceModel.upsertPreferences(userId, {
+    majorId: null,
+    goal: null,
+    onboardedAt: new Date().toISOString(),
+  });
+
+  activityService.log({
+    userId,
+    action: 'onboarding.skip',
+    metadata: {},
+  });
+
+  return { onboarded: Boolean(prefs.onboarded_at) };
+}
+
 async function getRecommendations(userId, limit = 12) {
   const matches = await preferenceModel.recommendHybrid(userId, limit);
 
@@ -146,5 +163,6 @@ module.exports = {
   getSubjectsByMajor,
   getStatus,
   saveOnboarding,
+  skipOnboarding,
   getRecommendations,
 };

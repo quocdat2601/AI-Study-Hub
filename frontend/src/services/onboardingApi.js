@@ -25,6 +25,11 @@ export async function saveOnboarding({ majorId, goal, subjects, topics }) {
   return response.data;
 }
 
+export async function skipOnboarding() {
+  const response = await api.post("/onboarding/skip");
+  return response.data;
+}
+
 export async function getRecommendations(limit = 12) {
   const response = await api.get("/onboarding/recommendations", { params: { limit } });
   return response.data;
