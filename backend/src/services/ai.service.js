@@ -14,6 +14,9 @@ const ragRerankService = require('./rag-rerank.service');
 const chatContextService = require('./chat-context.service');
 const documentOverviewModel = require('../models/document-overview.model');
 const documentOverviewService = require('./document-overview.service');
+const documentRoadmapModel = require('../models/document-roadmap.model');
+const documentRoadmapProgressModel = require('../models/document-roadmap-progress.model');
+const documentRoadmapService = require('./document-roadmap.service');
 const { getDocumentOverviewConfig } = require('../config/document-overview');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
@@ -218,8 +221,13 @@ async function processDocument({
   }
 
   await documentOverviewService.markStaleBestEffort(doc.id);
+  await documentRoadmapService.markStaleBestEffort(doc.id);
   const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunksToSave);
   const overview = await documentOverviewService.generateOverviewBestEffort({
+    document: savedDoc,
+    chunks: savedChunks,
+  });
+  const roadmap = await documentRoadmapService.generateRoadmapBestEffort({
     document: savedDoc,
     chunks: savedChunks,
   });
@@ -229,6 +237,7 @@ async function processDocument({
     chunkCount: savedChunks.length,
     status: 'ready',
     overviewStatus: overview?.status || null,
+    roadmapStatus: roadmap?.status || null,
   };
 }
 
@@ -1885,9 +1894,74 @@ async function retryDocumentOverview({ id, userId }) {
   };
 }
 
+async function resolveRoadmapDocument({ id, userId }) {
+  const docId = normalizeNumericId(id, 'documentId');
+  let doc = await documentService.canUseDocumentInChat(userId, docId);
+  if (!doc) {
+    const activeDoc = await documentModel.findActiveById(docId);
+    if (activeDoc?.document_scope === 'session' && String(activeDoc.user_id) === String(userId)) {
+      doc = activeDoc;
+    }
+  }
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+  return doc;
+}
+
+async function getDocumentRoadmap({ id, userId }) {
+  const doc = await resolveRoadmapDocument({ id, userId });
+  const roadmap = await documentRoadmapModel.findByDocumentId(doc.id);
+  const completedSteps = roadmap
+    ? await documentRoadmapProgressModel.findByRoadmapAndUser(roadmap.id, userId)
+    : [];
+  return { roadmap, completedSteps };
+}
+
+async function retryDocumentRoadmap({ id, userId }) {
+  const doc = await resolveRoadmapDocument({ id, userId });
+  return {
+    roadmap: await documentRoadmapService.retryRoadmap({ document: doc }),
+  };
+}
+
+async function toggleRoadmapStep({ id, userId, stepOrder, completed }) {
+  const doc = await resolveRoadmapDocument({ id, userId });
+  const normalizedStepOrder = normalizeNumericId(stepOrder, 'stepOrder');
+  const roadmap = await documentRoadmapModel.findByDocumentId(doc.id);
+  if (!roadmap) {
+    throw createError(404, 'Roadmap not found');
+  }
+  const stepExists = (roadmap.steps || []).some(
+    (step) => Number(step.order) === normalizedStepOrder
+  );
+  if (!stepExists) {
+    throw createError(400, 'stepOrder is invalid');
+  }
+  if (completed) {
+    await documentRoadmapProgressModel.markStepComplete({
+      roadmapId: roadmap.id,
+      userId,
+      stepOrder: normalizedStepOrder,
+    });
+  } else {
+    await documentRoadmapProgressModel.markStepIncomplete({
+      roadmapId: roadmap.id,
+      userId,
+      stepOrder: normalizedStepOrder,
+    });
+  }
+  return {
+    completedSteps: await documentRoadmapProgressModel.findByRoadmapAndUser(roadmap.id, userId),
+  };
+}
+
 module.exports = {
   processDocument,
   retryDocumentOverview,
+  getDocumentRoadmap,
+  retryDocumentRoadmap,
+  toggleRoadmapStep,
   askDocument,
   askDocumentStream,
   askSession,

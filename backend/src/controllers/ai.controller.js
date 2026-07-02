@@ -26,6 +26,41 @@ async function retryDocumentOverview(req, res, next) {
   }
 }
 
+async function getDocumentRoadmap(req, res, next) {
+  try {
+    res.json(await aiService.getDocumentRoadmap({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function retryDocumentRoadmap(req, res, next) {
+  try {
+    res.json(await aiService.retryDocumentRoadmap({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function toggleRoadmapStep(req, res, next) {
+  try {
+    res.json(await aiService.toggleRoadmapStep({
+      id: req.params.id,
+      userId: req.user.id,
+      stepOrder: req.params.stepOrder,
+      completed: req.body?.completed === true,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function askDocument(req, res, next) {
   try {
     res.json(await aiService.askDocument({
@@ -177,6 +212,9 @@ async function deleteMaterial(req, res, next) {
 module.exports = {
   processDocument,
   retryDocumentOverview,
+  getDocumentRoadmap,
+  retryDocumentRoadmap,
+  toggleRoadmapStep,
   askDocument,
   askDocumentStream,
   askSession,

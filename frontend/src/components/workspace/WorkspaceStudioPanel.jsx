@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { getStudyMaterials, generateStudyMaterial, deleteStudyMaterial } from "../../services/aiApi.js";
 import { SparklesIcon, ClockIcon } from "./WorkspaceIcons.jsx";
+import WorkspaceRoadmapView from "./WorkspaceRoadmapView.jsx";
 
 // Custom icons for the Studio panel
 function FlashcardIcon({ className, size = 20 }) {
@@ -160,6 +161,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [studioTab, setStudioTab] = useState("materials"); // "materials" | "roadmap"
 
   // Flashcards state
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -1168,7 +1170,34 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
         </div>
       )}
 
-      {activeMaterial ? renderActiveMaterial() : renderDashboard()}
+      {!activeMaterial && (
+        <div className="px-4 pt-4">
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+            <button
+              onClick={() => setStudioTab("materials")}
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${studioTab === "materials"
+                ? "bg-white text-indigo-600 shadow-sm"
+                : "bg-transparent text-slate-500 hover:text-slate-800"
+                }`}
+            >
+              Học liệu
+            </button>
+            <button
+              onClick={() => setStudioTab("roadmap")}
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${studioTab === "roadmap"
+                ? "bg-white text-indigo-600 shadow-sm"
+                : "bg-transparent text-slate-500 hover:text-slate-800"
+                }`}
+            >
+              Lộ trình học
+            </button>
+          </div>
+        </div>
+      )}
+
+      {studioTab === "roadmap" && !activeMaterial
+        ? <WorkspaceRoadmapView selectedDocument={selectedDocument} />
+        : (activeMaterial ? renderActiveMaterial() : renderDashboard())}
 
       {confirmDeleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
