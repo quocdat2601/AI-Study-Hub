@@ -41,6 +41,14 @@ async function save(req, res, next) {
   }
 }
 
+async function skip(req, res, next) {
+  try {
+    res.json(await preferenceService.skipOnboarding(req.user.id));
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getRecommendations(req, res, next) {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 24);
@@ -56,5 +64,6 @@ module.exports = {
   getSubjects,
   getStatus,
   save,
+  skip,
   getRecommendations,
 };
