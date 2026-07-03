@@ -3,6 +3,12 @@ const aiProviderService = require('../services/ai-provider.service');
 const aiUsageService = require('../services/ai-usage.service');
 const studyMaterialService = require('../services/study-material.service');
 
+/**
+ * Initiates document text extraction and AI abstract summary generation processing.
+ * @param {object} req - Request parameters containing the document ID.
+ * @param {object} res - Response JSON returning processing status.
+ * @param {Function} next - Error middleware callback.
+ */
 async function processDocument(req, res, next) {
   try {
     res.json(await aiService.processDocument({
@@ -15,6 +21,12 @@ async function processDocument(req, res, next) {
   }
 }
 
+/**
+ * Re-triggers document metadata/overview generation in case of failures.
+ * @param {object} req - Request containing target document ID.
+ * @param {object} res - Response confirmation.
+ * @param {Function} next - Error middleware callback.
+ */
 async function retryDocumentOverview(req, res, next) {
   try {
     res.json(await aiService.retryDocumentOverview({
@@ -26,6 +38,12 @@ async function retryDocumentOverview(req, res, next) {
   }
 }
 
+/**
+ * Submits queries against a singular private document source index.
+ * @param {object} req - Request containing document ID and question payload.
+ * @param {object} res - Response returning complete AI response text.
+ * @param {Function} next - Error middleware callback.
+ */
 async function askDocument(req, res, next) {
   try {
     res.json(await aiService.askDocument({
@@ -42,6 +60,12 @@ async function askDocument(req, res, next) {
   }
 }
 
+/**
+ * Submits queries against a full workspace chat session (multiple documents RAG contexts).
+ * @param {object} req - Request containing session ID and question text.
+ * @param {object} res - Response returning complete AI response text.
+ * @param {Function} next - Error middleware callback.
+ */
 async function askSession(req, res, next) {
   try {
     res.json(await aiService.askSession({
@@ -58,6 +82,11 @@ async function askSession(req, res, next) {
   }
 }
 
+/**
+ * Submits queries against a singular document source returning a Server-Sent Events (SSE) stream.
+ * @param {object} req - Request containing query context details.
+ * @param {object} res - Event stream output writer.
+ */
 async function askDocumentStream(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -89,6 +118,11 @@ async function askDocumentStream(req, res) {
   }
 }
 
+/**
+ * Submits queries against a chat session context returning a Server-Sent Events (SSE) stream.
+ * @param {object} req - Request containing session context and question.
+ * @param {object} res - Event stream output writer.
+ */
 async function askSessionStream(req, res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -120,6 +154,12 @@ async function askSessionStream(req, res) {
   }
 }
 
+/**
+ * Fetches token metrics usage limits.
+ * @param {object} req - Request containing selected model name.
+ * @param {object} res - Response returning limits metrics mapping.
+ * @param {Function} next - Error middleware callback.
+ */
 async function getUsage(req, res, next) {
   try {
     res.json(await aiUsageService.getUsage({
@@ -131,6 +171,12 @@ async function getUsage(req, res, next) {
   }
 }
 
+/**
+ * Retrieves availability states of both Google Gemini and local Ollama model engines.
+ * @param {object} req - Request parameters context.
+ * @param {object} res - Response status maps.
+ * @param {Function} next - Error middleware callback.
+ */
 async function getModelStatus(req, res, next) {
   try {
     res.json(await aiProviderService.getModelStatus());
@@ -139,6 +185,12 @@ async function getModelStatus(req, res, next) {
   }
 }
 
+/**
+ * Fetches generated workspace study materials lists (flashcards, quizzes, mindmaps).
+ * @param {object} req - Request query containing document ID.
+ * @param {object} res - Response list.
+ * @param {Function} next - Error middleware callback.
+ */
 async function getMaterials(req, res, next) {
   try {
     res.json(await studyMaterialService.getMaterials({
@@ -150,6 +202,12 @@ async function getMaterials(req, res, next) {
   }
 }
 
+/**
+ * Requests AI study material generation for workspace index nodes.
+ * @param {object} req - Request body containing material type and target provider model.
+ * @param {object} res - Response returning generated material.
+ * @param {Function} next - Error middleware callback.
+ */
 async function generateMaterial(req, res, next) {
   try {
     res.json(await studyMaterialService.generateMaterial({
@@ -163,6 +221,12 @@ async function generateMaterial(req, res, next) {
   }
 }
 
+/**
+ * Deletes a previously generated study material record.
+ * @param {object} req - Request parameters containing target material ID.
+ * @param {object} res - Response confirmation.
+ * @param {Function} next - Error middleware callback.
+ */
 async function deleteMaterial(req, res, next) {
   try {
     res.json(await studyMaterialService.deleteMaterial({

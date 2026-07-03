@@ -8,12 +8,27 @@ const communityService = require('./community.service');
 const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
 
+// =========================================================================
+// SECTION: ADMIN SERVICES & MONITORING
+// Handles administrative operations, user profile moderations, platform-wide
+// storage limit controls, metrics overview, and files monitoring.
+// =========================================================================
+
+/**
+ * Normalizes date timestamps to the absolute start of day.
+ * @param {string|Date} date - Input date object.
+ * @returns {Date} Date instance set to midnight.
+ */
 function startOfDay(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
   return copy;
 }
 
+/**
+ * Generates dates array spanning the last 7 calendar days.
+ * @returns {Array<object>} Time-series arrays with zero values.
+ */
 function buildLastSevenDays() {
   const today = startOfDay(new Date());
   return Array.from({ length: 7 }, (_, index) => {
@@ -27,6 +42,12 @@ function buildLastSevenDays() {
   });
 }
 
+/**
+ * Aggregates logs counters grouped by date key.
+ * @param {Array<object>} rows - Logs datasets.
+ * @param {string} [dateField] - Date key field descriptor (default 'created_at').
+ * @returns {Array<object>} Grouped time-series counters array.
+ */
 function countByDay(rows, dateField = 'created_at') {
   const days = buildLastSevenDays();
   const byKey = new Map(days.map((day) => [day.key, day]));
@@ -40,6 +61,11 @@ function countByDay(rows, dateField = 'created_at') {
   return days;
 }
 
+/**
+ * Formats custom action triggers into user-friendly description messages.
+ * @param {object} log - Raw log database object.
+ * @returns {object} Formatted log.
+ */
 function formatActivity(log) {
   const actionLabels = {
     'admin.user.update': 'User account updated',
@@ -61,11 +87,19 @@ function formatActivity(log) {
   };
 }
 
+/**
+ * Lists all registered users mapped to public profiles interfaces.
+ * @returns {Promise<Array<object>>} Users list.
+ */
 async function listUsers() {
   const users = await userModel.findAll();
   return users.map(publicUser);
 }
 
+/**
+ * Collects total platform-wide statistics for the admin dashboard overview charts.
+ * @returns {Promise<object>} Merged metrics counts, chart arrays, and popular subjects data.
+ */
 async function getOverview() {
   const since = buildLastSevenDays()[0].key;
   const sinceDate = new Date(`${since}T00:00:00.000Z`);
@@ -128,6 +162,16 @@ async function getOverview() {
   };
 }
 
+/**
+ * Mutates user details (status, storage allocations) with owner validation checks.
+ * @param {object} params
+ * @param {number|string} params.targetUserId - Target user profile ID.
+ * @param {object} params.updates - Fields values to mutate.
+ * @param {string} [params.updates.status] - New profile status (active/disabled).
+ * @param {number} [params.updates.storage_limit_bytes] - New disk storage quota size.
+ * @param {string|number} params.currentUserId - Caller administrator ID reference.
+ * @returns {Promise<object>} Hydrated updated user.
+ */
 async function updateUser({ targetUserId, updates, currentUserId }) {
   const dbUpdates = {};
 
@@ -136,6 +180,7 @@ async function updateUser({ targetUserId, updates, currentUserId }) {
       throw createError(400, 'Status must be active or disabled');
     }
 
+    // Safeguard: prevents administrators from blocking their own session lockouts
     if (String(targetUserId) === String(currentUserId) && updates.status === 'disabled') {
       throw createError(400, 'You cannot disable your own account');
     }
@@ -174,6 +219,14 @@ async function updateUser({ targetUserId, updates, currentUserId }) {
   return publicUser(user);
 }
 
+/**
+ * Searches and lists all platform files matching deletion status, search term queries, and subject codes.
+ * @param {object} [filters]
+ * @param {string} [filters.search] - Search text queries.
+ * @param {number|string} [filters.subjectId] - Subject ID.
+ * @param {boolean|string} [filters.isDeleted] - Filter files by deletion flag.
+ * @returns {Promise<Array<object>>} Filtered documents metadata list.
+ */
 async function listDocuments({ search, subjectId, isDeleted } = {}) {
   const { data, error } = await supabase
     .from('documents')

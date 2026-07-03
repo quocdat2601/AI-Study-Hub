@@ -148,6 +148,17 @@ function getDocumentType(document) {
   return document?.file_type || document?.type || "DOC";
 }
 
+// =========================================================================
+// SECTION 2: WORKSPACE PAGE COMPONENT
+// Root workspace orchestration component managing documents sidebars,
+// resizers, PDF viewers, RAG session configurations, and the Studio tab.
+// =========================================================================
+
+/**
+ * WorkspacePage root component.
+ * Synchronizes selected document route parameters, manages chat history loads,
+ * SSE chunking updates, drag-and-drop attachments, and tabs toggle hooks.
+ */
 export default function WorkspacePage() {
   const { documentId: urlDocumentId } = useParams();
   const navigate = useNavigate();

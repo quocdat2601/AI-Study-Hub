@@ -4,6 +4,11 @@ const chatService = require('./chat.service');
 const documentService = require('./document.service');
 const createError = require('../utils/createError');
 
+/**
+ * Retrieves the trending documents inside the public docs catalog.
+ * @param {number} limit - Maximum number of documents to return.
+ * @returns {Promise<Array<object>>} Trending public document previews.
+ */
 async function getTrendingDocuments(limit) {
   const documents = await documentModel.findTrending(limit);
   const documentsWithThumbnails = await Promise.all(documents.map(async (doc) => {
@@ -24,10 +29,25 @@ async function getTrendingDocuments(limit) {
   return documentsWithThumbnails.map(documentService.buildPublicDocumentPreview);
 }
 
+/**
+ * Retrieves public chat session sharing traces using the unique share token.
+ * @param {string} token - Unique shared session token.
+ * @returns {Promise<object>} Shared session logs and messages content.
+ */
 async function getPublicChatShare(token) {
   return chatService.getPublicChatShare(token);
 }
 
+/**
+ * Searches public documents with query text, optional subject tag, sorting, and pagination.
+ * @param {object} params
+ * @param {string} [params.search] - Case-insensitive text query.
+ * @param {number} [params.subjectId] - Optional subject tag filter ID.
+ * @param {string} [params.sortBy] - Sorting filter ('views', 'downloads', 'recent').
+ * @param {number} params.page - Selected page index.
+ * @param {number} params.limit - Query window count limit.
+ * @returns {Promise<object>} Paginated document list.
+ */
 async function searchPublicDocuments({ search, subjectId, sortBy, page, limit }) {
   const { documents, totalCount } = await documentModel.searchPublic({
     search,
@@ -68,6 +88,11 @@ async function searchPublicDocuments({ search, subjectId, sortBy, page, limit })
   };
 }
 
+/**
+ * Fetches single document profile details by ID and increments view counters.
+ * @param {number|string} id - Document ID.
+ * @returns {Promise<object>} Hydrated document preview metadata with download and view counts.
+ */
 async function getPublicDocumentById(id) {
   const doc = await documentModel.findPublicById(id);
   if (!doc) {
@@ -108,6 +133,11 @@ async function getPublicDocumentById(id) {
   };
 }
 
+/**
+ * Generates secure cloud storage download links for a document and increments down counter.
+ * @param {number|string} id - Target document ID.
+ * @returns {Promise<{signedUrl: string}>} Signed storage URL download target.
+ */
 async function getPublicDocumentSignedUrl(id) {
   const doc = await documentModel.findPublicById(id);
   if (!doc || !doc.cloud_files) {
@@ -123,6 +153,11 @@ async function getPublicDocumentSignedUrl(id) {
   return { signedUrl };
 }
 
+/**
+ * Fetches comment feedback threads on a shared document asset.
+ * @param {number|string} docId - Target document ID.
+ * @returns {Promise<Array<object>>} Comments thread list.
+ */
 async function listDocumentComments(docId) {
   const comments = await documentModel.listComments(docId);
   return comments.map((c) => ({
@@ -134,6 +169,15 @@ async function listDocumentComments(docId) {
   }));
 }
 
+/**
+ * Creates user rating feedback and comment review on a shared document.
+ * @param {object} params
+ * @param {number|string} params.docId - Associated document ID.
+ * @param {string} params.userId - Reviewer user ID context.
+ * @param {string} params.content - Feedback comment text.
+ * @param {number} params.rating - Numeric rating.
+ * @returns {Promise<object>} Created comment metadata properties.
+ */
 async function createDocumentComment({ docId, userId, content, rating }) {
   if (!String(content).trim()) {
     throw createError(400, 'Content cannot be empty');
