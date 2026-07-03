@@ -17,8 +17,12 @@ const ROADMAP_JSON_SCHEMA = {
         properties: {
           heading: { type: 'string' },
           description: { type: 'string' },
+          suggestedQuestions: {
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
-        required: ['heading', 'description'],
+        required: ['heading', 'description', 'suggestedQuestions'],
       },
     },
   },
@@ -92,6 +96,10 @@ function parseRoadmapJson(rawText) {
     .map((item) => ({
       heading: normalizeText(item?.heading || item?.title || '', 160),
       description: normalizeText(item?.description || item?.summary || '', 400),
+      questions: (Array.isArray(item?.suggestedQuestions) ? item.suggestedQuestions : [])
+        .map((question) => normalizeText(question, 200))
+        .filter(Boolean)
+        .slice(0, 3),
     }))
     .filter((item) => item.heading)
     .slice(0, MAX_STEPS)
@@ -125,13 +133,14 @@ function buildRoadmapPrompts({ document, chunks }) {
       'Bạn tạo lộ trình học (learning roadmap) cho tài liệu trong AI Study Hub.',
       'Chỉ trả về JSON hợp lệ, không bọc trong văn xuôi hay markdown.',
       'Cấu trúc JSON bắt buộc:',
-      '{"title":"Lộ trình học: ...","steps":[{"heading":"...","description":"..."}]}',
+      '{"title":"Lộ trình học: ...","steps":[{"heading":"...","description":"...","suggestedQuestions":["...?"]}]}',
       'Dùng tên thuộc tính và giá trị chuỗi trong dấu nháy kép. Không dùng comment.',
       'QUY TẮC:',
       '- Toàn bộ nội dung BẰNG TIẾNG VIỆT (giữ nguyên thuật ngữ kỹ thuật/tên riêng như React, API, DNA).',
       '- Tạo 4-8 bước học tuần tự dựa trên các representative chunks.',
       '- Thứ tự các bước phải theo đúng thứ tự nội dung xuất hiện trong tài liệu, không đảo lộn.',
       '- Mỗi heading tối đa 10 từ; mỗi description tối đa 40 từ, mô tả người học cần nắm gì ở bước đó.',
+      '- Mỗi bước có "suggestedQuestions": 2-3 câu hỏi ngắn (mỗi câu tối đa 20 từ, kết thúc bằng dấu ?) người học nên tự hỏi để kiểm tra hiểu bài phần đó, trả lời được bằng nội dung tài liệu.',
       '- Không bịa nội dung không có trong tài liệu.',
     ].join('\n'),
     userPrompt: [

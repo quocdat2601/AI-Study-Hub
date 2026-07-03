@@ -32,6 +32,14 @@ Yêu cầu: Dựa trên nội dung tài liệu nguồn, giải thích chi tiết
   return { displayText, question: questionForApi };
 }
 
+function buildSuggestedQuestionPayload(step, questionText) {
+  const questionForApi = `${questionText}
+
+[studio-roadmap-meta]
+Câu hỏi gợi ý thuộc bước ${step.order}: ${step.heading} trong lộ trình học. Trả lời dựa trên nội dung tài liệu nguồn.`;
+  return { displayText: questionText, question: questionForApi };
+}
+
 const PENDING_POLL_INTERVAL_MS = 5000;
 
 export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }) {
@@ -263,6 +271,20 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
                     <p className="m-0 mt-1 text-[11px] leading-relaxed text-slate-500">
                       {step.description}
                     </p>
+                  )}
+                  {onAskQuestion && !isCompleted && (step.questions || []).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {step.questions.map((questionText, qIdx) => (
+                        <button
+                          key={qIdx}
+                          onClick={() => onAskQuestion(buildSuggestedQuestionPayload(step, questionText))}
+                          title="Hỏi AI câu này"
+                          className="max-w-full truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 text-left text-[10px] font-medium text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 transition cursor-pointer"
+                        >
+                          {questionText}
+                        </button>
+                      ))}
+                    </div>
                   )}
                   {onAskQuestion && !isCompleted && (
                     <button
