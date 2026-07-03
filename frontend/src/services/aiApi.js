@@ -137,3 +137,18 @@ export async function deleteStudyMaterial(id) {
   const response = await api.delete(`/ai/materials/${id}`);
   return response.data;
 }
+
+export async function getDocumentRoadmap(docId) {
+  const response = await api.get(`/ai/documents/${docId}/roadmap`);
+  return response.data;
+}
+
+export async function retryDocumentRoadmap(docId) {
+  const response = await api.post(`/ai/documents/${docId}/roadmap/retry`, {}, { timeout: 600000 });
+  return response.data;
+}
+
+export async function toggleRoadmapStep(docId, stepOrder, completed) {
+  const response = await api.patch(`/ai/documents/${docId}/roadmap/steps/${stepOrder}`, { completed });
+  return response.data;
+}

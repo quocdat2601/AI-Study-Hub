@@ -39,6 +39,59 @@ async function retryDocumentOverview(req, res, next) {
 }
 
 /**
+ * Fetches the persisted learning roadmap and the caller's step completion progress.
+ * @param {object} req - Request parameters containing the document ID.
+ * @param {object} res - Response returning roadmap (or null) with completed step orders.
+ * @param {Function} next - Error middleware callback.
+ */
+async function getDocumentRoadmap(req, res, next) {
+  try {
+    res.json(await aiService.getDocumentRoadmap({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Regenerates the document learning roadmap from existing chunks.
+ * @param {object} req - Request parameters containing the document ID.
+ * @param {object} res - Response returning the regenerated roadmap.
+ * @param {Function} next - Error middleware callback.
+ */
+async function retryDocumentRoadmap(req, res, next) {
+  try {
+    res.json(await aiService.retryDocumentRoadmap({
+      id: req.params.id,
+      userId: req.user.id,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Marks a roadmap step as completed or not completed for the caller.
+ * @param {object} req - Request containing document ID, step order and completed flag.
+ * @param {object} res - Response returning updated completed step orders.
+ * @param {Function} next - Error middleware callback.
+ */
+async function toggleRoadmapStep(req, res, next) {
+  try {
+    res.json(await aiService.toggleRoadmapStep({
+      id: req.params.id,
+      userId: req.user.id,
+      stepOrder: req.params.stepOrder,
+      completed: req.body?.completed === true,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Submits queries against a singular private document source index.
  * @param {object} req - Request containing document ID and question payload.
  * @param {object} res - Response returning complete AI response text.
@@ -241,6 +294,9 @@ async function deleteMaterial(req, res, next) {
 module.exports = {
   processDocument,
   retryDocumentOverview,
+  getDocumentRoadmap,
+  retryDocumentRoadmap,
+  toggleRoadmapStep,
   askDocument,
   askDocumentStream,
   askSession,
