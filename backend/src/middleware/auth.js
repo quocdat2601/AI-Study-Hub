@@ -3,6 +3,14 @@ const authService = require('../services/auth.service');
 const decodeJwtPayload = require('../utils/decodeJwt');
 
 
+/**
+ * Authentication Middleware
+ * Intercepts Bearer tokens, decrypts/decodes JWTs locally as a fast exp check DoS guard,
+ * then validates against Supabase and synchronizes the caller's profile.
+ * @param {object} req - Express request object.
+ * @param {object} res - Express response object.
+ * @param {Function} next - Express next middleware.
+ */
 async function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
@@ -15,6 +23,8 @@ async function verifyToken(req, res, next) {
 
   const token = authHeader.split(' ')[1];
 
+  // Fast exp check local base64 JWT decode.
+  // Acts as a DoS guard preventing unnecessary remote calls to Supabase API.
   const payload = decodeJwtPayload(token);
   if (!payload || !payload.exp || Date.now() >= payload.exp * 1000) {
     return res.status(401).json({
@@ -24,6 +34,7 @@ async function verifyToken(req, res, next) {
   }
 
   try {
+    // Validate session token cryptographically via Supabase Auth service.
     const { data, error } = await supabase.auth.getUser(token);
 
     if (error || !data?.user) {
@@ -33,6 +44,7 @@ async function verifyToken(req, res, next) {
       });
     }
 
+    // Sync remote auth user info with the local DB users profile mapping.
     req.user = await authService.syncUserProfile(data.user);
     next();
   } catch (err) {
