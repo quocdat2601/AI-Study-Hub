@@ -48,6 +48,9 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
+  // Tick mục tiêu là tự đánh giá cục bộ trong phiên xem, không persist — key "stepOrder:objIdx"
+  const [objectiveTicks, setObjectiveTicks] = useState(new Set());
+  const [confirmRegen, setConfirmRegen] = useState(false);
 
   const loadRoadmap = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -70,6 +73,8 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
   }, [selectedDocument]);
 
   useEffect(() => {
+    setObjectiveTicks(new Set());
+    setConfirmRegen(false);
     if (selectedDocument) {
       loadRoadmap();
     } else {
@@ -95,6 +100,7 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
       const data = await retryDocumentRoadmap(selectedDocument.id);
       setRoadmap(data.roadmap);
       setCompletedSteps([]);
+      setObjectiveTicks(new Set());
       if (data.roadmap?.status === "failed") {
         setError(data.roadmap.error || "Tạo lộ trình học thất bại. Vui lòng thử lại.");
       }
@@ -103,6 +109,19 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function toggleObjective(stepOrder, objectiveIndex) {
+    const key = `${stepOrder}:${objectiveIndex}`;
+    setObjectiveTicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
   }
 
   async function handleToggleStep(stepOrder) {
@@ -205,6 +224,12 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
         {/* Progress header */}
         <div className="mb-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
           <h4 className="m-0 text-sm font-bold text-slate-800 line-clamp-2">{roadmap.title}</h4>
+          {roadmap.goal && (
+            <p className="m-0 mt-2 flex items-start gap-1.5 rounded-lg bg-indigo-50/60 p-2.5 text-[11px] font-medium leading-relaxed text-indigo-900">
+              <span aria-hidden="true">🎯</span>
+              <span>{roadmap.goal}</span>
+            </p>
+          )}
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500 font-medium">
             <span>Hoàn thành {completedCount} / {steps.length} bước</span>
             <span>{progressPercent}%</span>
@@ -226,12 +251,24 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
           </div>
         )}
 
+        {!isAllCompleted && (
+          <p className="m-0 mb-3 px-1 text-[10px] leading-relaxed text-slate-400">
+            Cách học: đi lần lượt từng bước — đọc phần tương ứng trong tài liệu bên trái, dùng câu
+            hỏi gợi ý hoặc &quot;Học bước này với AI&quot; khi chưa rõ, tự đánh giá theo mục tiêu rồi
+            bấm vòng tròn số để đánh dấu hoàn thành.
+          </p>
+        )}
+
         {/* Steps timeline */}
         <ol className="m-0 list-none p-0 space-y-2.5">
           {steps.map((step, index) => {
             const isCompleted = completedSteps.includes(step.order);
             const isNext = !isCompleted && nextStep?.order === step.order;
             const isLast = index === steps.length - 1;
+            const objectives = step.objectives || [];
+            const allObjectivesMet = !isCompleted
+              && objectives.length > 0
+              && objectives.every((_, oIdx) => objectiveTicks.has(`${step.order}:${oIdx}`));
             return (
               <li key={step.order} className="relative pl-9">
                 {!isLast && (
@@ -242,9 +279,11 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
                   title={isCompleted ? "Bỏ đánh dấu hoàn thành" : "Đánh dấu hoàn thành"}
                   className={`absolute left-0 top-3 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-bold transition cursor-pointer ${isCompleted
                     ? "border-indigo-600 bg-indigo-600 text-white"
-                    : isNext
-                      ? "border-indigo-500 bg-white text-indigo-600 ring-2 ring-indigo-100"
-                      : "border-slate-300 bg-white text-slate-500 hover:border-indigo-400 hover:text-indigo-600"
+                    : allObjectivesMet
+                      ? "border-emerald-500 bg-white text-emerald-600 ring-2 ring-emerald-200"
+                      : isNext
+                        ? "border-indigo-500 bg-white text-indigo-600 ring-2 ring-indigo-100"
+                        : "border-slate-300 bg-white text-slate-500 hover:border-indigo-400 hover:text-indigo-600"
                     }`}
                 >
                   {isCompleted ? <CheckIcon /> : step.order}
@@ -271,6 +310,42 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
                     <p className="m-0 mt-1 text-[11px] leading-relaxed text-slate-500">
                       {step.description}
                     </p>
+                  )}
+                  {objectives.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5">
+                      <p className="m-0 mb-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        Mục tiêu cần đạt
+                      </p>
+                      <ul className="m-0 list-none p-0 space-y-1.5">
+                        {objectives.map((objective, oIdx) => {
+                          const ticked = isCompleted || objectiveTicks.has(`${step.order}:${oIdx}`);
+                          return (
+                            <li key={oIdx}>
+                              <button
+                                onClick={() => !isCompleted && toggleObjective(step.order, oIdx)}
+                                className={`flex w-full items-start gap-1.5 border-0 bg-transparent p-0 text-left ${isCompleted ? "cursor-default" : "cursor-pointer"}`}
+                              >
+                                <span className={`mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition ${ticked
+                                  ? "border-emerald-500 bg-emerald-500 text-white"
+                                  : "border-slate-300 bg-white hover:border-emerald-400"
+                                  }`}
+                                >
+                                  {ticked && <CheckIcon size={9} />}
+                                </span>
+                                <span className={`text-[11px] leading-snug ${ticked ? "text-slate-400" : "text-slate-600"}`}>
+                                  {objective}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {allObjectivesMet && (
+                        <p className="m-0 mt-2 text-[10px] font-semibold text-emerald-600">
+                          Bạn đã tự đánh giá đạt đủ mục tiêu — bấm vòng tròn số {step.order} để hoàn thành bước này!
+                        </p>
+                      )}
+                    </div>
                   )}
                   {onAskQuestion && !isCompleted && (step.questions || []).length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -328,6 +403,38 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
           <RoadmapIcon size={16} className="text-indigo-600" />
           Lộ trình học
         </h3>
+        {roadmap?.status === "ready" && !isGenerating && (
+          confirmRegen ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-medium text-slate-500">Tạo lại từ đầu?</span>
+              <button
+                onClick={() => {
+                  setConfirmRegen(false);
+                  handleGenerate();
+                }}
+                className="cursor-pointer rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-indigo-700 transition"
+              >
+                Đồng ý
+              </button>
+              <button
+                onClick={() => setConfirmRegen(false)}
+                className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Hủy
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmRegen(true)}
+              title="Tạo lại lộ trình"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-indigo-600 transition"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+            </button>
+          )
+        )}
       </div>
 
       {error && (

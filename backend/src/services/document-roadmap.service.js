@@ -10,6 +10,7 @@ const ROADMAP_JSON_SCHEMA = {
   type: 'object',
   properties: {
     title: { type: 'string' },
+    goal: { type: 'string' },
     steps: {
       type: 'array',
       items: {
@@ -17,16 +18,20 @@ const ROADMAP_JSON_SCHEMA = {
         properties: {
           heading: { type: 'string' },
           description: { type: 'string' },
+          objectives: {
+            type: 'array',
+            items: { type: 'string' },
+          },
           suggestedQuestions: {
             type: 'array',
             items: { type: 'string' },
           },
         },
-        required: ['heading', 'description', 'suggestedQuestions'],
+        required: ['heading', 'description', 'objectives', 'suggestedQuestions'],
       },
     },
   },
-  required: ['title', 'steps'],
+  required: ['title', 'goal', 'steps'],
 };
 
 const MIN_STEPS = 1;
@@ -96,6 +101,10 @@ function parseRoadmapJson(rawText) {
     .map((item) => ({
       heading: normalizeText(item?.heading || item?.title || '', 160),
       description: normalizeText(item?.description || item?.summary || '', 400),
+      objectives: (Array.isArray(item?.objectives) ? item.objectives : [])
+        .map((objective) => normalizeText(objective, 200))
+        .filter(Boolean)
+        .slice(0, 4),
       questions: (Array.isArray(item?.suggestedQuestions) ? item.suggestedQuestions : [])
         .map((question) => normalizeText(question, 200))
         .filter(Boolean)
@@ -107,6 +116,7 @@ function parseRoadmapJson(rawText) {
 
   const roadmap = {
     title: normalizeText(parsed.title, 200),
+    goal: normalizeText(parsed.goal, 300),
     steps,
   };
 
@@ -133,13 +143,15 @@ function buildRoadmapPrompts({ document, chunks }) {
       'Bạn tạo lộ trình học (learning roadmap) cho tài liệu trong AI Study Hub.',
       'Chỉ trả về JSON hợp lệ, không bọc trong văn xuôi hay markdown.',
       'Cấu trúc JSON bắt buộc:',
-      '{"title":"Lộ trình học: ...","steps":[{"heading":"...","description":"...","suggestedQuestions":["...?"]}]}',
+      '{"title":"Lộ trình học: ...","goal":"Sau lộ trình này bạn sẽ ...","steps":[{"heading":"...","description":"...","objectives":["..."],"suggestedQuestions":["...?"]}]}',
       'Dùng tên thuộc tính và giá trị chuỗi trong dấu nháy kép. Không dùng comment.',
       'QUY TẮC:',
       '- Toàn bộ nội dung BẰNG TIẾNG VIỆT (giữ nguyên thuật ngữ kỹ thuật/tên riêng như React, API, DNA).',
+      '- "goal": 1 câu (tối đa 30 từ) mô tả năng lực tổng thể người học đạt được sau khi hoàn thành CẢ lộ trình, bắt đầu bằng "Sau lộ trình này bạn sẽ". Phải cụ thể theo nội dung tài liệu.',
       '- Tạo 4-8 bước học tuần tự dựa trên các representative chunks.',
       '- Thứ tự các bước phải theo đúng thứ tự nội dung xuất hiện trong tài liệu, không đảo lộn.',
       '- Mỗi heading tối đa 10 từ; mỗi description tối đa 40 từ, mô tả người học cần nắm gì ở bước đó.',
+      '- Mỗi bước có "objectives": 2-4 tiêu chí cụ thể người học phải đạt để coi như hoàn thành bước đó. Mỗi tiêu chí tối đa 20 từ, bắt đầu bằng động từ năng lực như "Giải thích được", "Tính được", "Viết được", "Phân biệt được", "Áp dụng được" — phải kiểm chứng được bằng nội dung tài liệu, không chung chung kiểu "Hiểu về...".',
       '- Mỗi bước có "suggestedQuestions": 2-3 câu hỏi ngắn (mỗi câu tối đa 20 từ, kết thúc bằng dấu ?) người học nên tự hỏi để kiểm tra hiểu bài phần đó, trả lời được bằng nội dung tài liệu.',
       '- Không bịa nội dung không có trong tài liệu.',
     ].join('\n'),
@@ -194,6 +206,7 @@ async function reuseRoadmapIfPossible({ document }) {
     fileId: document.file_id,
     roadmap: {
       title: reusable.title,
+      goal: reusable.goal,
       steps: reusable.steps || [],
     },
     provider: reusable.provider,

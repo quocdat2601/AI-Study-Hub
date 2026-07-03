@@ -77,6 +77,7 @@ class DocumentRoadmapModel {
         document_id: Number(documentId),
         file_id: fileId == null ? null : Number(fileId),
         title: roadmap.title,
+        goal: roadmap.goal || null,
         steps: roadmap.steps || [],
         status: 'ready',
         error: null,
