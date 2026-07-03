@@ -1691,6 +1691,10 @@ export default function WorkspacePage() {
                 selectedModel={selectedModel}
                 className="flex-1 min-h-0 w-full"
                 width={null}
+                onGoToPage={(page) => {
+                  const nextPage = Number(page);
+                  if (Number.isFinite(nextPage) && nextPage >= 1) setCurrentPage(nextPage);
+                }}
                 onAskQuestion={(questionText) => {
                   setRightActiveTab("chat");
                   handleAsk(null, questionText);

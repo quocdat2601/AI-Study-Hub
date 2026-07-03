@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { getStudyMaterials, generateStudyMaterial, deleteStudyMaterial } from "../../services/aiApi.js";
 import { SparklesIcon, ClockIcon } from "./WorkspaceIcons.jsx";
+import WorkspaceRoadmapPanel from "./WorkspaceRoadmapPanel.jsx";
 
 // Custom icons for the Studio panel
 function FlashcardIcon({ className, size = 20 }) {
@@ -35,6 +36,31 @@ function MindmapIcon({ className, size = 20 }) {
   );
 }
 
+/**
+ * Roadmap grid icon component.
+ * @param {object} props
+ * @param {string} [props.className] - CSS classes.
+ * @param {number} [props.size] - Width/height size (default 20).
+ */
+function RoadmapIcon({ className, size = 20 }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 4h7v7H3z" />
+      <path d="M14 4h7v4h-7z" />
+      <path d="M14 12h7v8h-7z" />
+      <path d="M10 14h4" />
+      <path d="M10 18h4" />
+      <path d="M10 10h4" />
+    </svg>
+  );
+}
+
+/**
+ * Lock padlock icon component.
+ * @param {object} props
+ * @param {string} [props.className] - CSS classes.
+ * @param {number} [props.size] - Width/height size (default 16).
+ */
 function LockIcon({ className, size = 16 }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -152,9 +178,10 @@ Gợi ý đáp án: ${back}`;
   return { displayText, question: questionForApi };
 }
 
-export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, className = "" }) {
+export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, onGoToPage, className = "" }) {
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
+  const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStateText, setLoadingStateText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -196,9 +223,11 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
     if (selectedDocument) {
       loadMaterials();
       setActiveMaterial(null);
+      setIsRoadmapOpen(false);
     } else {
       setMaterials([]);
       setActiveMaterial(null);
+      setIsRoadmapOpen(false);
     }
   }, [selectedDocument, loadMaterials]);
 
@@ -1074,6 +1103,25 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
               <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">Sơ đồ tóm tắt cấu trúc</p>
             </div>
           </div>
+
+          {/* Roadmap Tile */}
+          <button
+            onClick={() => {
+              setActiveMaterial(null);
+              setError(null);
+              setIsRoadmapOpen(true);
+            }}
+            disabled={!selectedDocument}
+            className="group flex flex-col justify-between items-start text-left cursor-pointer rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          >
+            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 group-hover:scale-105 transition">
+              <RoadmapIcon size={18} />
+            </div>
+            <div className="mt-4">
+              <p className="m-0 text-xs font-bold text-slate-800">Lộ trình học</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">Giai đoạn & nhiệm vụ</p>
+            </div>
+          </button>
         </div>
 
         {/* Generated materials list */}
@@ -1168,7 +1216,17 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
         </div>
       )}
 
-      {activeMaterial ? renderActiveMaterial() : renderDashboard()}
+      {isRoadmapOpen ? (
+        <WorkspaceRoadmapPanel
+          selectedDocument={selectedDocument}
+          onClose={() => setIsRoadmapOpen(false)}
+          onGoToPage={onGoToPage}
+        />
+      ) : activeMaterial ? (
+        renderActiveMaterial()
+      ) : (
+        renderDashboard()
+      )}
 
       {confirmDeleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">

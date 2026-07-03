@@ -109,6 +109,7 @@ async function generateText({
   systemPrompt = '',
   userPrompt = '',
   generationConfig,
+  timeoutMs = GEMINI_TIMEOUT_MS,
 }) {
   if (!genAI) {
     const err = new Error('Gemini API key is not configured');
@@ -124,7 +125,7 @@ async function generateText({
       contents: prompt,
       ...(generationConfig ? { config: generationConfig } : {}),
     }),
-    GEMINI_TIMEOUT_MS
+    timeoutMs
   );
   return {
     text: response.text || '',
