@@ -1196,7 +1196,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
       )}
 
       {studioTab === "roadmap" && !activeMaterial
-        ? <WorkspaceRoadmapView selectedDocument={selectedDocument} />
+        ? <WorkspaceRoadmapView selectedDocument={selectedDocument} onAskQuestion={onAskQuestion} />
         : (activeMaterial ? renderActiveMaterial() : renderDashboard())}
 
       {confirmDeleteId && (

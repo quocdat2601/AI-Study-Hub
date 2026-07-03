@@ -17,24 +17,47 @@ function CheckIcon({ size = 12 }) {
   );
 }
 
-export default function WorkspaceRoadmapView({ selectedDocument }) {
+function buildStepChatPayload(step) {
+  const displayText = `Tôi đang học theo lộ trình của tài liệu này và đến bước ${step.order}: "${step.heading}".
+
+Mục tiêu của bước: ${step.description || "Chưa có mô tả"}
+
+Hãy giảng giải phần này cho tôi dựa trên nội dung tài liệu.`;
+  const questionForApi = `${displayText}
+
+[studio-roadmap-meta]
+Bước ${step.order}: ${step.heading}
+Mục tiêu: ${step.description || "Chưa có"}
+Yêu cầu: Dựa trên nội dung tài liệu nguồn, giải thích chi tiết phần "${step.heading}", nêu các ý chính người học cần nắm và ví dụ minh họa nếu tài liệu có.`;
+  return { displayText, question: questionForApi };
+}
+
+const PENDING_POLL_INTERVAL_MS = 5000;
+
+export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }) {
   const [roadmap, setRoadmap] = useState(null);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
 
-  const loadRoadmap = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const loadRoadmap = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     try {
       const data = await getDocumentRoadmap(selectedDocument.id);
       setRoadmap(data.roadmap);
       setCompletedSteps(data.completedSteps || []);
     } catch (err) {
-      setError(err.response?.data?.error || "Không thể tải lộ trình học.");
+      if (!silent) {
+        setError(err.response?.data?.error || "Không thể tải lộ trình học.");
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [selectedDocument]);
 
@@ -46,6 +69,15 @@ export default function WorkspaceRoadmapView({ selectedDocument }) {
       setCompletedSteps([]);
     }
   }, [selectedDocument, loadRoadmap]);
+
+  // Roadmap sinh nền sau upload — tự cập nhật khi đang pending thay vì bắt user bấm tải lại
+  useEffect(() => {
+    if (roadmap?.status !== "pending") return undefined;
+    const timer = setInterval(() => {
+      loadRoadmap({ silent: true });
+    }, PENDING_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [roadmap?.status, loadRoadmap]);
 
   async function handleGenerate() {
     if (!selectedDocument) return;
@@ -85,6 +117,8 @@ export default function WorkspaceRoadmapView({ selectedDocument }) {
     : [];
   const completedCount = steps.filter((step) => completedSteps.includes(step.order)).length;
   const progressPercent = steps.length ? Math.round((completedCount / steps.length) * 100) : 0;
+  const nextStep = steps.find((step) => !completedSteps.includes(step.order));
+  const isAllCompleted = steps.length > 0 && completedCount === steps.length;
 
   const renderEmptyState = (message, showGenerateButton) => (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center">
@@ -129,12 +163,12 @@ export default function WorkspaceRoadmapView({ selectedDocument }) {
     if (roadmap.status === "pending") {
       return renderEmptyState(
         <>
-          Lộ trình đang được tạo tự động, vui lòng chờ trong giây lát.
+          Lộ trình đang được tạo tự động — trang sẽ tự cập nhật khi hoàn tất.
           <button
-            onClick={loadRoadmap}
+            onClick={() => loadRoadmap()}
             className="ml-1 cursor-pointer border-0 bg-transparent p-0 text-xs font-bold text-indigo-600 hover:underline"
           >
-            Tải lại
+            Tải lại ngay
           </button>
         </>,
         false
@@ -169,16 +203,26 @@ export default function WorkspaceRoadmapView({ selectedDocument }) {
           </div>
           <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
             <div
-              className="h-full rounded-full bg-indigo-600 transition-all duration-300"
+              className={`h-full rounded-full transition-all duration-300 ${isAllCompleted ? "bg-emerald-500" : "bg-indigo-600"}`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
 
+        {isAllCompleted && (
+          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center animate-fadeIn">
+            <p className="m-0 text-sm font-bold text-emerald-800">🎉 Chúc mừng! Bạn đã hoàn thành toàn bộ lộ trình.</p>
+            <p className="m-0 mt-1 text-[11px] leading-relaxed text-emerald-700">
+              Hãy sang tab Học liệu tạo bài kiểm tra hoặc thẻ ghi nhớ để củng cố lại toàn bộ kiến thức.
+            </p>
+          </div>
+        )}
+
         {/* Steps timeline */}
         <ol className="m-0 list-none p-0 space-y-2.5">
           {steps.map((step, index) => {
             const isCompleted = completedSteps.includes(step.order);
+            const isNext = !isCompleted && nextStep?.order === step.order;
             const isLast = index === steps.length - 1;
             return (
               <li key={step.order} className="relative pl-9">
@@ -190,7 +234,9 @@ export default function WorkspaceRoadmapView({ selectedDocument }) {
                   title={isCompleted ? "Bỏ đánh dấu hoàn thành" : "Đánh dấu hoàn thành"}
                   className={`absolute left-0 top-3 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-bold transition cursor-pointer ${isCompleted
                     ? "border-indigo-600 bg-indigo-600 text-white"
-                    : "border-slate-300 bg-white text-slate-500 hover:border-indigo-400 hover:text-indigo-600"
+                    : isNext
+                      ? "border-indigo-500 bg-white text-indigo-600 ring-2 ring-indigo-100"
+                      : "border-slate-300 bg-white text-slate-500 hover:border-indigo-400 hover:text-indigo-600"
                     }`}
                 >
                   {isCompleted ? <CheckIcon /> : step.order}
@@ -198,16 +244,36 @@ export default function WorkspaceRoadmapView({ selectedDocument }) {
                 <div
                   className={`rounded-xl border p-3.5 shadow-sm transition ${isCompleted
                     ? "border-indigo-100 bg-indigo-50/40"
-                    : "border-slate-100 bg-white"
+                    : isNext
+                      ? "border-indigo-300 bg-white ring-1 ring-indigo-100"
+                      : "border-slate-100 bg-white"
                     }`}
                 >
-                  <p className={`m-0 text-xs font-bold leading-snug ${isCompleted ? "text-slate-500 line-through" : "text-slate-800"}`}>
-                    {step.heading}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`m-0 text-xs font-bold leading-snug ${isCompleted ? "text-slate-500 line-through" : "text-slate-800"}`}>
+                      {step.heading}
+                    </p>
+                    {isNext && (
+                      <span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-600">
+                        Tiếp theo
+                      </span>
+                    )}
+                  </div>
                   {step.description && (
                     <p className="m-0 mt-1 text-[11px] leading-relaxed text-slate-500">
                       {step.description}
                     </p>
+                  )}
+                  {onAskQuestion && !isCompleted && (
+                    <button
+                      onClick={() => onAskQuestion(buildStepChatPayload(step))}
+                      className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer"
+                    >
+                      <svg className="stroke-current" width="11" height="11" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      </svg>
+                      Học bước này với AI
+                    </button>
                   )}
                 </div>
               </li>
