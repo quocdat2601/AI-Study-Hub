@@ -1925,6 +1925,44 @@ async function retryDocumentRoadmap({ id, userId }) {
   };
 }
 
+// Roadmap user học dở (có tick nhưng chưa xong) cho widget "Tiếp tục học" — sắp theo lần tick gần nhất
+async function listRoadmapsInProgress({ userId, limit = 3 }) {
+  const rows = await documentRoadmapProgressModel.findByUserWithRoadmaps(userId);
+
+  const byRoadmap = new Map();
+  for (const row of rows) {
+    const roadmap = row.document_roadmaps;
+    if (!roadmap || !Array.isArray(roadmap.steps) || !roadmap.steps.length) continue;
+    if (!byRoadmap.has(row.roadmap_id)) {
+      byRoadmap.set(row.roadmap_id, { roadmap, completedOrders: new Set(), lastActivityAt: null });
+    }
+    const entry = byRoadmap.get(row.roadmap_id);
+    entry.completedOrders.add(Number(row.step_order));
+    if (!entry.lastActivityAt || new Date(row.completed_at) > new Date(entry.lastActivityAt)) {
+      entry.lastActivityAt = row.completed_at;
+    }
+  }
+
+  return [...byRoadmap.values()]
+    .map(({ roadmap, completedOrders, lastActivityAt }) => {
+      const steps = roadmap.steps;
+      const completedCount = steps.filter((step) => completedOrders.has(Number(step.order))).length;
+      const nextStep = steps.find((step) => !completedOrders.has(Number(step.order)));
+      return {
+        documentId: roadmap.document_id,
+        documentTitle: roadmap.documents?.title || '',
+        roadmapTitle: roadmap.title,
+        totalSteps: steps.length,
+        completedSteps: completedCount,
+        nextStepHeading: nextStep?.heading || null,
+        lastActivityAt,
+      };
+    })
+    .filter((item) => item.completedSteps > 0 && item.completedSteps < item.totalSteps)
+    .sort((a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt))
+    .slice(0, Math.max(1, Math.min(10, Number(limit) || 3)));
+}
+
 async function toggleRoadmapStep({ id, userId, stepOrder, completed }) {
   const doc = await resolveRoadmapDocument({ id, userId });
   const normalizedStepOrder = normalizeNumericId(stepOrder, 'stepOrder');
@@ -1962,6 +2000,7 @@ module.exports = {
   getDocumentRoadmap,
   retryDocumentRoadmap,
   toggleRoadmapStep,
+  listRoadmapsInProgress,
   askDocument,
   askDocumentStream,
   askSession,

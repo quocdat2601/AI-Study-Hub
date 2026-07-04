@@ -165,6 +165,24 @@ router.patch('/documents/:id/roadmap/steps/:stepOrder', aiController.toggleRoadm
 
 /**
  * @swagger
+ * /api/ai/roadmaps/in-progress:
+ *   get:
+ *     summary: List the caller's in-progress roadmaps for the dashboard continue-learning widget
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 3 }
+ *     responses:
+ *       200: { description: Progress summaries sorted by latest activity }
+ *       401: { description: Unauthorized }
+ */
+router.get('/roadmaps/in-progress', aiController.listRoadmapsInProgress);
+
+/**
+ * @swagger
  * /api/ai/documents/{id}/ask:
  *   post:
  *     summary: Ask Gemini a question using retrieved document chunks
