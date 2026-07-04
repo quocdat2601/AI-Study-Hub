@@ -40,9 +40,30 @@ Câu hỏi gợi ý thuộc bước ${step.order}: ${step.heading} trong lộ tr
   return { displayText: questionText, question: questionForApi };
 }
 
+// Người dùng chỉ thấy thông báo thân thiện; lỗi thô (JSON provider, stack) vẫn nằm trong DB để debug
+function friendlyGenerationError(raw) {
+  const text = String(raw || "");
+  if (/503|UNAVAILABLE|high demand|overloaded/i.test(text)) {
+    return "Mô hình AI đang quá tải, vui lòng thử lại sau ít phút.";
+  }
+  if (/timed?\s*out|timeout|504/i.test(text)) {
+    return "Yêu cầu AI quá thời gian chờ. Hãy thử lại hoặc chọn mô hình khác.";
+  }
+  if (/429|quota|rate.?limit|limit reached|exceeded/i.test(text)) {
+    return "Đã chạm giới hạn lượt dùng AI hôm nay. Hãy thử lại sau.";
+  }
+  if (/api key/i.test(text)) {
+    return "API key Gemini chưa được cấu hình đúng. Hãy kiểm tra backend/.env.";
+  }
+  if (/connect|connection refused|fetch failed|ECONNREFUSED/i.test(text)) {
+    return "Không kết nối được dịch vụ AI. Hãy kiểm tra Ollama/mạng rồi thử lại.";
+  }
+  return "Tạo lộ trình học thất bại. Vui lòng thử lại.";
+}
+
 const PENDING_POLL_INTERVAL_MS = 5000;
 
-export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }) {
+export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion, onPrepareQuestion }) {
   const [roadmap, setRoadmap] = useState(null);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -102,12 +123,22 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
       setCompletedSteps([]);
       setObjectiveTicks(new Set());
       if (data.roadmap?.status === "failed") {
-        setError(data.roadmap.error || "Tạo lộ trình học thất bại. Vui lòng thử lại.");
+        setError(friendlyGenerationError(data.roadmap.error));
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Tạo lộ trình học thất bại. Vui lòng thử lại.");
+      setError(friendlyGenerationError(err.response?.data?.error || err.message));
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  // Điền sẵn câu hỏi vào ô chat để user tự bấm gửi (tránh đốt AI call vì click nhầm);
+  // fallback gửi thẳng nếu nơi nhúng không truyền onPrepareQuestion
+  function askOrPrepare(displayText, payload) {
+    if (onPrepareQuestion) {
+      onPrepareQuestion(displayText);
+    } else if (onAskQuestion) {
+      onAskQuestion(payload);
     }
   }
 
@@ -347,13 +378,13 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
                       )}
                     </div>
                   )}
-                  {onAskQuestion && !isCompleted && (step.questions || []).length > 0 && (
+                  {(onAskQuestion || onPrepareQuestion) && !isCompleted && (step.questions || []).length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {step.questions.map((questionText, qIdx) => (
                         <button
                           key={qIdx}
-                          onClick={() => onAskQuestion(buildSuggestedQuestionPayload(step, questionText))}
-                          title="Hỏi AI câu này"
+                          onClick={() => askOrPrepare(questionText, buildSuggestedQuestionPayload(step, questionText))}
+                          title="Điền câu hỏi này vào ô chat"
                           className="max-w-full truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 text-left text-[10px] font-medium text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 transition cursor-pointer"
                         >
                           {questionText}
@@ -361,9 +392,9 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion }
                       ))}
                     </div>
                   )}
-                  {onAskQuestion && !isCompleted && (
+                  {(onAskQuestion || onPrepareQuestion) && !isCompleted && (
                     <button
-                      onClick={() => onAskQuestion(buildStepChatPayload(step))}
+                      onClick={() => askOrPrepare(buildStepChatPayload(step).displayText, buildStepChatPayload(step))}
                       className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer"
                     >
                       <svg className="stroke-current" width="11" height="11" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
