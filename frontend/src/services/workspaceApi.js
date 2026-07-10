@@ -1,4 +1,5 @@
 import api from "./api.js";
+import { getCachedPreviewData, setCachedPreviewData } from "./storageUrlCache.js";
 
 export async function getWorkspaceBootstrap(params = {}) {
   const response = await api.get("/workspace/bootstrap", { params });
@@ -20,10 +21,14 @@ function base64ToArrayBuffer(base64) {
 }
 
 export async function fetchWorkspacePdf(id) {
+  const cacheKey = `workspace-pdf:${id}`;
+  const cached = getCachedPreviewData(cacheKey);
+  if (cached) return cached;
+
   const response = await api.get(`/workspace/documents/${id}/preview-data`, {
     timeout: 120000,
   });
-  return base64ToArrayBuffer(response.data?.contentBase64);
+  return setCachedPreviewData(cacheKey, base64ToArrayBuffer(response.data?.contentBase64));
 }
 
 export async function sendWorkspaceMessage(sessionId, content) {
