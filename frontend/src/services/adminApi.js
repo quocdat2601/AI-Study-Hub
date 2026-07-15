@@ -64,3 +64,23 @@ export async function moderateAdminCommunityReply(id, status) {
   const response = await api.patch(`/admin/community/replies/${id}`, { status });
   return response.data;
 }
+
+export async function getAiUsage() {
+  const response = await api.get("/admin/ai-usage");
+  return response.data;
+}
+
+export async function createAnnouncement(data) {
+  const response = await api.post("/admin/announcements", data);
+  return response.data;
+}
+
+export async function listAnnouncements() {
+  const response = await api.get("/admin/announcements");
+  return response.data;
+}
+
+export async function deleteAnnouncement(id) {
+  const response = await api.delete(`/admin/announcements/${id}`);
+  return response.data;
+}

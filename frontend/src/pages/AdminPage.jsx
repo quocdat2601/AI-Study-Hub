@@ -15,8 +15,12 @@ import {
   deleteAdminSubject,
   listAdminDocuments,
   purgeAdminDocument,
+  getAiUsage,
+  createAnnouncement,
+  listAnnouncements,
+  deleteAnnouncement,
 } from "../services/adminApi.js";
-import { getDocumentSignedUrl } from "../services/documentApi.js";
+import { getDocumentSignedUrl, deleteDocument as softDeleteDocumentApi, restoreDocument as restoreDocumentApi } from "../services/documentApi.js";
 import { renderMarkdownBody } from "../components/community/communityUtils.js";
 import { useToast } from "../contexts/ToastContext.jsx";
 
@@ -25,10 +29,12 @@ const ADMIN_SIDEBAR_COLLAPSED_KEY = "aiStudyHub.adminSidebarCollapsed";
 
 const adminSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard" },
+  { id: "ai-usage", icon: "chip", label: "AI Usage" },
   { id: "users", icon: "users", label: "Users" },
   { id: "documents", icon: "document", label: "Documents" },
   { id: "subjects", icon: "book", label: "Subjects" },
   { id: "reports", icon: "reports", label: "Reports" },
+  { id: "announcements", icon: "megaphone", label: "Announcements" },
   { id: "activity-logs", icon: "activity", label: "Activity Logs" },
 ];
 
@@ -558,6 +564,9 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [aiUsage, setAiUsage] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementForm, setAnnouncementForm] = useState({ title: "", message: "", targetRole: "all" });
   
   // Selection states (for details sidebars)
   const [selectedUser, setSelectedUser] = useState(null);
@@ -581,6 +590,7 @@ export default function AdminPage() {
   const [docSubjectFilter, setDocSubjectFilter] = useState("all");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [docStatusFilter, setDocStatusFilter] = useState("all");
+  const [docDeletedFilter, setDocDeletedFilter] = useState("active");
 
   const [isLoading, setIsLoading] = useState(true);
   const [processingAction, setProcessingAction] = useState(null);
@@ -612,18 +622,22 @@ export default function AdminPage() {
     setIsLoading(true);
 
     try {
-      const [overviewData, userData, subjectData, documentData, reportData] = await Promise.all([
+      const [overviewData, userData, subjectData, documentData, reportData, aiUsageData, announcementData] = await Promise.all([
         getAdminOverview(),
         listAdminUsers(),
         listAdminSubjects(),
         listAdminDocuments(),
         listAdminCommunityReports(),
+        getAiUsage(),
+        listAnnouncements(),
       ]);
       setOverview(overviewData);
       setUsers(userData);
       setSubjects(subjectData);
       setDocuments(documentData);
       setReports(reportData);
+      setAiUsage(aiUsageData);
+      setAnnouncements(announcementData);
     } catch (err) {
       showError(messageFromError(err));
     } finally {
@@ -829,6 +843,80 @@ export default function AdminPage() {
     }
   }
 
+  async function handleSoftDeleteDoc(doc) {
+    const isOwner = doc.user_id === user.id;
+    let reason = null;
+    if (!isOwner) {
+      reason = window.prompt(`Please enter the reason for moderating/deleting "${doc.title}":`);
+      if (reason === null) return; // User cancelled
+      if (reason.trim() === "") {
+        reason = "Content violation";
+      }
+    } else {
+      if (!window.confirm(`Are you sure you want to move "${doc.title}" to trash?`)) {
+        return;
+      }
+    }
+
+    try {
+      await softDeleteDocumentApi(doc.id, reason);
+      showSuccess("Document moved to trash successfully");
+      await loadAdminData();
+      setSelectedDoc(null);
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  async function handleRestoreDoc(doc) {
+    if (!window.confirm(`Are you sure you want to restore "${doc.title}" from trash?`)) {
+      return;
+    }
+    try {
+      await restoreDocumentApi(doc.id);
+      showSuccess("Document restored successfully");
+      await loadAdminData();
+      setSelectedDoc(null);
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  async function handleCreateAnnouncement(e) {
+    e.preventDefault();
+    if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
+      showError("Title and message cannot be empty");
+      return;
+    }
+    setProcessingAction("create-announcement");
+    try {
+      await createAnnouncement(announcementForm);
+      showSuccess("Announcement broadcasted successfully");
+      setAnnouncementForm({ title: "", message: "", targetRole: "all" });
+      await loadAdminData();
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
+  async function handleDeleteAnnouncement(id) {
+    if (!window.confirm("Are you sure you want to recall/delete this announcement? It will immediately disappear from all users' notification history.")) {
+      return;
+    }
+    setProcessingAction(`delete-announcement-${id}`);
+    try {
+      await deleteAnnouncement(id);
+      showSuccess("Announcement recalled successfully");
+      await loadAdminData();
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
   // Computed / Filtered lists
   const filteredUsers = useMemo(() => {
     let list = [...users];
@@ -925,8 +1013,15 @@ export default function AdminPage() {
       );
     }
 
+    // Deletion filter
+    if (docDeletedFilter === "active") {
+      list = list.filter((d) => d.deleted_at === null);
+    } else if (docDeletedFilter === "deleted") {
+      list = list.filter((d) => d.deleted_at !== null);
+    }
+
     return list;
-  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docSearch]);
+  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docDeletedFilter, docSearch]);
 
   const docStats = useMemo(() => {
     const total = documents.length;
@@ -1342,6 +1437,19 @@ export default function AdminPage() {
                     <option value="failed">Failed</option>
                   </select>
                 </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Moderation:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none"
+                    value={docDeletedFilter}
+                    onChange={(e) => setDocDeletedFilter(e.target.value)}
+                  >
+                    <option value="active">Active Documents</option>
+                    <option value="deleted">Trashed / Moderated</option>
+                    <option value="all">All Documents</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1463,6 +1571,14 @@ export default function AdminPage() {
                 <span className="font-bold text-slate-800 capitalize text-right">{selectedDoc.status || "uploaded"}</span>
               </div>
 
+              {/* Moderation Section */}
+              {selectedDoc.moderation_reason && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs">
+                  <strong className="text-red-800">Moderation Reason:</strong>
+                  <p className="m-0 mt-1 text-red-700 font-medium">{selectedDoc.moderation_reason}</p>
+                </div>
+              )}
+
               {/* Tags Section */}
               <div className="mb-6">
                 <h5 className="m-0 font-extrabold text-xs uppercase tracking-wider text-[#66758a] mb-2">Tags</h5>
@@ -1481,22 +1597,42 @@ export default function AdminPage() {
 
               {/* Action Buttons */}
               <div className="grid gap-2 border-t border-[#eef0f3] pt-4">
-                <button
-                  className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer"
-                  onClick={() => handleDownloadDoc(selectedDoc)}
-                  type="button"
-                >
-                  Download File
-                </button>
-                
-                <button
-                  className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-[#b42318] bg-white text-xs font-bold text-[#b42318] hover:bg-[#fff0f0] cursor-pointer"
-                  onClick={() => handlePurgeDoc(selectedDoc)}
-                  type="button"
-                >
-                  Remove Document
-                </button>
-                <p className="text-[10px] text-red-600 text-center italic m-0">Warning: This action cannot be undone.</p>
+                {selectedDoc.deleted_at === null ? (
+                  <>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer"
+                      onClick={() => handleDownloadDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Download File
+                    </button>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-[#b42318] bg-white text-xs font-bold text-[#b42318] hover:bg-[#fff0f0] cursor-pointer"
+                      onClick={() => handleSoftDeleteDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Delete (Move to Trash)
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer"
+                      onClick={() => handleRestoreDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Restore Document
+                    </button>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-red-600 bg-white text-xs font-bold text-red-600 hover:bg-red-50 cursor-pointer"
+                      onClick={() => handlePurgeDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Permanently Delete (Purge)
+                    </button>
+                    <p className="text-[10px] text-red-600 text-center italic m-0">Warning: This action cannot be undone.</p>
+                  </>
+                )}
               </div>
             </aside>
           )}
@@ -1837,9 +1973,329 @@ export default function AdminPage() {
     );
   }
 
+  function renderAiUsage() {
+    if (!aiUsage) {
+      return (
+        <div className="flex h-[200px] items-center justify-center rounded-lg border border-dashed border-[#dfe4ea] bg-white text-sm font-semibold text-[#66758a]">
+          Loading AI Usage stats...
+        </div>
+      );
+    }
+
+    const { byModel = [], topUsers = [], requestsPerDay = [], liveQuota = [] } = aiUsage;
+
+    return (
+      <div className="flex flex-col gap-6">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">AI Usage & Cost Monitoring</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Real-time query metrics, token consumption, and model quota limits.</p>
+        </header>
+
+        {/* Live Quotas Section */}
+        <section className="grid gap-5 md:grid-cols-2">
+          {liveQuota.map((quota) => {
+            const hasLimits = quota.limits && quota.limits.rpm;
+            const rpmPct = hasLimits ? Math.min(100, Math.round((quota.used.requestsThisMinute / quota.limits.rpm) * 100)) : 0;
+            const tpmPct = hasLimits ? Math.min(100, Math.round((quota.used.tokensThisMinute / quota.limits.tpm) * 100)) : 0;
+            const rpdPct = hasLimits ? Math.min(100, Math.round((quota.used.requestsToday / quota.limits.rpd) * 100)) : 0;
+
+            const getBarColor = (pct) => {
+              if (pct > 85) return "bg-red-600";
+              if (pct > 60) return "bg-amber-500";
+              return "bg-emerald-600";
+            };
+
+            return (
+              <article className="rounded-lg border border-[#c7c4d7] bg-white p-5 shadow-sm" key={quota.model}>
+                <header className="flex items-center justify-between border-b border-[#eef0f3] pb-3 mb-4">
+                  <h3 className="m-0 text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded bg-indigo-50 text-xs">🤖</span>
+                    {quota.model}
+                  </h3>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5">
+                    {quota.provider}
+                  </span>
+                </header>
+
+                <div className="grid gap-4">
+                  {/* Requests per minute */}
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Requests per Minute (RPM)</span>
+                      <span className="text-slate-800">
+                        {quota.used.requestsThisMinute} / {hasLimits ? quota.limits.rpm : "∞"}
+                        {hasLimits ? ` (${rpmPct}%)` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getBarColor(rpmPct)}`}
+                        style={{ width: `${hasLimits ? rpmPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tokens per minute */}
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Tokens per Minute (TPM)</span>
+                      <span className="text-slate-800">
+                        {formatCompact(quota.used.tokensThisMinute)} / {hasLimits ? formatCompact(quota.limits.tpm) : "∞"}
+                        {hasLimits ? ` (${tpmPct}%)` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getBarColor(tpmPct)}`}
+                        style={{ width: `${hasLimits ? tpmPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Requests per day */}
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Requests per Day (RPD)</span>
+                      <span className="text-slate-800">
+                        {quota.used.requestsToday} / {hasLimits ? quota.limits.rpd : "∞"}
+                        {hasLimits ? ` (${rpdPct}%)` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getBarColor(rpdPct)}`}
+                        style={{ width: `${hasLimits ? rpdPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+
+        {/* Charts & Models Overview */}
+        <section className="grid gap-5 lg:grid-cols-[1fr_360px]">
+          <ChartCard title="AI Requests per Day (Last 7 Days)">
+            <BarChart data={requestsPerDay} />
+          </ChartCard>
+
+          <article className="rounded-lg border border-[#c7c4d7] bg-white p-5 flex flex-col justify-between shadow-sm">
+            <header className="border-b border-[#eef0f3] pb-3 mb-4">
+              <h2 className="m-0 text-sm font-extrabold text-slate-900">Usage by Model</h2>
+            </header>
+            <div className="grid gap-3 overflow-y-auto max-h-[220px]">
+              {byModel.length ? byModel.map((modelItem) => (
+                <div className="flex items-center justify-between border-b border-[#f8fafc] pb-2 last:border-b-0" key={modelItem.model}>
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 truncate max-w-[185px]">{modelItem.model}</span>
+                    <span className="text-[10px] text-slate-500 uppercase">{modelItem.provider}</span>
+                  </div>
+                  <div className="text-right text-xs">
+                    <span className="block font-semibold text-slate-700">{modelItem.total_requests} reqs</span>
+                    <span className="text-[10px] text-slate-500">{formatCompact(modelItem.total_tokens)} tokens</span>
+                  </div>
+                </div>
+              )) : (
+                <p className="text-xs text-[#66758a] italic m-0">No API traffic recorded in this period.</p>
+              )}
+            </div>
+          </article>
+        </section>
+
+        {/* Top Consumers Table */}
+        <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-sm">
+          <header className="mb-4">
+            <h2 className="m-0 text-base font-extrabold text-slate-900">Top User Consumers Today</h2>
+            <p className="m-0 mt-0.5 text-xs text-[#66758a]">Students generating the highest volume of prompt requests and tokens today.</p>
+          </header>
+
+          {topUsers.length === 0 ? (
+            <div className="flex h-[100px] items-center justify-center text-xs font-semibold text-[#66758a] italic">
+              No user requests recorded today.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#d9dde6] text-[10px] uppercase tracking-wider text-[#66758a] font-bold">
+                    <th className="py-2.5 pr-4 w-12 text-center">Rank</th>
+                    <th className="py-2.5 pr-4">User Email</th>
+                    <th className="py-2.5 pr-4 text-right">Total Requests</th>
+                    <th className="py-2.5 pr-4 text-right">Total Tokens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topUsers.map((item, idx) => {
+                    const initials = (item.email || "U").slice(0, 2).toUpperCase();
+                    return (
+                      <tr className="border-b border-[#eef0f3] last:border-b-0" key={item.user_id}>
+                        <td className="py-3 pr-4 text-center font-bold text-slate-600">
+                          <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black ${
+                            idx === 0 ? "bg-amber-100 text-amber-800" : idx === 1 ? "bg-slate-100 text-slate-800" : "bg-orange-50 text-orange-700"
+                          }`}>
+                            #{idx + 1}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 font-semibold text-[#191c1e]">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#eef0f3] text-[8px] font-bold text-slate-600">
+                              {initials}
+                            </span>
+                            <span className="truncate max-w-[200px]">{item.email}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 text-right font-bold text-slate-800">{item.request_count}</td>
+                        <td className="py-3 pr-4 text-right text-slate-600">{formatCompact(item.total_tokens)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  function renderAnnouncements() {
+    const totalActiveUsers = users.filter(u => u.status === 'active').length;
+
+    return (
+      <div className="flex flex-col gap-5">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Admin Announcements</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Broadcast notifications and system-wide announcements to students or administrative users.</p>
+        </header>
+
+        <section className="grid items-start gap-[18px] lg:grid-cols-[360px_1fr]">
+          {/* Broadcast Form */}
+          <form className="grid gap-4 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]" onSubmit={handleCreateAnnouncement}>
+            <h2 className="m-0 text-lg font-extrabold text-slate-800">Broadcast Announcement</h2>
+            
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Title
+              <input
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                value={announcementForm.title}
+                onChange={(e) => setAnnouncementForm(current => ({ ...current, title: e.target.value }))}
+                placeholder="e.g., Scheduled System Maintenance"
+                maxLength={150}
+                required
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Message
+              <textarea
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none min-h-[100px] resize-y"
+                value={announcementForm.message}
+                onChange={(e) => setAnnouncementForm(current => ({ ...current, message: e.target.value }))}
+                placeholder="Write your announcement details here..."
+                maxLength={500}
+                required
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Target Audience
+              <select
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none bg-white"
+                value={announcementForm.targetRole}
+                onChange={(e) => setAnnouncementForm(current => ({ ...current, targetRole: e.target.value }))}
+              >
+                <option value="all">All Users</option>
+                <option value="user">Students Only</option>
+                <option value="admin">Administrators Only</option>
+              </select>
+            </label>
+
+            <button
+              className="w-full inline-flex h-11 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer disabled:opacity-50"
+              disabled={processingAction === "create-announcement"}
+              type="submit"
+            >
+              {processingAction === "create-announcement" ? "Broadcasting..." : "Broadcast Megaphone 📢"}
+            </button>
+          </form>
+
+          {/* History list */}
+          <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-lg font-extrabold text-slate-800 mb-4">Broadcast History</h2>
+            {announcements.length === 0 ? (
+              <div className="flex h-[200px] items-center justify-center text-sm font-semibold text-[#66758a] italic">
+                No announcements broadcasted yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#d9dde6] text-[10px] uppercase tracking-wider text-[#66758a] font-bold">
+                      <th className="py-3 pr-4">Title</th>
+                      <th className="py-3 pr-4">Target</th>
+                      <th className="py-3 pr-4">Created At</th>
+                      <th className="py-3 pr-4 text-center">Read Ratio</th>
+                      <th className="py-3 pr-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {announcements.map((item) => {
+                      const ratio = totalActiveUsers > 0 ? Math.round((item.read_count / totalActiveUsers) * 100) : 0;
+                      return (
+                        <tr className="border-b border-[#eef0f3] last:border-b-0" key={item.id}>
+                          <td className="py-3 pr-4 max-w-xs">
+                            <span className="block font-bold text-slate-800 break-words">{item.title}</span>
+                            <span className="block text-[10px] text-slate-500 mt-1 line-clamp-2 break-words">{item.message}</span>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-extrabold capitalize ${
+                              item.target_role === "all"
+                                ? "bg-blue-50 text-blue-700 border border-blue-100"
+                                : item.target_role === "admin"
+                                ? "bg-amber-50 text-amber-700 border border-amber-100"
+                                : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                            }`}>
+                              {item.target_role === "all" ? "All" : item.target_role === "admin" ? "Admins" : "Students"}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-slate-600 font-medium">
+                            {new Date(item.created_at).toLocaleString()}
+                          </td>
+                          <td className="py-3 pr-4 text-center">
+                            <div className="flex flex-col items-center">
+                              <span className="font-bold text-slate-800">{item.read_count} read</span>
+                              <span className="text-[10px] text-slate-500 mt-0.5">{ratio}% of active users</span>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 text-right">
+                            <button
+                              className="rounded border border-red-200 bg-white px-2 py-1 text-[10px] font-bold text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                              onClick={() => handleDeleteAnnouncement(item.id)}
+                              disabled={processingAction === `delete-announcement-${item.id}`}
+                              type="button"
+                            >
+                              {processingAction === `delete-announcement-${item.id}` ? "Recalling..." : "Recall"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </section>
+      </div>
+    );
+  }
+
   function renderContent() {
     if (isLoading) return <OverviewSkeleton />;
     if (activeSection === "users") return renderUsers();
+    if (activeSection === "ai-usage") return renderAiUsage();
+    if (activeSection === "announcements") return renderAnnouncements();
     if (activeSection === "documents") return renderDocuments();
     if (activeSection === "subjects") return renderSubjects();
     if (activeSection === "activity-logs") return renderActivityLogs();

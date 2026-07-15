@@ -2,7 +2,7 @@ const notificationService = require('../services/notification.service');
 
 async function getAllNotifications(req, res, next) {
   try {
-    res.json(await notificationService.listNotifications(req.user.id));
+    res.json(await notificationService.listNotifications(req.user.id, req.user.role));
   } catch (err) {
     next(err);
   }

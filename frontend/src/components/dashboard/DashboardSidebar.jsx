@@ -107,6 +107,13 @@ function SidebarIcon({ name }) {
         <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
       </>
     ),
+    megaphone: (
+      <>
+        <path d="M11 5L6 9H2v6h4l5 4V5Z" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </>
+    ),
   };
 
   return (

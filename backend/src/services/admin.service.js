@@ -7,6 +7,9 @@ const activityService = require('./activity.service');
 const communityService = require('./community.service');
 const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
+const aiUsageModel = require('../models/ai-usage.model');
+const aiUsageService = require('./ai-usage.service');
+const aiProvidersConfig = require('../config/ai-providers');
 
 // =========================================================================
 // SECTION: ADMIN SERVICES & MONITORING
@@ -75,6 +78,9 @@ function formatActivity(log) {
     'chat.message': 'AI chat message created',
     'chat.message.send': 'AI chat message created',
     'subject.create': 'Subject created',
+    'admin.document.delete': 'Document moderated (Deleted)',
+    'admin.document.restore': 'Document moderated (Restored)',
+    'admin.document.purge': 'Document moderated (Purged)',
   };
 
   return {
@@ -240,6 +246,8 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
       created_at,
       updated_at,
       deleted_at,
+      moderation_reason,
+      moderated_by,
       users (email),
       subjects (name, code),
       cloud_files (storage_path, mime_type, size_bytes)
@@ -272,11 +280,43 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
   return filtered;
 }
 
+async function getAiUsageOverview() {
+  const since7d = new Date();
+  since7d.setDate(since7d.getDate() - 6);
+  since7d.setHours(0, 0, 0, 0);
+
+  const [byModel, topUsers, rawLogs7d] = await Promise.all([
+    aiUsageModel.aggregateByModel({ since: since7d }),
+    aiUsageModel.topUsersToday(10),
+    supabase
+      .from('ai_usage_logs')
+      .select('created_at')
+      .gte('created_at', since7d.toISOString())
+      .then(res => {
+        if (res.error) throw res.error;
+        return res.data || [];
+      })
+  ]);
+
+  const allowedGeminiModels = aiProvidersConfig.gemini.allowedModels || [];
+  const liveQuota = await Promise.all(
+    allowedGeminiModels.map(model => aiUsageService.getUsage({ model }))
+  );
+
+  return {
+    byModel,
+    topUsers,
+    requestsPerDay: countByDay(rawLogs7d),
+    liveQuota,
+  };
+}
+
 module.exports = {
   listUsers,
   getOverview,
   updateUser,
   listDocuments,
+  getAiUsageOverview,
   listSubjects: subjectService.listSubjects,
   createSubject: subjectService.createSubject,
   updateSubject: subjectService.updateSubject,
