@@ -616,7 +616,7 @@ export default function AdminPage() {
   
   const contentClass = isSidebarCollapsed
     ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
-    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
+    : "grid min-w-0 w-full max-w-[1440px] gap-7 p-8";
 
   const loadAdminData = useCallback(async () => {
     setIsLoading(true);
@@ -1211,7 +1211,7 @@ export default function AdminPage() {
 
           {/* User Details Sidebar Panel */}
           {selectedUser && (
-            <aside className="w-[360px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+            <aside className="w-[320px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
               <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
                 <h3 className="m-0 font-extrabold text-base text-[#191c1e]">User Details</h3>
                 <button
@@ -1528,7 +1528,7 @@ export default function AdminPage() {
 
           {/* Document Details Sidebar Panel */}
           {selectedDoc && (
-            <aside className="w-[360px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+            <aside className="w-[320px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
               <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
                 <h3 className="m-0 font-extrabold text-base text-[#191c1e]">Document Details</h3>
                 <button

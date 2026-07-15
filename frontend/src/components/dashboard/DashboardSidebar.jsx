@@ -114,6 +114,19 @@ function SidebarIcon({ name }) {
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       </>
     ),
+    chip: (
+      <>
+        <rect x="5" y="5" width="14" height="14" rx="2" />
+        <path d="M9 1v4" />
+        <path d="M15 1v4" />
+        <path d="M9 19v4" />
+        <path d="M15 19v4" />
+        <path d="M1 9h4" />
+        <path d="M1 15h4" />
+        <path d="M19 9h4" />
+        <path d="M19 15h4" />
+      </>
+    ),
   };
 
   return (

@@ -248,7 +248,8 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
       deleted_at,
       moderation_reason,
       moderated_by,
-      users (email),
+      users:users!fk_documents_users (email),
+      moderator:users!documents_moderated_by_fkey (email),
       subjects (name, code),
       cloud_files (storage_path, mime_type, size_bytes)
     `)
