@@ -9,6 +9,7 @@
     "seed:demo": "node scripts/seed-demo-data.js",
     "thumbnails:backfill": "node scripts/backfill-thumbnails.js",
     "content-hashes:backfill": "node scripts/backfill-content-hashes.js",
+    "storage:audit": "node scripts/audit-storage-integrity.js",
     "lifecycle:cleanup": "node scripts/run-session-lifecycle.js",
     "migrate:account": "node scripts/run-account-migration.js",
     "lint": "eslint .",

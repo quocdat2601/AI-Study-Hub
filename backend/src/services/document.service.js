@@ -131,41 +131,10 @@ async function canEditDocument(userId, id) {
 async function addThumbnailUrls(documents) {
   return Promise.all((documents || []).map(async (doc) => {
     let thumbnail = await documentThumbnailService.resolveReadyThumbnail(doc);
-    if (
-      !thumbnail
-      && doc.cloud_files?.storage_path
-      && documentThumbnailService.isSupportedThumbnailMimeType(doc.cloud_files?.mime_type)
-    ) {
-      try {
-        const buffer = await supabaseService.downloadFile(doc.cloud_files.storage_path);
-        const generated = await documentThumbnailService.ensureThumbnailForDocument({
-          document: doc,
-          buffer,
-          mimeType: doc.cloud_files.mime_type,
-        });
-        if (generated?.status === 'ready') {
-          thumbnail = {
-            path: generated.path,
-            status: 'ready',
-            error: null,
-            generatedAt: generated.generatedAt || null,
-          };
-        }
-      } catch (error) {
-        console.warn(`Thumbnail resolution failed for document ${doc.id}:`, error.message);
-      }
-    }
 
     if (!thumbnail?.path || thumbnail.status !== 'ready') {
-      const isImage = String(doc.cloud_files?.mime_type || '').startsWith('image/');
-      const storagePath = doc.cloud_files?.storage_path;
-      if (isImage && storagePath) {
-        try {
-          return { ...doc, thumbnailUrl: await supabaseService.getSignedUrl(storagePath) };
-        } catch (error) {
-          console.warn(`Image preview URL failed for document ${doc.id}:`, error.message);
-        }
-      }
+      // List/card responses must stay lightweight. Missing thumbnails intentionally
+      // use UI fallbacks instead of downloading original Storage objects here.
       return { ...doc, thumbnailUrl: null };
     }
 

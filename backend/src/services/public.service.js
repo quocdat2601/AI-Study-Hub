@@ -113,20 +113,10 @@ async function getPublicDocumentById(id) {
     }
   }
 
-  let signedUrl = null;
-  if (doc.cloud_files) {
-    try {
-      signedUrl = await supabaseService.getSignedUrl(doc.cloud_files.storage_path);
-    } catch {
-      signedUrl = null;
-    }
-  }
-
   const mapped = documentService.mapDocument(doc);
   return {
     ...mapped,
     thumbnailUrl,
-    signedUrl,
     uploader: doc.users ? { email: doc.users.email } : null,
     viewCount: Number(doc.view_count || 0),
     downloadCount: Number(doc.download_count || 0),

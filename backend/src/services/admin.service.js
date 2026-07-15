@@ -248,16 +248,33 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
       deleted_at,
       moderation_reason,
       moderated_by,
-      users:users!fk_documents_users (email),
-      moderator:users!documents_moderated_by_fkey (email),
       subjects (name, code),
-      cloud_files (storage_path, mime_type, size_bytes)
+      cloud_files (mime_type, size_bytes)
     `)
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Admin document list query failed:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw createError(500, 'Could not load admin documents');
+  }
 
-  let filtered = data || [];
+  const users = await userModel.findAll();
+  const usersById = new Map(users.map((user) => [String(user.id), user]));
+
+  let filtered = (data || []).map((doc) => ({
+    ...doc,
+    users: usersById.has(String(doc.user_id))
+      ? { email: usersById.get(String(doc.user_id)).email }
+      : null,
+    moderator: doc.moderated_by && usersById.has(String(doc.moderated_by))
+      ? { email: usersById.get(String(doc.moderated_by)).email }
+      : null,
+  }));
 
   if (isDeleted !== undefined && isDeleted !== '') {
     const checkDeleted = String(isDeleted) === 'true';
