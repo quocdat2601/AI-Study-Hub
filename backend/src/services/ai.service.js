@@ -12,6 +12,7 @@ const ragComparisonService = require('./rag-comparison.service');
 const ragNeighborService = require('./rag-neighbor.service');
 const ragRerankService = require('./rag-rerank.service');
 const chatContextService = require('./chat-context.service');
+const verificationService = require('./verification.service');
 const documentOverviewModel = require('../models/document-overview.model');
 const documentOverviewService = require('./document-overview.service');
 const documentRoadmapModel = require('../models/document-roadmap.model');
@@ -394,6 +395,7 @@ function buildAssistantMetadata({
   processingError = null,
   requestContext = null,
   comparisonMetadata = null,
+  verificationResult = null,
 }) {
   const retrievalTypes = [...new Set(
     sources
@@ -421,6 +423,7 @@ function buildAssistantMetadata({
       inheritedImageTask: requestContext.inheritedImageTask || null,
     } : {}),
     ...(comparisonMetadata ? { comparison: comparisonMetadata } : {}),
+    ...(verificationResult?.verdict ? { verification: verificationResult } : {}),
   };
 }
 
@@ -811,6 +814,7 @@ async function saveAssistantAnswer({
   sources,
   requestContext,
   comparisonMetadata,
+  verificationResult = null,
 }) {
   const assistantMetadata = buildAssistantMetadata({
     provider,
@@ -820,6 +824,7 @@ async function saveAssistantAnswer({
     sources,
     requestContext,
     comparisonMetadata,
+    verificationResult,
   });
   const assistantMessage = await chatModel.addMessage(sessionId, 'assistant', answer, assistantMetadata);
   await safeTouchSession(sessionId);
@@ -1659,6 +1664,17 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
     overviewContext,
     overviewIntent,
   } = prepared;
+
+  // --- Verification layer: post-retrieval, pre-generation ---
+  // Runs only for factual questions in hybrid mode; never blocks the answer.
+  const verificationResult = await verificationService.verifyEvidenceSafe({
+    question: cleanedQuestion,
+    requestContext,
+    answerMode,
+    chunks: relevantChunks,
+  });
+  const verificationBadge = verificationService.buildVerificationBadge(verificationResult.verdict);
+
   let generationResult;
 
   try {
@@ -1678,6 +1694,7 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
       overviewContext,
       overviewIntent,
       imageQuestionType: requestContext.imageQuestionType,
+      verificationBadge,
     });
 
     await aiUsageService.logGeminiRequest({
@@ -1721,6 +1738,7 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
     sources,
     requestContext,
     comparisonMetadata,
+    verificationResult,
   });
   const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
@@ -1770,6 +1788,17 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
     overviewIntent,
   } = prepared;
 
+  // --- Verification layer: post-retrieval, pre-generation ---
+  // Runs only for factual questions in hybrid mode; never blocks the answer.
+  sendEvent?.('status', { message: 'Verifying evidence...' });
+  const verificationResult = await verificationService.verifyEvidenceSafe({
+    question: cleanedQuestion,
+    requestContext,
+    answerMode,
+    chunks: relevantChunks,
+  });
+  const verificationBadge = verificationService.buildVerificationBadge(verificationResult.verdict);
+
   let answer = '';
   let usageMetadata = null;
   sendEvent('status', { message: 'Generating answer...' });
@@ -1791,6 +1820,7 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
       overviewContext,
       overviewIntent,
       imageQuestionType: requestContext.imageQuestionType,
+      verificationBadge,
     })) {
       if (event.type === 'token' && event.text) {
         answer += event.text;
@@ -1839,6 +1869,7 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
     sources,
     requestContext,
     comparisonMetadata,
+    verificationResult,
   });
   const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
