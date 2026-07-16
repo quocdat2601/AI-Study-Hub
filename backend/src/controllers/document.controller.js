@@ -59,9 +59,7 @@ async function updateDocument(req, res, next) {
   }
 }
 
-/**
- * Xóa mềm tài liệu (chủ/admin) — chuyển vào thùng rác, file vẫn trên cloud
- */
+
 async function deleteDocument(req, res, next) {
   try {
     res.json(await documentService.softDeleteDocument({
@@ -73,9 +71,7 @@ async function deleteDocument(req, res, next) {
   }
 }
 
-/**
- * Danh sách thùng rác của user
- */
+
 async function listTrash(req, res, next) {
   try {
     res.json(await documentService.listTrash({ userId: req.user.id }));
@@ -84,9 +80,7 @@ async function listTrash(req, res, next) {
   }
 }
 
-/**
- * Khôi phục tài liệu từ thùng rác (chủ/admin)
- */
+
 async function restoreDocument(req, res, next) {
   try {
     res.json(await documentService.restoreDocument({
@@ -98,9 +92,7 @@ async function restoreDocument(req, res, next) {
   }
 }
 
-/**
- * Xóa cứng vĩnh viễn (chủ sở hữu doc của mình, hoặc admin doc bất kỳ)
- */
+
 async function purgeDocument(req, res, next) {
   try {
     res.json(await documentService.purgeDocument({
@@ -112,9 +104,7 @@ async function purgeDocument(req, res, next) {
   }
 }
 
-/**
- * Đổ sạch thùng rác của user (purge toàn bộ)
- */
+
 async function emptyTrash(req, res, next) {
   try {
     res.json(await documentService.emptyTrash({ userId: req.user.id }));
@@ -123,9 +113,7 @@ async function emptyTrash(req, res, next) {
   }
 }
 
-/**
- * Xóa mềm nhiều doc cùng lúc — body: { ids: [..] }
- */
+
 async function bulkSoftDelete(req, res, next) {
   try {
     const { ids } = req.body;
@@ -141,9 +129,7 @@ async function bulkSoftDelete(req, res, next) {
   }
 }
 
-/**
- * Khôi phục nhiều doc cùng lúc — body: { ids: [..] }
- */
+
 async function bulkRestore(req, res, next) {
   try {
     const { ids } = req.body;
@@ -159,9 +145,7 @@ async function bulkRestore(req, res, next) {
   }
 }
 
-/**
- * Chạy auto-purge thủ công (chỉ admin) — để test/demo, không cần chờ cron
- */
+
 async function purgeExpiredTrash(req, res, next) {
   try {
     res.json(await documentService.purgeExpiredTrash());
@@ -170,9 +154,7 @@ async function purgeExpiredTrash(req, res, next) {
   }
 }
 
-/**
- * Admin xem lịch sử xóa/khôi phục tài liệu (chỉ metadata)
- */
+
 async function getDeletionLogs(req, res, next) {
   try {
     res.json(await documentService.listDeletionLogs({ limit: req.query.limit }));

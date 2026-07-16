@@ -1,9 +1,6 @@
 const documentModel = require('../models/document.model');
 
-/**
- * Chỉ chủ tài liệu hoặc admin mới được sửa / xóa.
- * Gắn document vào req.document để service dùng lại.
- */
+
 function requireDocumentOwner() {
   return async function documentOwnerMiddleware(req, res, next) {
     try {

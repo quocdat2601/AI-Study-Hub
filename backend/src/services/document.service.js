@@ -347,7 +347,7 @@ async function deleteDocument({ document, userId }) {
 
 
 
-  // Chỉ xóa object vật lý khi không còn cloud_file nào khác trỏ tới (dedup-safe)
+
 
   if (storagePath) {
 
@@ -608,7 +608,7 @@ async function saveOcrText({ document, text, append }) {
 
 // ─── Soft delete / trash / restore ──────────────────────────────────────────
 
-// Owner xóa mềm: đánh dấu deleted_at, file vẫn ở trên cloud (chỉ chủ sở hữu)
+
 async function softDeleteDocument({ document, userId }) {
   if (document.user_id !== userId) {
     throw createError(403, 'You can only delete your own documents');
@@ -638,13 +638,13 @@ async function softDeleteDocument({ document, userId }) {
   };
 }
 
-// Danh sách thùng rác của user
+
 async function listTrash({ userId }) {
   const documents = await documentModel.findDeletedByUserId(userId);
   return documents.map(mapDocument);
 }
 
-// Khôi phục doc trong thùng rác (chỉ chủ sở hữu)
+
 async function restoreDocument({ id, userId }) {
   const doc = await documentModel.findAnyById(id);
   if (!doc || doc.document_scope !== 'library' || !doc.deleted_at) {
@@ -668,7 +668,7 @@ async function restoreDocument({ id, userId }) {
 
 const TRASH_RETENTION_DAYS = 30;
 
-// Xóa cứng vĩnh viễn — chỉ chủ sở hữu, và doc PHẢI đang ở thùng rác
+
 async function purgeDocument({ id, userId }) {
   const doc = await documentModel.findAnyById(id);
   if (!doc || doc.document_scope !== 'library') {
@@ -681,13 +681,13 @@ async function purgeDocument({ id, userId }) {
     throw createError(400, 'Document must be in trash before it can be permanently deleted');
   }
 
-  // Tái dùng hard-delete sẵn có (xóa file storage + row DB + cloud_file)
+
   await deleteDocument({ document: doc, userId });
 
   return { message: 'Document permanently deleted' };
 }
 
-// Đổ sạch thùng rác: purge toàn bộ doc đã xóa mềm của user
+
 async function emptyTrash({ userId }) {
   const docs = await documentModel.findDeletedByUserId(userId);
   let purged = 0;
@@ -698,7 +698,7 @@ async function emptyTrash({ userId }) {
   return { message: `Emptied trash: ${purged} document(s) permanently deleted`, purged };
 }
 
-// Xóa mềm nhiều doc cùng lúc (chỉ doc của chính user)
+
 async function bulkSoftDelete({ ids, userId }) {
   const succeeded = [];
   const failed = [];
@@ -725,7 +725,7 @@ async function bulkSoftDelete({ ids, userId }) {
   return { message: `Soft-deleted ${succeeded.length} document(s)`, succeeded, failed };
 }
 
-// Khôi phục nhiều doc cùng lúc (chỉ doc của chính user)
+
 async function bulkRestore({ ids, userId }) {
   const succeeded = [];
   const failed = [];
@@ -751,7 +751,7 @@ async function bulkRestore({ ids, userId }) {
   return { message: `Restored ${succeeded.length} document(s)`, succeeded, failed };
 }
 
-// Auto-purge: xóa cứng mọi doc đã ở thùng rác quá hạn giữ (mặc định 30 ngày)
+
 async function purgeExpiredTrash() {
   const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const docs = await documentModel.findExpiredTrash(cutoff);
@@ -767,7 +767,7 @@ async function purgeExpiredTrash() {
   return { purged, retentionDays: TRASH_RETENTION_DAYS, ranAt: new Date().toISOString() };
 }
 
-// Các action liên quan vòng đời xóa, dùng cho admin xem lịch sử
+
 const DELETION_LOG_ACTIONS = [
   'document.soft_delete',
   'document.restore',
@@ -775,7 +775,7 @@ const DELETION_LOG_ACTIONS = [
   'document.purge',
 ];
 
-// Admin xem lịch sử xóa/khôi phục — chỉ metadata (title, ai, khi nào), không có nội dung file
+
 async function listDeletionLogs({ limit }) {
   const logs = await activityService.listByActions(DELETION_LOG_ACTIONS, limit);
   return logs.map((entry) => ({
