@@ -79,8 +79,8 @@ export async function updateDocumentVisibility(id, isPublic) {
   return response.data;
 }
 
-export async function deleteDocument(id) {
-  const response = await api.delete(`/documents/${id}`);
+export async function deleteDocument(id, reason = null) {
+  const response = await api.delete(`/documents/${id}`, { data: { reason } });
   return response.data;
 }
 

@@ -67,6 +67,8 @@ async function deleteDocument(req, res, next) {
     res.json(await documentService.softDeleteDocument({
       document: req.document,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
+      reason: req.body.reason,
     }));
   } catch (err) {
     next(err);
@@ -92,6 +94,7 @@ async function restoreDocument(req, res, next) {
     res.json(await documentService.restoreDocument({
       id: req.params.id,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
     }));
   } catch (err) {
     next(err);
@@ -106,6 +109,7 @@ async function purgeDocument(req, res, next) {
     res.json(await documentService.purgeDocument({
       id: req.params.id,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
     }));
   } catch (err) {
     next(err);
@@ -128,13 +132,15 @@ async function emptyTrash(req, res, next) {
  */
 async function bulkSoftDelete(req, res, next) {
   try {
-    const { ids } = req.body;
+    const { ids, reason } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: 'ids must be a non-empty array' });
     }
     res.json(await documentService.bulkSoftDelete({
       ids,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
+      reason,
     }));
   } catch (err) {
     next(err);
@@ -153,6 +159,7 @@ async function bulkRestore(req, res, next) {
     res.json(await documentService.bulkRestore({
       ids,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
     }));
   } catch (err) {
     next(err);
