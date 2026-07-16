@@ -150,3 +150,64 @@ describe('SourceList inside AIChatPanel', () => {
     expect(titleEl).toHaveAttribute('title', longTitle);
   });
 });
+
+describe('VerificationBadge inside AIChatPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const renderPanelWithVerification = (verification) => {
+    const messages = [
+      {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Test answer',
+        metadata: { verification }
+      }
+    ];
+    return render(
+      <AIChatPanel
+        messages={messages}
+        isProcessing={false}
+        isAsking={false}
+        error=""
+        answerMode="hybrid"
+        selectedModel="gemini"
+        geminiModels={[]}
+        ollamaModels={[]}
+        onAnswerModeChange={vi.fn()}
+        onModelChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+  };
+
+  it('renders nothing when verification is absent or skipped', () => {
+    const { container } = renderPanelWithVerification(null);
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    expect(screen.queryByText('Uncertain')).not.toBeInTheDocument();
+    expect(screen.queryByText('Contradicted')).not.toBeInTheDocument();
+  });
+
+  it('renders verified badge with correct tooltip', () => {
+    renderPanelWithVerification({ verdict: 'verified' });
+    const badge = screen.getByText('Verified');
+    expect(badge).toBeInTheDocument();
+    expect(badge.closest('span')).toHaveAttribute('title', expect.stringContaining('no obvious contradiction'));
+  });
+
+  it('renders uncertain badge with correct tooltip', () => {
+    renderPanelWithVerification({ verdict: 'uncertain' });
+    const badge = screen.getByText('Uncertain');
+    expect(badge).toBeInTheDocument();
+    expect(badge.closest('span')).toHaveAttribute('title', expect.stringContaining('could not confidently determine'));
+  });
+
+  it('renders contradicted badge with correct tooltip', () => {
+    renderPanelWithVerification({ verdict: 'contradicted' });
+    const badge = screen.getByText('Contradicted');
+    expect(badge).toBeInTheDocument();
+    expect(badge.closest('span')).toHaveAttribute('title', expect.stringContaining('conflict with public knowledge'));
+  });
+});

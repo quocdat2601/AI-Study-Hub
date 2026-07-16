@@ -191,6 +191,35 @@ function ModelBadge({ message }) {
   return null;
 }
 
+function VerificationBadge({ verification }) {
+  if (!verification || !verification.verdict) return null;
+
+  const tooltipText = {
+    verified: "This answer was generated from your uploaded document. A verification step found no obvious contradiction with general public knowledge.",
+    uncertain: "The verification step could not confidently determine whether the factual claims are correct.",
+    contradicted: "The answer follows your uploaded document, but some factual claims appear to conflict with public knowledge. The document itself was NOT modified."
+  };
+
+  const badgeProps = {
+    verified: { icon: "✅", color: "text-emerald-700 bg-emerald-50 ring-emerald-200", label: "Verified" },
+    uncertain: { icon: "⚠", color: "text-amber-700 bg-amber-50 ring-amber-200", label: "Uncertain" },
+    contradicted: { icon: "❌", color: "text-red-700 bg-red-50 ring-red-200", label: "Contradicted" }
+  };
+
+  const verdict = verification.verdict;
+  const props = badgeProps[verdict];
+  if (!props) return null;
+
+  return (
+    <span 
+      className={`mb-1 ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 cursor-default ${props.color}`}
+      title={tooltipText[verdict]}
+    >
+      <span>{props.icon}</span> {props.label}
+    </span>
+  );
+}
+
 function formatMessageTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -232,7 +261,10 @@ function MessageBubble({ message }) {
   return (
     <div className="flex justify-start">
       <div className="max-w-[88%]">
-        <ModelBadge message={message} />
+        <div className="flex flex-wrap items-center">
+          <ModelBadge message={message} />
+          {message.metadata?.verification && <VerificationBadge verification={message.metadata.verification} />}
+        </div>
         <div className="workspace-selectable rounded-2xl rounded-tl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800">
           <div className="m-0 select-text break-words">{renderMarkdownBody(content, React)}</div>
           <SourceList sources={message.sources} />

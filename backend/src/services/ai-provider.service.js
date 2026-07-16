@@ -90,6 +90,7 @@ function buildRagPrompts({
   overviewIntent,
   imageQuestionType,
   provider,
+  verificationBadge,
 }) {
   const context = (chunks || [])
     .map((chunk, index) => `${buildSourceLabel(chunk, index)}\n${chunk.promptContent || chunk.content}`)
@@ -197,6 +198,7 @@ function buildRagPrompts({
     multiDocumentInstruction,
     overviewInstruction,
     imageInstruction,
+    verificationBadge || '',
   ].filter(Boolean).join('\n\n');
   const userPrompt = [
     historyText ? `Recent conversation context:\n${historyText}` : '',

@@ -1,4 +1,5 @@
 import api from "./api.js";
+import { getCachedSignedPayload, setCachedSignedPayload } from "./storageUrlCache.js";
 
 export async function listDocuments(params = {}) {
   const response = await api.get("/documents", { params });
@@ -13,10 +14,15 @@ export async function getDocument(id, options = {}) {
 }
 
 export async function getDocumentSignedUrl(id, options = {}) {
+  const cacheKey = `document:${id}:original`;
+  if (!options.skipCache) {
+    const cached = getCachedSignedPayload(cacheKey);
+    if (cached) return cached;
+  }
   const response = await api.get(`/documents/${id}/signed-url`, {
     suppressAuthRedirect: Boolean(options.suppressAuthRedirect),
   });
-  return response.data;
+  return setCachedSignedPayload(cacheKey, response.data);
 }
 
 export async function listTrendingDocuments(limit = 12) {
@@ -42,12 +48,15 @@ export async function getPublicDocument(id) {
 }
 
 export async function getPublicDocumentSignedUrl(id) {
+  const cacheKey = `public-document:${id}:original`;
+  const cached = getCachedSignedPayload(cacheKey);
+  if (cached) return cached;
   if (publicSignedUrlCache[id]) {
     return publicSignedUrlCache[id];
   }
   const response = await api.get(`/public/documents/${id}/signed-url`);
   publicSignedUrlCache[id] = response.data;
-  return response.data;
+  return setCachedSignedPayload(cacheKey, response.data);
 }
 
 export async function listDocumentComments(id) {
@@ -70,8 +79,8 @@ export async function updateDocumentVisibility(id, isPublic) {
   return response.data;
 }
 
-export async function deleteDocument(id) {
-  const response = await api.delete(`/documents/${id}`);
+export async function deleteDocument(id, reason = null) {
+  const response = await api.delete(`/documents/${id}`, { data: { reason } });
   return response.data;
 }
 

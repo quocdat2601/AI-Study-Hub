@@ -7,6 +7,9 @@ const activityService = require('./activity.service');
 const communityService = require('./community.service');
 const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
+const aiUsageModel = require('../models/ai-usage.model');
+const aiUsageService = require('./ai-usage.service');
+const aiProvidersConfig = require('../config/ai-providers');
 
 // =========================================================================
 // SECTION: ADMIN SERVICES & MONITORING
@@ -75,6 +78,9 @@ function formatActivity(log) {
     'chat.message': 'AI chat message created',
     'chat.message.send': 'AI chat message created',
     'subject.create': 'Subject created',
+    'admin.document.delete': 'Document moderated (Deleted)',
+    'admin.document.restore': 'Document moderated (Restored)',
+    'admin.document.purge': 'Document moderated (Purged)',
   };
 
   return {
@@ -240,15 +246,35 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
       created_at,
       updated_at,
       deleted_at,
-      users (email),
+      moderation_reason,
+      moderated_by,
       subjects (name, code),
-      cloud_files (storage_path, mime_type, size_bytes)
+      cloud_files (mime_type, size_bytes)
     `)
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Admin document list query failed:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw createError(500, 'Could not load admin documents');
+  }
 
-  let filtered = data || [];
+  const users = await userModel.findAll();
+  const usersById = new Map(users.map((user) => [String(user.id), user]));
+
+  let filtered = (data || []).map((doc) => ({
+    ...doc,
+    users: usersById.has(String(doc.user_id))
+      ? { email: usersById.get(String(doc.user_id)).email }
+      : null,
+    moderator: doc.moderated_by && usersById.has(String(doc.moderated_by))
+      ? { email: usersById.get(String(doc.moderated_by)).email }
+      : null,
+  }));
 
   if (isDeleted !== undefined && isDeleted !== '') {
     const checkDeleted = String(isDeleted) === 'true';
@@ -272,11 +298,43 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
   return filtered;
 }
 
+async function getAiUsageOverview() {
+  const since7d = new Date();
+  since7d.setDate(since7d.getDate() - 6);
+  since7d.setHours(0, 0, 0, 0);
+
+  const [byModel, topUsers, rawLogs7d] = await Promise.all([
+    aiUsageModel.aggregateByModel({ since: since7d }),
+    aiUsageModel.topUsersToday(10),
+    supabase
+      .from('ai_usage_logs')
+      .select('created_at')
+      .gte('created_at', since7d.toISOString())
+      .then(res => {
+        if (res.error) throw res.error;
+        return res.data || [];
+      })
+  ]);
+
+  const allowedGeminiModels = aiProvidersConfig.gemini.allowedModels || [];
+  const liveQuota = await Promise.all(
+    allowedGeminiModels.map(model => aiUsageService.getUsage({ model }))
+  );
+
+  return {
+    byModel,
+    topUsers,
+    requestsPerDay: countByDay(rawLogs7d),
+    liveQuota,
+  };
+}
+
 module.exports = {
   listUsers,
   getOverview,
   updateUser,
   listDocuments,
+  getAiUsageOverview,
   listSubjects: subjectService.listSubjects,
   createSubject: subjectService.createSubject,
   updateSubject: subjectService.updateSubject,

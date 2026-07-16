@@ -131,41 +131,10 @@ async function canEditDocument(userId, id) {
 async function addThumbnailUrls(documents) {
   return Promise.all((documents || []).map(async (doc) => {
     let thumbnail = await documentThumbnailService.resolveReadyThumbnail(doc);
-    if (
-      !thumbnail
-      && doc.cloud_files?.storage_path
-      && documentThumbnailService.isSupportedThumbnailMimeType(doc.cloud_files?.mime_type)
-    ) {
-      try {
-        const buffer = await supabaseService.downloadFile(doc.cloud_files.storage_path);
-        const generated = await documentThumbnailService.ensureThumbnailForDocument({
-          document: doc,
-          buffer,
-          mimeType: doc.cloud_files.mime_type,
-        });
-        if (generated?.status === 'ready') {
-          thumbnail = {
-            path: generated.path,
-            status: 'ready',
-            error: null,
-            generatedAt: generated.generatedAt || null,
-          };
-        }
-      } catch (error) {
-        console.warn(`Thumbnail resolution failed for document ${doc.id}:`, error.message);
-      }
-    }
 
     if (!thumbnail?.path || thumbnail.status !== 'ready') {
-      const isImage = String(doc.cloud_files?.mime_type || '').startsWith('image/');
-      const storagePath = doc.cloud_files?.storage_path;
-      if (isImage && storagePath) {
-        try {
-          return { ...doc, thumbnailUrl: await supabaseService.getSignedUrl(storagePath) };
-        } catch (error) {
-          console.warn(`Image preview URL failed for document ${doc.id}:`, error.message);
-        }
-      }
+      // List/card responses must stay lightweight. Missing thumbnails intentionally
+      // use UI fallbacks instead of downloading original Storage objects here.
       return { ...doc, thumbnailUrl: null };
     }
 
@@ -323,68 +292,43 @@ async function updateDocument({ document, title, subjectId, tags }) {
 
 
 
-async function deleteDocument({ document, userId }) {
-  const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId });
+async function deleteDocument({ document, userId, isAdmin }) {
+  const targetUserId = isAdmin ? document.user_id : userId;
+  const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId: targetUserId });
   const deletedPrimarySessionIds = importedSessionId
     ? [importedSessionId]
-    : await deleteOwnedPrimarySessionsForDocument({ document, userId });
+    : await deleteOwnedPrimarySessionsForDocument({ document, userId: targetUserId });
 
   const storagePath = document.cloud_files?.storage_path;
-
   const fileId = document.file_id;
-
-
 
   await documentModel.delete(document.id);
 
-
-
   if (fileId && await documentModel.countDocumentsByFileId(fileId) === 0) {
-
     await documentModel.deleteCloudFile(fileId);
-
   }
-
-
-
-
 
   if (storagePath) {
-
     const stillReferenced = await documentModel.countCloudFilesByStoragePath(storagePath);
-
     if (stillReferenced === 0) {
-
       await supabaseService.deleteFile(storagePath);
-
     }
-
   }
 
-
-
+  const isModerating = isAdmin && document.user_id !== userId;
   activityService.log({
-
     userId,
-
-    action: 'document.delete',
-
+    action: isModerating ? 'admin.document.purge' : 'document.delete',
     targetType: 'document',
-
     targetId: document.id,
-
-    metadata: { title: document.title },
-
+    metadata: { title: document.title, ownerId: document.user_id },
   });
-
-
 
   return {
     message: 'Document deleted successfully',
     sessionDeleted: deletedPrimarySessionIds.length > 0,
     sessionIds: deletedPrimarySessionIds,
   };
-
 }
 
 async function deleteImportedForkForPrimaryDocument({ document, userId }) {
@@ -608,23 +552,32 @@ async function saveOcrText({ document, text, append }) {
 
 // ─── Soft delete / trash / restore ──────────────────────────────────────────
 
-
-async function softDeleteDocument({ document, userId }) {
-  if (document.user_id !== userId) {
+async function softDeleteDocument({ document, userId, isAdmin, reason }) {
+  if (document.user_id !== userId && !isAdmin) {
     throw createError(403, 'You can only delete your own documents');
   }
-  const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId });
+  const targetUserId = isAdmin ? document.user_id : userId;
+  const importedSessionId = await deleteImportedForkForPrimaryDocument({ document, userId: targetUserId });
   const deletedPrimarySessionIds = importedSessionId
     ? [importedSessionId]
-    : await deleteOwnedPrimarySessionsForDocument({ document, userId });
-  await documentModel.softDelete(document.id);
+    : await deleteOwnedPrimarySessionsForDocument({ document, userId: targetUserId });
+
+  const isModerating = isAdmin && document.user_id !== userId;
+  await documentModel.softDelete(document.id, {
+    moderationReason: isModerating ? reason : null,
+    moderatedBy: isModerating ? userId : null,
+  });
 
   activityService.log({
     userId,
-    action: 'document.soft_delete',
+    action: isModerating ? 'admin.document.delete' : 'document.soft_delete',
     targetType: 'document',
     targetId: document.id,
-    metadata: { title: document.title },
+    metadata: { 
+      title: document.title, 
+      ownerId: document.user_id,
+      ...(isModerating && { reason })
+    },
   });
 
   return {
@@ -644,23 +597,24 @@ async function listTrash({ userId }) {
   return documents.map(mapDocument);
 }
 
-
-async function restoreDocument({ id, userId }) {
+async function restoreDocument({ id, userId, isAdmin }) {
   const doc = await documentModel.findAnyById(id);
   if (!doc || doc.document_scope !== 'library' || !doc.deleted_at) {
     throw createError(404, 'Document not found in trash');
   }
-  if (doc.user_id !== userId) {
+  if (doc.user_id !== userId && !isAdmin) {
     throw createError(403, 'You can only restore your own documents');
   }
 
   const restored = await documentModel.restore(id);
 
+  const isModerating = isAdmin && doc.user_id !== userId;
   activityService.log({
     userId,
-    action: 'document.restore',
+    action: isModerating ? 'admin.document.restore' : 'document.restore',
     targetType: 'document',
     targetId: doc.id,
+    metadata: { title: doc.title, ownerId: doc.user_id },
   });
 
   return { message: 'Document restored', document: mapDocument(restored) };
@@ -668,21 +622,19 @@ async function restoreDocument({ id, userId }) {
 
 const TRASH_RETENTION_DAYS = 30;
 
-
-async function purgeDocument({ id, userId }) {
+async function purgeDocument({ id, userId, isAdmin }) {
   const doc = await documentModel.findAnyById(id);
   if (!doc || doc.document_scope !== 'library') {
     throw createError(404, 'Document not found');
   }
-  if (doc.user_id !== userId) {
+  if (doc.user_id !== userId && !isAdmin) {
     throw createError(403, 'You can only permanently delete your own documents');
   }
   if (!doc.deleted_at) {
     throw createError(400, 'Document must be in trash before it can be permanently deleted');
   }
 
-
-  await deleteDocument({ document: doc, userId });
+  await deleteDocument({ document: doc, userId, isAdmin });
 
   return { message: 'Document permanently deleted' };
 }
@@ -698,8 +650,7 @@ async function emptyTrash({ userId }) {
   return { message: `Emptied trash: ${purged} document(s) permanently deleted`, purged };
 }
 
-
-async function bulkSoftDelete({ ids, userId }) {
+async function bulkSoftDelete({ ids, userId, isAdmin, reason }) {
   const succeeded = [];
   const failed = [];
   for (const id of ids) {
@@ -708,25 +659,32 @@ async function bulkSoftDelete({ ids, userId }) {
       failed.push({ id, reason: 'not found' });
       continue;
     }
-    if (doc.user_id !== userId) {
+    if (doc.user_id !== userId && !isAdmin) {
       failed.push({ id, reason: 'forbidden' });
       continue;
     }
-    await documentModel.softDelete(id);
+    const isModerating = isAdmin && doc.user_id !== userId;
+    await documentModel.softDelete(id, {
+      moderationReason: isModerating ? reason : null,
+      moderatedBy: isModerating ? userId : null,
+    });
     activityService.log({
       userId,
-      action: 'document.soft_delete',
+      action: isModerating ? 'admin.document.delete' : 'document.soft_delete',
       targetType: 'document',
       targetId: doc.id,
-      metadata: { title: doc.title },
+      metadata: { 
+        title: doc.title, 
+        ownerId: doc.user_id,
+        ...(isModerating && { reason })
+      },
     });
     succeeded.push(doc.id);
   }
   return { message: `Soft-deleted ${succeeded.length} document(s)`, succeeded, failed };
 }
 
-
-async function bulkRestore({ ids, userId }) {
+async function bulkRestore({ ids, userId, isAdmin }) {
   const succeeded = [];
   const failed = [];
   for (const id of ids) {
@@ -735,16 +693,18 @@ async function bulkRestore({ ids, userId }) {
       failed.push({ id, reason: 'not in trash' });
       continue;
     }
-    if (doc.user_id !== userId) {
+    if (doc.user_id !== userId && !isAdmin) {
       failed.push({ id, reason: 'forbidden' });
       continue;
     }
     await documentModel.restore(id);
+    const isModerating = isAdmin && doc.user_id !== userId;
     activityService.log({
       userId,
-      action: 'document.restore',
+      action: isModerating ? 'admin.document.restore' : 'document.restore',
       targetType: 'document',
       targetId: doc.id,
+      metadata: { title: doc.title, ownerId: doc.user_id },
     });
     succeeded.push(doc.id);
   }

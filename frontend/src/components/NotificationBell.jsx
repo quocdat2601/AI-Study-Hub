@@ -32,6 +32,7 @@ function getNotificationLabel(type) {
   if (type === "community_reply") return "New reply";
   if (type === "community_upvote") return "Post upvoted";
   if (type === "community_accepted") return "Answer accepted";
+  if (type === "announcement") return "System Announcement";
   return "Notification";
 }
 
@@ -140,6 +141,9 @@ export default function NotificationBell() {
     }
 
     setIsOpen(false);
+    if (notification.type === "announcement") {
+      return;
+    }
     if (notification.ref_post_id) {
       navigate(`/community/posts/${notification.ref_post_id}`);
     } else if (
@@ -213,6 +217,7 @@ export default function NotificationBell() {
                           : notification.type === "community_reply" ? "R"
                           : notification.type === "community_upvote" ? "▲"
                           : notification.type === "community_accepted" ? "✓"
+                          : notification.type === "announcement" ? "📢"
                           : "N"}
                       </span>
                       <span className="min-w-0 flex-1">

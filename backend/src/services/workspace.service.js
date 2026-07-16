@@ -58,16 +58,12 @@ async function getDocumentContext({ userId, docId }) {
   const document = await documentService.getWorkspaceDocumentById({ id, userId });
   const session = await chatService.getOrCreateSession({ userId, docId: id });
 
-  const [signed, chat] = await Promise.all([
-    documentService.getSignedUrl({ id, userId }),
-    chatService.getMessages({ sessionId: session.id, userId }),
-  ]);
+  const chat = await chatService.getMessages({ sessionId: session.id, userId });
 
   const chatReady = isChatReady(document);
 
   return {
     document,
-    signedUrl: signed.signedUrl,
     sessionId: session.id,
     messages: chat.messages || [],
     chatReady,
