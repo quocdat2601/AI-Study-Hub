@@ -152,3 +152,8 @@ export async function toggleRoadmapStep(docId, stepOrder, completed) {
   const response = await api.patch(`/ai/documents/${docId}/roadmap/steps/${stepOrder}`, { completed });
   return response.data;
 }
+
+export async function getRoadmapsInProgress(limit = 3) {
+  const response = await api.get("/ai/roadmaps/in-progress", { params: { limit } });
+  return response.data;
+}
