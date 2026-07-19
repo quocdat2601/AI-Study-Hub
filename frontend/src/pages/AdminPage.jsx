@@ -19,6 +19,8 @@ import {
   createAnnouncement,
   listAnnouncements,
   deleteAnnouncement,
+  getPipelineHealth,
+  reprocessDocument,
 } from "../services/adminApi.js";
 import { getDocumentSignedUrl, deleteDocument as softDeleteDocumentApi, restoreDocument as restoreDocumentApi } from "../services/documentApi.js";
 import { renderMarkdownBody } from "../components/community/communityUtils.js";
@@ -35,6 +37,7 @@ const adminSidebarItems = [
   { id: "subjects", icon: "book", label: "Subjects" },
   { id: "reports", icon: "reports", label: "Reports" },
   { id: "announcements", icon: "megaphone", label: "Announcements" },
+  { id: "pipeline-health", icon: "activity", label: "Pipeline Health" },
   { id: "activity-logs", icon: "activity", label: "Activity Logs" },
 ];
 
@@ -567,6 +570,7 @@ export default function AdminPage() {
   const [aiUsage, setAiUsage] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
   const [announcementForm, setAnnouncementForm] = useState({ title: "", message: "", targetRole: "all" });
+  const [pipelineHealth, setPipelineHealth] = useState(null);
   
   // Selection states (for details sidebars)
   const [selectedUser, setSelectedUser] = useState(null);
@@ -622,7 +626,7 @@ export default function AdminPage() {
     setIsLoading(true);
 
     try {
-      const [overviewData, userData, subjectData, documentData, reportData, aiUsageData, announcementData] = await Promise.all([
+      const [overviewData, userData, subjectData, documentData, reportData, aiUsageData, announcementData, pipelineHealthData] = await Promise.all([
         getAdminOverview(),
         listAdminUsers(),
         listAdminSubjects(),
@@ -630,6 +634,7 @@ export default function AdminPage() {
         listAdminCommunityReports(),
         getAiUsage(),
         listAnnouncements(),
+        getPipelineHealth(),
       ]);
       setOverview(overviewData);
       setUsers(userData);
@@ -638,6 +643,7 @@ export default function AdminPage() {
       setReports(reportData);
       setAiUsage(aiUsageData);
       setAnnouncements(announcementData);
+      setPipelineHealth(pipelineHealthData);
     } catch (err) {
       showError(messageFromError(err));
     } finally {
@@ -909,6 +915,19 @@ export default function AdminPage() {
     try {
       await deleteAnnouncement(id);
       showSuccess("Announcement recalled successfully");
+      await loadAdminData();
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
+  async function handleReprocessDocument(id) {
+    setProcessingAction(`reprocess-doc-${id}`);
+    try {
+      await reprocessDocument(id);
+      showSuccess("Document reprocessed successfully");
       await loadAdminData();
     } catch (err) {
       showError(messageFromError(err));
@@ -2291,11 +2310,193 @@ export default function AdminPage() {
     );
   }
 
+  function renderPipelineHealth() {
+    if (!pipelineHealth) {
+      return (
+        <div className="flex h-[300px] items-center justify-center text-sm font-semibold text-[#66758a] italic">
+          Loading pipeline health data...
+        </div>
+      );
+    }
+
+    const { extractionCounts, embeddingCounts, failedDocs, failedChunkDocs } = pipelineHealth;
+
+    return (
+      <div className="flex flex-col gap-6">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">RAG Pipeline Health</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Monitor document text extraction (OCR) and chunk embedding health. Reprocess failed pipelines manually.</p>
+        </header>
+
+        {/* Counts summary panels */}
+        <section className="grid gap-5 md:grid-cols-2">
+          {/* Extraction health cards */}
+          <div className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-sm font-black uppercase tracking-[0.7px] text-[#464554] mb-4">Text Extraction Pipeline</h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div className="rounded-lg bg-[#e8f5ee] p-4 text-center">
+                <span className="block text-xs font-bold text-[#087443]">Ready</span>
+                <strong className="mt-1 block text-2xl text-[#087443]">{extractionCounts.ready || 0}</strong>
+              </div>
+              <div className="rounded-lg bg-[#f0f4f8] p-4 text-center">
+                <span className="block text-xs font-bold text-[#475569]">Pending</span>
+                <strong className="mt-1 block text-2xl text-[#475569]">{extractionCounts.pending || 0}</strong>
+              </div>
+              <div className="rounded-lg bg-[#fff0f0] p-4 text-center">
+                <span className="block text-xs font-bold text-[#b42318]">Failed</span>
+                <strong className="mt-1 block text-2xl text-[#b42318]">{extractionCounts.failed || 0}</strong>
+              </div>
+              <div className="rounded-lg bg-amber-50 p-4 text-center border border-amber-100">
+                <span className="block text-xs font-bold text-amber-700">Empty (No OCR)</span>
+                <strong className="mt-1 block text-2xl text-amber-700">{extractionCounts.empty || 0}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Embedding health cards */}
+          <div className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-sm font-black uppercase tracking-[0.7px] text-[#464554] mb-4">Vector Embedding Pipeline</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="rounded-lg bg-[#e8f5ee] p-4 text-center">
+                <span className="block text-xs font-bold text-[#087443]">Ready</span>
+                <strong className="mt-1 block text-2xl text-[#087443]">{embeddingCounts.ready || 0}</strong>
+              </div>
+              <div className="rounded-lg bg-[#f0f4f8] p-4 text-center">
+                <span className="block text-xs font-bold text-[#475569]">Pending (Lazy)</span>
+                <strong className="mt-1 block text-2xl text-[#475569]">{embeddingCounts.pending || 0}</strong>
+              </div>
+              <div className="rounded-lg bg-[#fff0f0] p-4 text-center">
+                <span className="block text-xs font-bold text-[#b42318]">Failed</span>
+                <strong className="mt-1 block text-2xl text-[#b42318]">{embeddingCounts.failed || 0}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Detailed Issues Tables */}
+        <section className="grid gap-6 xl:grid-cols-2">
+          {/* Extraction Issues */}
+          <div className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-base font-extrabold text-slate-800 mb-4">Extraction Issues (Failed & Empty)</h2>
+            {failedDocs.length === 0 ? (
+              <div className="flex h-[200px] items-center justify-center text-sm font-semibold text-[#66758a] italic">
+                No extraction issues detected.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#d9dde6] text-[10px] uppercase tracking-wider text-[#66758a] font-bold">
+                      <th className="py-3 pr-4">Document</th>
+                      <th className="py-3 pr-4">Owner</th>
+                      <th className="py-3 pr-4">Status</th>
+                      <th className="py-3 pr-4">Last Updated</th>
+                      <th className="py-3 pr-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {failedDocs.map((doc) => {
+                      const isReprocessing = processingAction === `reprocess-doc-${doc.id}`;
+                      return (
+                        <tr className="border-b border-[#eef0f3] last:border-b-0" key={doc.id}>
+                          <td className="py-3 pr-4 font-bold text-slate-800 max-w-[200px] truncate" title={doc.title}>
+                            {doc.title}
+                          </td>
+                          <td className="py-3 pr-4 text-slate-600 truncate max-w-[120px]" title={doc.email}>
+                            {doc.email}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-extrabold capitalize ${
+                              doc.extraction_status === "empty"
+                                ? "bg-amber-50 text-amber-700 border border-amber-100"
+                                : "bg-[#fff0f0] text-[#b42318]"
+                            }`}>
+                              {doc.extraction_status}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-slate-500 font-medium">
+                            {new Date(doc.updated_at).toLocaleString()}
+                          </td>
+                          <td className="py-3 pr-4 text-right">
+                            <button
+                              className="rounded border border-[#cbd5e1] bg-white px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 cursor-pointer disabled:opacity-50"
+                              onClick={() => handleReprocessDocument(doc.id)}
+                              disabled={isReprocessing || !!processingAction}
+                              type="button"
+                            >
+                              {isReprocessing ? "Processing..." : "Reprocess"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Chunk Embedding Issues */}
+          <div className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-base font-extrabold text-slate-800 mb-4">Embedding Issues (Stuck Chunks)</h2>
+            {failedChunkDocs.length === 0 ? (
+              <div className="flex h-[200px] items-center justify-center text-sm font-semibold text-[#66758a] italic">
+                No embedding issues detected.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#d9dde6] text-[10px] uppercase tracking-wider text-[#66758a] font-bold">
+                      <th className="py-3 pr-4">Document</th>
+                      <th className="py-3 pr-4">Owner</th>
+                      <th className="py-3 pr-4">Error Details</th>
+                      <th className="py-3 pr-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {failedChunkDocs.map((chunk, idx) => {
+                      const isReprocessing = processingAction === `reprocess-doc-${chunk.doc_id}`;
+                      return (
+                        <tr className="border-b border-[#eef0f3] last:border-b-0" key={idx}>
+                          <td className="py-3 pr-4 font-bold text-slate-800 max-w-[150px] truncate" title={chunk.title}>
+                            {chunk.title}
+                          </td>
+                          <td className="py-3 pr-4 text-slate-600 truncate max-w-[120px]" title={chunk.email}>
+                            {chunk.email}
+                          </td>
+                          <td className="py-3 pr-4 text-red-600 max-w-[200px] truncate font-medium" title={chunk.embedding_error}>
+                            {chunk.embedding_error || "Embedding failed"}
+                          </td>
+                          <td className="py-3 pr-4 text-right">
+                            <button
+                              className="rounded border border-[#cbd5e1] bg-white px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 cursor-pointer disabled:opacity-50"
+                              onClick={() => handleReprocessDocument(chunk.doc_id)}
+                              disabled={isReprocessing || !!processingAction}
+                              type="button"
+                            >
+                              {isReprocessing ? "Processing..." : "Reprocess"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function renderContent() {
     if (isLoading) return <OverviewSkeleton />;
     if (activeSection === "users") return renderUsers();
     if (activeSection === "ai-usage") return renderAiUsage();
     if (activeSection === "announcements") return renderAnnouncements();
+    if (activeSection === "pipeline-health") return renderPipelineHealth();
     if (activeSection === "documents") return renderDocuments();
     if (activeSection === "subjects") return renderSubjects();
     if (activeSection === "activity-logs") return renderActivityLogs();

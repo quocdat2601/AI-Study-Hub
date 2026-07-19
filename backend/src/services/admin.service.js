@@ -10,6 +10,7 @@ const { publicUser } = require('./user.service');
 const aiUsageModel = require('../models/ai-usage.model');
 const aiUsageService = require('./ai-usage.service');
 const aiProvidersConfig = require('../config/ai-providers');
+const aiService = require('./ai.service');
 
 // =========================================================================
 // SECTION: ADMIN SERVICES & MONITORING
@@ -81,6 +82,7 @@ function formatActivity(log) {
     'admin.document.delete': 'Document moderated (Deleted)',
     'admin.document.restore': 'Document moderated (Restored)',
     'admin.document.purge': 'Document moderated (Purged)',
+    'admin.document.reprocess': 'Document RAG Reprocessed',
   };
 
   return {
@@ -329,12 +331,100 @@ async function getAiUsageOverview() {
   };
 }
 
+function countBy(array, key) {
+  return (array || []).reduce((acc, item) => {
+    const val = item[key] || 'unknown';
+    acc[val] = (acc[val] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+async function getPipelineHealth() {
+  const [docsResult, chunksResult, failedDocsResult, failedChunksResult] = await Promise.all([
+    supabase
+      .from('documents')
+      .select('extraction_status')
+      .is('deleted_at', null),
+    supabase
+      .from('document_chunks')
+      .select('embedding_status'),
+    supabase
+      .from('documents')
+      .select('id, title, user_id, extraction_status, updated_at')
+      .in('extraction_status', ['failed', 'empty'])
+      .is('deleted_at', null)
+      .limit(50),
+    supabase
+      .from('document_chunks')
+      .select('doc_id, embedding_error, documents(title, user_id, deleted_at)')
+      .eq('embedding_status', 'failed')
+      .limit(50)
+  ]);
+
+  if (docsResult.error) throw docsResult.error;
+  if (chunksResult.error) throw chunksResult.error;
+  if (failedDocsResult.error) throw failedDocsResult.error;
+  if (failedChunksResult.error) throw failedChunksResult.error;
+
+  const extractionCounts = countBy(docsResult.data, 'extraction_status');
+  const embeddingCounts = countBy(chunksResult.data, 'embedding_status');
+
+  const users = await userModel.findAll();
+  const usersById = new Map(users.map((user) => [String(user.id), user]));
+
+  const failedDocs = (failedDocsResult.data || []).map(doc => ({
+    ...doc,
+    email: usersById.has(String(doc.user_id))
+      ? usersById.get(String(doc.user_id)).email
+      : 'System'
+  }));
+
+  const failedChunkDocs = (failedChunksResult.data || [])
+    .filter(chunk => chunk.documents && !chunk.documents.deleted_at)
+    .map(chunk => ({
+      doc_id: chunk.doc_id,
+      embedding_error: chunk.embedding_error,
+      title: chunk.documents.title,
+      user_id: chunk.documents.user_id,
+      email: usersById.has(String(chunk.documents.user_id))
+        ? usersById.get(String(chunk.documents.user_id)).email
+        : 'System'
+    }));
+
+  return { extractionCounts, embeddingCounts, failedDocs, failedChunkDocs };
+}
+
+async function reprocessDocument(id, adminUserId) {
+  const doc = await documentModel.findById(id);
+  if (!doc || doc.deleted_at) {
+    throw createError(404, 'Document not found');
+  }
+
+  const result = await aiService.processDocument({
+    id: doc.id,
+    userId: doc.user_id,
+    force: true,
+  });
+
+  await activityService.log({
+    userId: adminUserId,
+    action: 'admin.document.reprocess',
+    targetType: 'document',
+    targetId: doc.id,
+    metadata: { title: doc.title, ownerId: doc.user_id },
+  });
+
+  return result;
+}
+
 module.exports = {
   listUsers,
   getOverview,
   updateUser,
   listDocuments,
   getAiUsageOverview,
+  getPipelineHealth,
+  reprocessDocument,
   listSubjects: subjectService.listSubjects,
   createSubject: subjectService.createSubject,
   updateSubject: subjectService.updateSubject,

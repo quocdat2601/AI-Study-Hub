@@ -84,3 +84,13 @@ export async function deleteAnnouncement(id) {
   const response = await api.delete(`/admin/announcements/${id}`);
   return response.data;
 }
+
+export async function getPipelineHealth() {
+  const response = await api.get("/admin/pipeline-health");
+  return response.data;
+}
+
+export async function reprocessDocument(id) {
+  const response = await api.post(`/admin/documents/${id}/reprocess`, {}, { timeout: 60000 });
+  return response.data;
+}

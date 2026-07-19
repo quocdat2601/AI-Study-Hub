@@ -229,4 +229,29 @@ router.post('/announcements', announcementController.createAnnouncement);
 router.get('/announcements', announcementController.listAnnouncements);
 router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
+/**
+ * @swagger
+ * /api/admin/pipeline-health:
+ *   get:
+ *     summary: Retrieve RAG extraction and embedding health status
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Pipeline health stats }
+ * /api/admin/documents/{id}/reprocess:
+ *   post:
+ *     summary: Reprocess RAG extraction and embeddings for a single document
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Reprocessing completed }
+ */
+router.get('/pipeline-health', adminController.getPipelineHealth);
+router.post('/documents/:id/reprocess', adminController.reprocessDocument);
+
 module.exports = router;

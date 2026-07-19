@@ -162,6 +162,23 @@ async function getAiUsage(req, res, next) {
   }
 }
 
+async function getPipelineHealth(req, res, next) {
+  try {
+    res.json(await adminService.getPipelineHealth());
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function reprocessDocument(req, res, next) {
+  try {
+    const result = await adminService.reprocessDocument(req.params.id, req.user.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getOverview,
@@ -177,4 +194,6 @@ module.exports = {
   moderateCommunityPost,
   moderateCommunityReply,
   getAiUsage,
+  getPipelineHealth,
+  reprocessDocument,
 };
