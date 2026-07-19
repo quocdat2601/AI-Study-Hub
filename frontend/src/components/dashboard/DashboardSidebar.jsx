@@ -196,7 +196,7 @@ function DefaultSidebar({
             <span className="flex h-5 w-5 flex-none items-center justify-center">
               <SidebarIcon name={item.icon} />
             </span>
-            <span className="truncate">{t(item.labelKey || item.id)}</span>
+            <span className="truncate">{item.labelKey ? t(item.labelKey) : (item.label || item.id)}</span>
           </Link>
         ))}
         {user?.role === "admin" ? (
@@ -326,7 +326,7 @@ function ControlledSidebar({
                 <span className="flex h-5 w-5 flex-none items-center justify-center">
                   <SidebarIcon name={item.icon} />
                 </span>
-                {!isCollapsed ? <b className="truncate">{t(item.labelKey || item.id)}</b> : null}
+                {!isCollapsed ? <b className="truncate">{item.labelKey ? t(item.labelKey) : (item.label || item.id)}</b> : null}
               </Link>
             );
           }
@@ -341,7 +341,7 @@ function ControlledSidebar({
               <span className="flex h-5 w-5 flex-none items-center justify-center">
                 <SidebarIcon name={item.icon} />
               </span>
-              {!isCollapsed ? <b className="truncate">{t(item.labelKey || item.id)}</b> : null}
+              {!isCollapsed ? <b className="truncate">{item.labelKey ? t(item.labelKey) : (item.label || item.id)}</b> : null}
             </button>
           );
         })}
