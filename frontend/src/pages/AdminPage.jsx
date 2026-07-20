@@ -20,7 +20,7 @@ import {
   listAnnouncements,
   deleteAnnouncement,
 } from "../services/adminApi.js";
-import { getDocumentSignedUrl, deleteDocument as softDeleteDocumentApi, restoreDocument as restoreDocumentApi } from "../services/documentApi.js";
+import { getDocumentSignedUrl, deleteDocument as softDeleteDocumentApi, restoreDocument as restoreDocumentApi, updateDocumentVisibility } from "../services/documentApi.js";
 import { renderMarkdownBody } from "../components/community/communityUtils.js";
 import { useToast } from "../contexts/ToastContext.jsx";
 
@@ -548,6 +548,35 @@ function AdminOverview({ data }) {
   );
 }
 
+function Pagination({ currentPage, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="mt-4 flex items-center justify-between border-t border-[#eef0f3] pt-4">
+      <span className="text-xs text-[#66758a] font-medium">
+        Page <strong className="text-slate-800">{currentPage}</strong> of <strong className="text-slate-800">{totalPages}</strong>
+      </span>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="rounded border border-[#cbd5e1] bg-white px-3 py-1.5 text-xs font-bold text-[#172033] hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          type="button"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="rounded border border-[#cbd5e1] bg-white px-3 py-1.5 text-xs font-bold text-[#172033] hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          type="button"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -591,6 +620,24 @@ export default function AdminPage() {
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [docStatusFilter, setDocStatusFilter] = useState("all");
   const [docDeletedFilter, setDocDeletedFilter] = useState("active");
+
+  // Pagination states
+  const [userPage, setUserPage] = useState(1);
+  const [docPage, setDocPage] = useState(1);
+  const [logPage, setLogPage] = useState(1);
+
+  // Sorting states
+  const [docSortField, setDocSortField] = useState("created_at");
+  const [docSortAsc, setDocSortAsc] = useState(false);
+
+  // Auto reset page numbers when filters or sorting change
+  useEffect(() => {
+    setUserPage(1);
+  }, [userSearch, userRoleFilter, userStatusFilter, userSortOrder]);
+
+  useEffect(() => {
+    setDocPage(1);
+  }, [docSearch, docSubjectFilter, docTypeFilter, docStatusFilter, docDeletedFilter, docSortField, docSortAsc]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [processingAction, setProcessingAction] = useState(null);
@@ -882,6 +929,39 @@ export default function AdminPage() {
     }
   }
 
+  async function handleToggleVisibility(doc) {
+    setProcessingAction(`toggle-visibility-${doc.id}`);
+    try {
+      const updatedVisibility = !doc.is_public;
+      await updateDocumentVisibility(doc.id, updatedVisibility);
+      showSuccess(`Visibility updated to ${updatedVisibility ? "Public" : "Private"}`);
+      
+      // Update local documents list state
+      setDocuments((current) =>
+        current.map((d) =>
+          d.id === doc.id ? { ...d, is_public: updatedVisibility } : d
+        )
+      );
+      // Update selected document state
+      setSelectedDoc((current) =>
+        current && current.id === doc.id ? { ...current, is_public: updatedVisibility } : current
+      );
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
+  function handleDocHeaderClick(field) {
+    if (docSortField === field) {
+      setDocSortAsc((prev) => !prev);
+    } else {
+      setDocSortField(field);
+      setDocSortAsc(field === "created_at" ? false : true);
+    }
+  }
+
   async function handleCreateAnnouncement(e) {
     e.preventDefault();
     if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
@@ -1020,8 +1100,39 @@ export default function AdminPage() {
       list = list.filter((d) => d.deleted_at !== null);
     }
 
+    // Sorting
+    list.sort((a, b) => {
+      let valA, valB;
+      if (docSortField === "title") {
+        valA = (a.title || "").toLowerCase();
+        valB = (b.title || "").toLowerCase();
+      } else if (docSortField === "owner") {
+        valA = (a.users?.email || "").toLowerCase();
+        valB = (b.users?.email || "").toLowerCase();
+      } else if (docSortField === "type") {
+        const typeA = (a.title || "").toLowerCase().endsWith(".pdf") || a.cloud_files?.mime_type === "application/pdf" ? "pdf" : "docx";
+        const typeB = (b.title || "").toLowerCase().endsWith(".pdf") || b.cloud_files?.mime_type === "application/pdf" ? "pdf" : "docx";
+        valA = typeA;
+        valB = typeB;
+      } else if (docSortField === "size") {
+        valA = Number(a.cloud_files?.size_bytes || 0);
+        valB = Number(b.cloud_files?.size_bytes || 0);
+      } else if (docSortField === "visibility") {
+        valA = a.is_public ? 1 : 0;
+        valB = b.is_public ? 1 : 0;
+      } else {
+        // default to "created_at"
+        valA = new Date(a.created_at || a.createdAt).getTime();
+        valB = new Date(b.created_at || b.createdAt).getTime();
+      }
+
+      if (valA < valB) return docSortAsc ? -1 : 1;
+      if (valA > valB) return docSortAsc ? 1 : -1;
+      return 0;
+    });
+
     return list;
-  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docDeletedFilter, docSearch]);
+  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docDeletedFilter, docSearch, docSortField, docSortAsc]);
 
   const docStats = useMemo(() => {
     const total = documents.length;
@@ -1049,7 +1160,7 @@ export default function AdminPage() {
   // Render sub sections
   function renderUsers() {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 min-w-0 w-full">
         <header>
           <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">User Management</h1>
           <p className="mt-1 mb-0 text-sm text-[#464554]">View, search, and manage student accounts.</p>
@@ -1100,8 +1211,8 @@ export default function AdminPage() {
         </section>
 
         {/* Filters and List block */}
-        <div className="flex gap-6 items-start">
-          <section className="flex-1 min-w-0 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className={`flex gap-6 items-start ${isSidebarCollapsed ? "xl:flex-row flex-col" : "2xl:flex-row flex-col"}`}>
+          <section className="flex-1 min-w-0 w-full rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
             {/* Filter Bar */}
             <div className="mb-5 flex flex-wrap gap-4 items-center justify-between">
               <div className="flex flex-wrap gap-3 items-center">
@@ -1157,61 +1268,68 @@ export default function AdminPage() {
 
             {filteredUsers.length === 0 ? (
               <p className="text-[#66758a] text-center py-6">No users found matching the filter criteria.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
-                      <th className="py-3 pr-4">User</th>
-                      <th className="py-3 pr-4">Role</th>
-                      <th className="py-3 pr-4">Status</th>
-                      <th className="py-3 pr-4">Joined</th>
-                      <th className="py-3 pr-4">Storage Limit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((item) => {
-                      const isSelected = selectedUser?.id === item.id;
-                      const userInitials = (item.email || "U").slice(0, 2).toUpperCase();
-                      return (
-                        <tr
-                          className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
-                            isSelected ? "bg-[#f1f5f9]" : ""
-                          }`}
-                          key={item.id}
-                          onClick={() => handleUserClick(item)}
-                        >
-                          <td className="py-3 pr-4 font-bold text-[#191c1e]">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ecebff] text-[10px] font-black text-[#4648d4] shrink-0">
-                                {userInitials}
-                              </span>
-                              <div className="min-w-0">
-                                <span className="block truncate">{getDisplayName(item)}</span>
-                                <span className="block text-xs font-normal text-[#66758a] truncate">{item.email}</span>
+            ) : (() => {
+              const totalUserPages = Math.ceil(filteredUsers.length / 10) || 1;
+              const displayedUsers = filteredUsers.slice((userPage - 1) * 10, userPage * 10);
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
+                        <th className="py-3 pr-4">User</th>
+                        <th className="py-3 pr-4">Role</th>
+                        <th className="py-3 pr-4">Status</th>
+                        <th className="py-3 pr-4">Joined</th>
+                        <th className="py-3 pr-4">Storage Limit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedUsers.map((item) => {
+                        const isSelected = selectedUser?.id === item.id;
+                        const userInitials = (item.email || "U").slice(0, 2).toUpperCase();
+                        return (
+                          <tr
+                            className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
+                              isSelected ? "bg-[#f1f5f9]" : ""
+                            }`}
+                            key={item.id}
+                            onClick={() => handleUserClick(item)}
+                          >
+                            <td className="py-3 pr-4 font-bold text-[#191c1e]">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ecebff] text-[10px] font-black text-[#4648d4] shrink-0">
+                                  {userInitials}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="block truncate">{getDisplayName(item)}</span>
+                                  <span className="block text-xs font-normal text-[#66758a] truncate">{item.email}</span>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554] capitalize">{item.role}</td>
-                          <td className="py-3 pr-4">
-                            <span className={`inline-flex rounded-full px-[10px] py-[3px] text-xs font-extrabold capitalize ${STATUS_CLASSES[item.status] ?? ""}`}>
-                              {item.status}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
-                          <td className="py-3 pr-4 text-[#464554] font-semibold">{formatBytes(item.storage_limit_bytes)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554] capitalize">{item.role}</td>
+                            <td className="py-3 pr-4">
+                              <span className={`inline-flex rounded-full px-[10px] py-[3px] text-xs font-extrabold capitalize ${STATUS_CLASSES[item.status] ?? ""}`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
+                            <td className="py-3 pr-4 text-[#464554] font-semibold">{formatBytes(item.storage_limit_bytes)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <Pagination currentPage={userPage} totalPages={totalUserPages} onPageChange={setUserPage} />
+                </div>
+              );
+            })()}
           </section>
 
           {/* User Details Sidebar Panel */}
           {selectedUser && (
-            <aside className="w-[320px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+            <aside className={`bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px] w-full ${
+              isSidebarCollapsed ? "xl:w-[320px]" : "2xl:w-[320px]"
+            }`}>
               <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
                 <h3 className="m-0 font-extrabold text-base text-[#191c1e]">User Details</h3>
                 <button
@@ -1332,7 +1450,7 @@ export default function AdminPage() {
 
   function renderDocuments() {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 min-w-0 w-full">
         <header>
           <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Document Management</h1>
           <p className="mt-1 mb-0 text-sm text-[#464554]">Monitor, search, and manage uploaded study documents.</p>
@@ -1382,8 +1500,8 @@ export default function AdminPage() {
         </section>
 
         {/* Filters and List panel */}
-        <div className="flex gap-6 items-start">
-          <section className="flex-1 min-w-0 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col xl:flex-row gap-6 items-start">
+          <section className="flex-1 min-w-0 w-full rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
             {/* Filter bar */}
             <div className="mb-5 flex flex-wrap gap-4 items-center justify-between">
               <div className="flex flex-wrap gap-3 items-center">
@@ -1455,80 +1573,134 @@ export default function AdminPage() {
 
             {filteredDocs.length === 0 ? (
               <p className="text-[#66758a] text-center py-6">No documents found matching the filter criteria.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
-                      <th className="py-3 pr-4">Document</th>
-                      <th className="py-3 pr-4">Owner</th>
-                      <th className="py-3 pr-4">Type</th>
-                      <th className="py-3 pr-4">Size</th>
-                      <th className="py-3 pr-4">Status</th>
-                      <th className="py-3 pr-4">Upload Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDocs.map((item) => {
-                      const isSelected = selectedDoc?.id === item.id;
-                      const ownerInitials = (item.users?.email || "U").slice(0, 2).toUpperCase();
-                      const isPdf = item.title?.toLowerCase().endsWith(".pdf") || item.cloud_files?.mime_type === "application/pdf";
-                      
-                      return (
-                        <tr
-                          className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
-                            isSelected ? "bg-[#f1f5f9]" : ""
-                          }`}
-                          key={item.id}
-                          onClick={() => setSelectedDoc(item)}
+            ) : (() => {
+              const totalDocPages = Math.ceil(filteredDocs.length / 10) || 1;
+              const displayedDocs = filteredDocs.slice((docPage - 1) * 10, docPage * 10);
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
+                        <th
+                          onClick={() => handleDocHeaderClick("title")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
                         >
-                          <td className="py-3 pr-4 font-bold text-[#191c1e]">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 items-center justify-center rounded bg-[#fff8ef] text-amber-600 text-lg font-bold shrink-0">
-                                {isPdf ? "📄" : "📝"}
-                              </span>
-                              <div className="min-w-0">
-                                <span className="block truncate max-w-xs">{item.title}</span>
-                                <span className="block text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2 w-max mt-0.5">
-                                  {item.subjects?.code || "No Subject"}
+                          <span className="flex items-center">
+                            Document
+                            {docSortField === "title" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("owner")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Owner
+                            {docSortField === "owner" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("type")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Type
+                            {docSortField === "type" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("size")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Size
+                            {docSortField === "size" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("visibility")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Visibility
+                            {docSortField === "visibility" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("created_at")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Upload Date
+                            {docSortField === "created_at" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedDocs.map((item) => {
+                        const isSelected = selectedDoc?.id === item.id;
+                        const ownerInitials = (item.users?.email || "U").slice(0, 2).toUpperCase();
+                        const isPdf = item.title?.toLowerCase().endsWith(".pdf") || item.cloud_files?.mime_type === "application/pdf";
+                        
+                        return (
+                          <tr
+                            className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
+                              isSelected ? "bg-[#f1f5f9]" : ""
+                            }`}
+                            key={item.id}
+                            onClick={() => setSelectedDoc(item)}
+                          >
+                            <td className="py-3 pr-4 font-bold text-[#191c1e]">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-8 w-8 items-center justify-center rounded bg-[#fff8ef] text-amber-600 text-lg font-bold shrink-0">
+                                  {isPdf ? "📄" : "📝"}
                                 </span>
+                                <div className="min-w-0">
+                                  <span className={`block truncate transition-all ${
+                                    isSidebarCollapsed ? "max-w-[240px]" : "max-w-[120px] lg:max-w-[160px] xl:max-w-[200px]"
+                                  }`}>{item.title}</span>
+                                  <span className="block text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2 w-max mt-0.5">
+                                    {item.subjects?.code || "No Subject"}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554]">
-                            <div className="flex items-center gap-2">
-                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#eef0f3] text-[9px] font-black text-slate-700 shrink-0">
-                                {ownerInitials}
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554]">
+                              <div className="flex items-center gap-2">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#eef0f3] text-[9px] font-black text-slate-700 shrink-0">
+                                  {ownerInitials}
+                                </span>
+                                <span className={`truncate transition-all ${
+                                  isSidebarCollapsed ? "max-w-[150px]" : "max-w-[80px] xl:max-w-[120px]"
+                                }`}>{item.users?.email || "System"}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554] uppercase text-xs font-semibold">{isPdf ? "PDF" : "DOCX"}</td>
+                            <td className="py-3 pr-4 text-[#464554]">{formatBytes(item.cloud_files?.size_bytes || 0)}</td>
+                            <td className="py-3 pr-4">
+                              <span className={`inline-flex rounded px-2 py-0.5 text-xs font-extrabold capitalize ${
+                                item.is_public
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                                  : "bg-slate-100 text-slate-700 border border-slate-200"
+                              }`}>
+                                {item.is_public ? "Public" : "Private"}
                               </span>
-                              <span className="truncate max-w-[150px]">{item.users?.email || "System"}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554] uppercase text-xs font-semibold">{isPdf ? "PDF" : "DOCX"}</td>
-                          <td className="py-3 pr-4 text-[#464554]">{formatBytes(item.cloud_files?.size_bytes || 0)}</td>
-                          <td className="py-3 pr-4">
-                            <span className={`inline-flex rounded px-2 py-0.5 text-xs font-extrabold capitalize ${
-                              item.status === "indexed" || item.extraction_status === "ready"
-                                ? "bg-[#e8f5ee] text-[#087443]"
-                                : item.status === "failed" || item.extraction_status === "failed"
-                                ? "bg-[#fff0f0] text-[#b42318]"
-                                : "bg-[#f0f4f8] text-[#475569]"
-                            }`}>
-                              {item.status || item.extraction_status || "uploaded"}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <Pagination currentPage={docPage} totalPages={totalDocPages} onPageChange={setDocPage} />
+                </div>
+              );
+            })()}
           </section>
 
-          {/* Document Details Sidebar Panel */}
           {selectedDoc && (
-            <aside className="w-[320px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+            <aside className="w-full xl:w-[320px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
               <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
                 <h3 className="m-0 font-extrabold text-base text-[#191c1e]">Document Details</h3>
                 <button
@@ -1569,6 +1741,17 @@ export default function AdminPage() {
                 
                 <span className="text-[#66758a]">Status</span>
                 <span className="font-bold text-slate-800 capitalize text-right">{selectedDoc.status || "uploaded"}</span>
+
+                <span className="text-[#66758a]">Visibility</span>
+                <span className="font-bold text-right">
+                  <span className={`inline-flex rounded px-1.5 py-0.2 text-[10px] font-black uppercase ${
+                    selectedDoc.is_public
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                      : "bg-slate-100 text-slate-700 border border-slate-200"
+                  }`}>
+                    {selectedDoc.is_public ? "Public" : "Private"}
+                  </span>
+                </span>
               </div>
 
               {/* Moderation Section */}
@@ -1599,6 +1782,22 @@ export default function AdminPage() {
               <div className="grid gap-2 border-t border-[#eef0f3] pt-4">
                 {selectedDoc.deleted_at === null ? (
                   <>
+                    <button
+                      className={`w-full inline-flex h-9 items-center justify-center rounded-lg border px-3 text-xs font-bold transition cursor-pointer ${
+                        selectedDoc.is_public
+                          ? "border-slate-350 bg-white text-slate-700 hover:bg-slate-50"
+                          : "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
+                      }`}
+                      onClick={() => handleToggleVisibility(selectedDoc)}
+                      disabled={processingAction === `toggle-visibility-${selectedDoc.id}`}
+                      type="button"
+                    >
+                      {processingAction === `toggle-visibility-${selectedDoc.id}`
+                        ? "Updating..."
+                        : selectedDoc.is_public
+                        ? "Make Private"
+                        : "Make Public"}
+                    </button>
                     <button
                       className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer"
                       onClick={() => handleDownloadDoc(selectedDoc)}
@@ -1643,7 +1842,7 @@ export default function AdminPage() {
 
   function renderSubjects() {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 min-w-0 w-full">
         <header>
           <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Subject Configuration</h1>
           <p className="mt-1 mb-0 text-sm text-[#464554]">Configure and manage academic subjects for course categorization.</p>
@@ -1743,30 +1942,37 @@ export default function AdminPage() {
   function renderActivityLogs() {
     const logs = overview?.recentActivity || [];
     return (
-      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)] min-w-0 w-full">
         <h1 className="m-0 text-2xl font-extrabold">Activity Logs</h1>
         <p className="mt-1 mb-5 text-sm text-[#66758a]">Platform audit logs and logs history.</p>
         
         {logs.length === 0 ? (
           <p className="text-sm text-[#66758a] italic">No activity logs recorded.</p>
-        ) : (
-          <div className="grid gap-3">
-            {logs.map((activity) => (
-              <article className="rounded-lg border border-[#eef0f3] p-4 flex justify-between items-start" key={activity.id}>
-                <div>
-                  <strong className="block text-sm text-slate-800">{activity.title}</strong>
-                  <span className="mt-1 block text-xs text-[#66758a]">
-                    Performed by: <span className="font-semibold text-slate-700">{activity.userEmail || "System"}</span>
-                  </span>
-                  {activity.description && (
-                    <span className="block text-xs text-slate-500 mt-0.5">Details: {activity.description}</span>
-                  )}
-                </div>
-                <span className="text-xs text-[#66758a] shrink-0 font-semibold">{timeAgo(activity.created_at)}</span>
-              </article>
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const totalLogPages = Math.ceil(logs.length / 15) || 1;
+          const displayedLogs = logs.slice((logPage - 1) * 15, logPage * 15);
+          return (
+            <>
+              <div className="grid gap-3">
+                {displayedLogs.map((activity) => (
+                  <article className="rounded-lg border border-[#eef0f3] p-4 flex justify-between items-start" key={activity.id}>
+                    <div>
+                      <strong className="block text-sm text-slate-800">{activity.title}</strong>
+                      <span className="mt-1 block text-xs text-[#66758a]">
+                        Performed by: <span className="font-semibold text-slate-700">{activity.userEmail || "System"}</span>
+                      </span>
+                      {activity.description && (
+                        <span className="block text-xs text-slate-500 mt-0.5">Details: {activity.description}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-[#66758a] shrink-0 font-semibold">{timeAgo(activity.created_at)}</span>
+                  </article>
+                ))}
+              </div>
+              <Pagination currentPage={logPage} totalPages={totalLogPages} onPageChange={setLogPage} />
+            </>
+          );
+        })()}
       </section>
     );
   }

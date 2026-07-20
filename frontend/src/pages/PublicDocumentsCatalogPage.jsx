@@ -254,7 +254,7 @@ export default function PublicDocumentsCatalogPage() {
                   </svg>
                 </span>
                 <input
-                  className="w-full border-0 bg-transparent px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                  className="flex-1 min-w-0 border-0 bg-transparent px-3 h-10 py-0 text-sm text-slate-800 outline-none placeholder:text-slate-400"
                   type="text"
                   placeholder="Search by title, subject or tag..."
                   value={searchTerm}
@@ -347,7 +347,7 @@ export default function PublicDocumentsCatalogPage() {
                 <input
                   type="text"
                   placeholder={`Find in ${activeSubject.code}...`}
-                  className="w-full border-0 bg-transparent px-2 text-xs outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                  className="flex-1 min-w-0 border-0 bg-transparent px-2 h-7 py-0 text-xs outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
                   value={searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
                 />
@@ -406,13 +406,18 @@ export default function PublicDocumentsCatalogPage() {
                         <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-650 dark:bg-teal-950/40 dark:text-teal-400">
                           <FolderIcon className="h-5.5 w-5.5 fill-teal-50 dark:fill-transparent" />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <strong className="block truncate text-sm font-black text-slate-850 dark:text-slate-100">
                             {sub.name}
                           </strong>
-                          <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black uppercase text-slate-550 dark:bg-slate-800 dark:text-slate-400">
-                            {sub.code}
-                          </span>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black uppercase text-slate-550 dark:bg-slate-800 dark:text-slate-400">
+                              {sub.code}
+                            </span>
+                            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-550">
+                              • {sub.docCount || 0} {sub.docCount === 1 ? 'doc' : 'docs'}
+                            </span>
+                          </div>
                         </div>
                       </button>
                     ))}

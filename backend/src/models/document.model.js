@@ -790,7 +790,7 @@ class DocumentModel {
         *,
         subjects (id, name, code),
         cloud_files (storage_path, mime_type, size_bytes),
-        users (id, email)
+        users!fk_documents_users (id, email)
       `)
       .eq('id', id)
       .eq('is_public', true)

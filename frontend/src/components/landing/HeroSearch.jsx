@@ -174,7 +174,7 @@ export default function HeroSearch() {
           </svg>
           <input
             aria-label="Search study documents"
-            className="min-h-12 w-full border-0 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400"
+            className="h-12 flex-1 min-w-0 border-0 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400 py-0"
             name="q"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

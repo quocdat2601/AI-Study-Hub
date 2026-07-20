@@ -775,20 +775,36 @@ async function getPublicPostById(id, viewerContext = {}) {
  */
 async function listPublicSubjects() {
   const supabase = require('../config/supabase');
-  const [subjects, countsResult] = await Promise.all([
+  const [subjects, countsResult, docRowsResult] = await Promise.all([
     SubjectModel.listSubjects(),
     supabase.from('community_subject_post_counts').select('*'),
+    supabase
+      .from('documents')
+      .select('subject_id')
+      .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
+      .eq('status', 'indexed')
+      .is('deleted_at', null)
   ]);
 
   if (countsResult.error) throw countsResult.error;
+  if (docRowsResult.error) throw docRowsResult.error;
 
   const countsMap = new Map((countsResult.data || []).map((row) => [row.subject_id, row.post_count]));
+  const docCountsMap = new Map();
+  (docRowsResult.data || []).forEach((row) => {
+    if (row.subject_id) {
+      docCountsMap.set(row.subject_id, (docCountsMap.get(row.subject_id) || 0) + 1);
+    }
+  });
 
   return (subjects || []).map((subject) => ({
     id: subject.id,
     name: subject.name,
     code: subject.code,
     postCount: Number(countsMap.get(subject.id) || 0),
+    docCount: Number(docCountsMap.get(subject.id) || 0),
   }));
 }
 

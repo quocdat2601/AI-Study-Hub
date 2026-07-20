@@ -243,6 +243,8 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
       subject_id,
       file_id,
       status,
+      is_public,
+      document_scope,
       created_at,
       updated_at,
       deleted_at,
