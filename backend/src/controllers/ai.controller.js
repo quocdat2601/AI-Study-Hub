@@ -92,6 +92,23 @@ async function toggleRoadmapStep(req, res, next) {
 }
 
 /**
+ * Lists the caller's in-progress roadmaps (started but not finished) for the dashboard widget.
+ * @param {object} req - Request with optional limit query param.
+ * @param {object} res - Response returning progress summaries sorted by latest activity.
+ * @param {Function} next - Error middleware callback.
+ */
+async function listRoadmapsInProgress(req, res, next) {
+  try {
+    res.json(await aiService.listRoadmapsInProgress({
+      userId: req.user.id,
+      limit: req.query.limit,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Submits queries against a singular private document source index.
  * @param {object} req - Request containing document ID and question payload.
  * @param {object} res - Response returning complete AI response text.
@@ -297,6 +314,7 @@ module.exports = {
   getDocumentRoadmap,
   retryDocumentRoadmap,
   toggleRoadmapStep,
+  listRoadmapsInProgress,
   askDocument,
   askDocumentStream,
   askSession,

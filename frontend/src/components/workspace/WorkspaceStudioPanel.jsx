@@ -239,7 +239,7 @@ Gợi ý đáp án: ${back}`;
  * @param {Function} props.onAskQuestion - Trigger callback to submit pre-loaded queries to Chat.
  * @param {string} [props.className] - CSS classes.
  */
-export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, className = "" }) {
+export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, onPrepareQuestion, className = "" }) {
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1285,7 +1285,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
       )}
 
       {studioTab === "roadmap" && !activeMaterial
-        ? <WorkspaceRoadmapView selectedDocument={selectedDocument} onAskQuestion={onAskQuestion} />
+        ? <WorkspaceRoadmapView selectedDocument={selectedDocument} onAskQuestion={onAskQuestion} onPrepareQuestion={onPrepareQuestion} />
         : (activeMaterial ? renderActiveMaterial() : renderDashboard())}
 
       {confirmDeleteId && (

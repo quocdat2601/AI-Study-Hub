@@ -13,6 +13,20 @@ class DocumentRoadmapProgressModel {
     return (data || []).map((row) => Number(row.step_order));
   }
 
+  // Toàn bộ tick của user kèm roadmap + document (cho widget "Tiếp tục học" ở Dashboard);
+  // chỉ lấy document còn sống, tổng hợp tiến độ làm ở service
+  static async findByUserWithRoadmaps(userId) {
+    const { data, error } = await supabase
+      .from('document_roadmap_progress')
+      .select('roadmap_id, step_order, completed_at, document_roadmaps!inner(id, document_id, title, steps, status, documents!inner(id, title, deleted_at, lifecycle_status))')
+      .eq('user_id', userId)
+      .is('document_roadmaps.documents.deleted_at', null)
+      .eq('document_roadmaps.documents.lifecycle_status', 'active');
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async markStepComplete({ roadmapId, userId, stepOrder }) {
     const { data, error } = await supabase
       .from('document_roadmap_progress')

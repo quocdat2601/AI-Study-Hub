@@ -8,15 +8,12 @@ function parseTagArray(raw) {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) return parsed.map((t) => String(t));
   } catch {
-    // Model có thể trả chuỗi phân tách dấu phẩy thay vì JSON — vẫn dùng được
+    // JSON parse thất bại thì rơi xuống split theo dấu phẩy bên dưới
   }
   return text ? text.split(/[,\n]/) : [];
 }
 
-/**
- * Sinh và gắn tag tự động cho tài liệu. Best-effort: lỗi không làm hỏng upload.
- * Trả về mảng tên tag đã gắn, hoặc [] nếu bỏ qua/không sinh được.
- */
+
 async function autoTagDocument({ userId, docId, title, text }) {
   const snippet = String(text || '').trim();
   if (!snippet) return [];

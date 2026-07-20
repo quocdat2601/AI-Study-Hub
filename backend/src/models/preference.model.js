@@ -1,6 +1,6 @@
 const supabase = require('../config/supabase');
 
-// Bảng onboarding chưa được migrate (017) → coi như user chưa onboard, không làm vỡ /auth/me
+
 function isMissingRelation(err) {
   return err && (err.code === '42P01' || err.code === 'PGRST205' || err.code === 'PGRST204');
 }
@@ -46,7 +46,7 @@ class PreferenceModel {
   }
 
   static async getSubjectsByMajor(majorId) {
-    // Môn của ngành + môn chưa gán ngành (NULL) để không làm mất dữ liệu cũ
+
     let query = supabase
       .from('subjects')
       .select('id, name, code')
@@ -137,7 +137,7 @@ class PreferenceModel {
     return data;
   }
 
-  // Thay toàn bộ topic của user (delete + insert), giống TagModel.setForDocument
+
   static async setTopics(userId, tagIds) {
     const { error: deleteError } = await supabase
       .from('user_topic_selections')

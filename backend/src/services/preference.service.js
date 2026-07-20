@@ -14,7 +14,7 @@ async function getOptions(userId) {
     preferenceModel.getPreferences(userId),
   ]);
 
-  // Môn + chip tag theo ngành hiện tại; tag ngành khác lấy qua autocomplete /api/tags
+
   const [subjects, suggestedTags] = await Promise.all([
     preferenceModel.getSubjectsByMajor(prefs?.major_id),
     preferenceModel.getSuggestedTagsByMajor(prefs?.major_id),
@@ -53,13 +53,13 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
     throw createError(400, 'Goal must be one of: exam, project, self_study');
   }
 
-  // Môn học bắt buộc; chủ đề (tag) tùy chọn
+
   const subjectIds = [...new Set((subjects || []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
   if (!subjectIds.length) {
     throw createError(400, 'Please select at least one subject');
   }
 
-  // Topic gửi lên dưới dạng tên (cả tag chọn sẵn lẫn gõ tay) → cùng pipeline chuẩn hóa
+
   const tagNames = tagModel.parseNames((topics || []).join(','));
   const tags = [];
   for (const name of tagNames) {
@@ -74,7 +74,7 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
     onboardedAt: new Date().toISOString(),
   });
 
-  // Đồng bộ tên ngành sang users.major để account page hiển thị nhất quán (best-effort)
+
   if (majorId) {
     try {
       const majors = await preferenceModel.getMajors();
@@ -85,7 +85,7 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
     }
   }
 
-  // target_id là cột INT → không gắn userId (UUID) vào đây
+
   activityService.log({
     userId,
     action: 'onboarding.complete',
@@ -101,7 +101,7 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
   };
 }
 
-// Bỏ qua onboarding: chỉ đánh dấu đã onboard, không lưu sở thích → gợi ý rơi về trending
+
 async function skipOnboarding(userId) {
   const prefs = await preferenceModel.upsertPreferences(userId, {
     majorId: null,
@@ -122,7 +122,7 @@ async function getRecommendations(userId, limit = 12) {
   const matches = await preferenceModel.recommendHybrid(userId, limit);
 
   if (!matches.length) {
-    // Fallback: chưa ghép được tài liệu nào → trả trending để màn hình không trống
+
     const trending = await documentModel.findTrending(limit);
     const withThumbs = await documentService.addThumbnailUrls(trending);
     return {
@@ -151,7 +151,7 @@ async function getRecommendations(userId, limit = 12) {
         matchedTags: match?.matched_tags || [],
       };
     })
-    // Giữ đúng thứ tự xếp hạng của RPC (score → view_count → created_at)
+
     .sort((a, b) => matches.findIndex((m) => m.doc_id === a.id) - matches.findIndex((m) => m.doc_id === b.id));
 
   return { reason: 'matched', items };

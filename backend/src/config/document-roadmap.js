@@ -57,8 +57,7 @@ function getDocumentRoadmapConfig() {
       min: 2,
       max: 20,
     }),
-    // v3: steps có thêm objectives (v2: suggestedQuestions) — bump version để
-    // cache bản cũ không được reuse, tự sinh lại theo schema mới
+
     roadmapVersion: 'v3',
     pendingTimeoutMs: 10 * 60 * 1000,
   };

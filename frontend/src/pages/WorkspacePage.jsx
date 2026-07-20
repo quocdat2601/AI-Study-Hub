@@ -1702,6 +1702,10 @@ export default function WorkspacePage() {
                 selectedModel={selectedModel}
                 className="flex-1 min-h-0 w-full"
                 width={null}
+                onPrepareQuestion={(questionText) => {
+                  setRightActiveTab("chat");
+                  setQuestion(questionText);
+                }}
                 onAskQuestion={(questionText) => {
                   setRightActiveTab("chat");
                   handleAsk(null, questionText);
