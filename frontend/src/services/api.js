@@ -4,7 +4,7 @@ import { clearStaleAuthSession, isInvalidRefreshTokenError } from './authApi.js'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  timeout: 20000,
+  timeout: Number(import.meta.env.VITE_API_TIMEOUT_MS) || 120000,
 });
 
 api.interceptors.request.use(async (config) => {

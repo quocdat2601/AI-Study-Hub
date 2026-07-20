@@ -1,6 +1,6 @@
 const { genAI, modelName } = require('../config/gemini');
 
-const GEMINI_TIMEOUT_MS = 15000;
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 90000;
 
 function withTimeout(promise, timeoutMs) {
   let timeoutId;

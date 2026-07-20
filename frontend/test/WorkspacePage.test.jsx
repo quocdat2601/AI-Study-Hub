@@ -58,14 +58,21 @@ function NavigationButtons() {
   );
 }
 
+import { ToastProvider } from '../src/contexts/ToastContext.jsx';
+import { UploadDocProvider } from '../src/contexts/UploadDocContext.jsx';
+
 function renderWorkspace(initialEntries = ["/workspace"]) {
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
-      <Routes>
-        <Route path="/workspace" element={<><WorkspacePage /><LocationDisplay /><NavigationButtons /></>} />
-        <Route path="/workspace/documents/:documentId" element={<><WorkspacePage /><LocationDisplay /><NavigationButtons /></>} />
-      </Routes>
-    </MemoryRouter>
+    <ToastProvider>
+      <MemoryRouter initialEntries={initialEntries}>
+        <UploadDocProvider>
+          <Routes>
+            <Route path="/workspace" element={<><WorkspacePage /><LocationDisplay /><NavigationButtons /></>} />
+            <Route path="/workspace/documents/:documentId" element={<><WorkspacePage /><LocationDisplay /><NavigationButtons /></>} />
+          </Routes>
+        </UploadDocProvider>
+      </MemoryRouter>
+    </ToastProvider>
   );
 }
 

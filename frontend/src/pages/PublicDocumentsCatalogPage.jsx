@@ -23,9 +23,33 @@ export default function PublicDocumentsCatalogPage() {
   const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
   
   // Search & filter states
-  const [searchTerm, setSearchTerm] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("q") || searchParams.get("search") || "");
   const selectedSubjectId = searchParams.get("subjectId") || "";
+
+  // Keep searchTerm in sync with URL searchParams (e.g., when navigating from hero search)
+  useEffect(() => {
+    const qFromParams = searchParams.get("q") || searchParams.get("search") || "";
+    if (qFromParams !== searchTerm) {
+      setSearchTerm(qFromParams);
+    }
+  }, [searchParams]);
+
+  const handleSearchChange = (newVal) => {
+    setSearchTerm(newVal);
+    setPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newVal.trim()) {
+        next.set("q", newVal.trim());
+      } else {
+        next.delete("q");
+        next.delete("search");
+      }
+      return next;
+    }, { replace: true });
+  };
+
   const setSelectedSubjectId = (id) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -223,21 +247,18 @@ export default function PublicDocumentsCatalogPage() {
               <p className="mt-2 text-sm text-indigo-100">
                 Browse public summaries, lecture notes, essays, and study packages shared by other students.
               </p>
-              <div className="mt-6 flex max-w-lg items-center rounded-xl bg-white p-1 text-slate-805 shadow-lg">
+              <div className="mt-6 flex max-w-lg items-center rounded-xl bg-white p-1 text-slate-800 shadow-lg">
                 <span className="pl-3 text-slate-400">
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </span>
                 <input
-                  className="w-full border-0 bg-transparent px-3 py-2 text-sm text-slate-850 outline-none placeholder:text-slate-400 dark:text-slate-800"
+                  className="w-full border-0 bg-transparent px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
                   type="text"
                   placeholder="Search by title, subject or tag..."
                   value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </div>
             </div>
@@ -253,8 +274,7 @@ export default function PublicDocumentsCatalogPage() {
                 type="button"
                 onClick={() => {
                   setSelectedSubjectId("");
-                  setSearchTerm("");
-                  setPage(1);
+                  handleSearchChange("");
                 }}
                 className="cursor-pointer bg-transparent border-0 p-0 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400"
               >
@@ -329,10 +349,7 @@ export default function PublicDocumentsCatalogPage() {
                   placeholder={`Find in ${activeSubject.code}...`}
                   className="w-full border-0 bg-transparent px-2 text-xs outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
                   value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </div>
             </div>
@@ -436,8 +453,7 @@ export default function PublicDocumentsCatalogPage() {
                   type="button"
                   onClick={() => {
                     setSelectedSubjectId("");
-                    setSearchTerm("");
-                    setPage(1);
+                    handleSearchChange("");
                   }}
                   className="inline-flex cursor-pointer items-center gap-1.5 bg-transparent border-0 text-sm font-bold text-slate-500 transition hover:text-indigo-650 dark:text-slate-400 dark:hover:text-indigo-400"
                 >

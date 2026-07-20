@@ -1,7 +1,7 @@
 const { genAI } = require('../config/gemini');
 const embeddingConfig = require('../config/embeddings');
 
-const EMBEDDING_TIMEOUT_MS = 20000;
+const EMBEDDING_TIMEOUT_MS = Number(process.env.EMBEDDING_TIMEOUT_MS) || 90000;
 
 function withTimeout(promise, timeoutMs) {
   let timeoutId;
