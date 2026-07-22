@@ -300,6 +300,38 @@ async function generateRoadmapBestEffort({ document, chunks }) {
   }
 }
 
+async function ensureChunksForDocument(document) {
+  let chunks = await documentChunkModel.findByDocumentId(document.id);
+  if (chunks.length) return chunks;
+
+  const text = String(document.extracted_text || document.extractedText || '').trim();
+  if (!text) return [];
+
+  const documentTextService = require('./document-text.service');
+  const ragService = require('./rag.service');
+  const embeddingService = require('./embedding.service');
+
+  if (!documentTextService.isExtractedTextUseful(text)) return [];
+
+  const rawChunks = ragService.splitTextIntoChunks(text, {
+    documentId: document.id,
+    documentTitle: document.title,
+    pageBoundaries: document.extraction_metadata?.pageBoundaries || [],
+  });
+
+  if (!rawChunks.length) return [];
+
+  let chunksToSave;
+  try {
+    chunksToSave = await embeddingService.embedChunks(rawChunks);
+  } catch (err) {
+    console.error('Auto chunk embedding failed for roadmap:', err.message);
+    chunksToSave = embeddingService.markChunksEmbeddingFailed(rawChunks, err);
+  }
+
+  return documentChunkModel.replaceForDocument(document.id, chunksToSave);
+}
+
 async function markStaleBestEffort(documentId) {
   try {
     return await documentRoadmapModel.markStale(documentId);
@@ -315,9 +347,9 @@ async function retryRoadmap({ document }) {
     throw createError(400, 'Document roadmap generation is disabled');
   }
 
-  const chunks = await documentChunkModel.findByDocumentId(document.id);
+  let chunks = await ensureChunksForDocument(document);
   if (!chunks.length) {
-    throw createError(400, 'Document must be processed for AI before roadmap generation');
+    throw createError(400, 'Document has no readable text for AI processing. Please re-process or re-upload the document.');
   }
 
   return generateRoadmapForDocument({ document, chunks, force: true });
@@ -330,3 +362,4 @@ module.exports = {
   parseRoadmapJson,
   retryRoadmap,
 };
+

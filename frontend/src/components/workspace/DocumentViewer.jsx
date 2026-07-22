@@ -276,91 +276,197 @@ export default function DocumentViewer({
 
   return (
     <section className={`flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm ${className}`}>
-      <header className="shrink-0 border-b border-slate-200 bg-white">
-        <div className="flex min-h-14 items-center gap-3 px-4 py-2">
-          <ViewToggle disabledPdf={!isPreviewable} setViewMode={setViewMode} viewMode={viewMode} isPdf={isPdf} isDocx={isDocx} />
+      <header className="shrink-0 border-b border-slate-100 bg-white">
+        {/* ── Row 1: View toggle + title + actions ── */}
+        <div className="flex min-h-[52px] items-center gap-2.5 px-3 py-2">
+          {/* View toggle */}
+          <ViewToggle
+            disabledPdf={!isPreviewable}
+            setViewMode={setViewMode}
+            viewMode={viewMode}
+            isPdf={isPdf}
+            isDocx={isDocx}
+          />
 
+          {/* Divider */}
+          <div className="h-6 w-px bg-slate-200 shrink-0" />
+
+          {/* File icon + title */}
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <FileTextIcon className="shrink-0 text-indigo-600" size={15} />
-            <div className="min-w-0">
-              <p className="m-0 truncate text-sm font-semibold text-slate-900">
-                {selectedDocument?.title || "Select a document"}
-              </p>
-              {selectedDocument ? (
-                <p className="m-0 mt-0.5 flex items-center gap-2 text-[11px] font-medium text-slate-500">
-                  <span>{getSubjectLabel(selectedDocument)}</span>
-                  <span className="text-slate-300">|</span>
-                  <span>{documentType}</span>
-                  <span className="text-slate-300">|</span>
-                  <span>{getStatusLabel(selectedDocument)}</span>
-                </p>
-              ) : null}
-            </div>
+            <FileTextIcon className="shrink-0 text-indigo-500" size={15} />
+            <p className="m-0 truncate text-sm font-semibold text-slate-900 leading-snug">
+              {selectedDocument?.title || (
+                <span className="text-slate-400 font-normal">Select a document to begin</span>
+              )}
+            </p>
           </div>
 
-          {selectedDocument && status === "ready" ? (
-            <span className="no-caret rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">AI ready</span>
-          ) : null}
+          {/* ── Right-side action group ── */}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* Page navigation (PDF only, compact) */}
+            {showPdfControls ? (
+              <div className="hidden items-center gap-1 xl:flex">
+                <button
+                  className="cursor-pointer rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50"
+                  onClick={() => changeZoom(-10)}
+                  type="button"
+                >
+                  −
+                </button>
+                <span className="min-w-[38px] text-center text-[11px] font-medium text-slate-500">
+                  {zoom}%
+                </span>
+                <button
+                  className="cursor-pointer rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50"
+                  onClick={() => changeZoom(10)}
+                  type="button"
+                >
+                  +
+                </button>
+                <div className="mx-1 h-4 w-px bg-slate-200" />
+                <button
+                  className="cursor-pointer rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                  disabled={currentPage <= 1}
+                  onClick={() => jumpToPage(Math.max(1, currentPage - 1))}
+                  type="button"
+                >
+                  ‹
+                </button>
+                <span className="min-w-[52px] text-center text-[11px] font-medium text-slate-500">
+                  {currentPage}/{totalPages || 1}
+                </span>
+                <button
+                  className="cursor-pointer rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => jumpToPage(Math.min(totalPages || 1, currentPage + 1))}
+                  type="button"
+                >
+                  ›
+                </button>
+                <div className="mx-1 h-4 w-px bg-slate-200" />
+              </div>
+            ) : null}
 
-          {showPdfControls ? (
-            <div className="no-caret hidden shrink-0 items-center gap-1.5 text-[12px] text-slate-600 xl:flex">
-              <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50" onClick={() => changeZoom(-10)} type="button">-</button>
-              <span className="min-w-10 text-center font-medium">{zoom}%</span>
-              <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50" onClick={() => changeZoom(10)} type="button">+</button>
-              <span className="mx-0.5 text-slate-300">|</span>
-              <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50 disabled:opacity-40" disabled={currentPage <= 1} onClick={() => jumpToPage(Math.max(1, currentPage - 1))} type="button">Prev</button>
-              <span className="min-w-[76px] text-center font-medium">{currentPage}/{totalPages || 1}</span>
-              <button className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50 disabled:opacity-40" disabled={currentPage >= totalPages} onClick={() => jumpToPage(Math.min(totalPages || 1, currentPage + 1))} type="button">Next</button>
-            </div>
-          ) : null}
+            {/* Properties toggle */}
+            {selectedDocument ? (
+              <button
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                  showProperties
+                    ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={() => setShowProperties((v) => !v)}
+                type="button"
+              >
+                Details
+              </button>
+            ) : null}
 
-          {selectedDocument ? (
+            {/* Notebook toggle */}
+            {selectedDocument ? (
+              <button
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                  showNotebookPanel
+                    ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={() => setShowNotebookPanel((v) => !v)}
+                type="button"
+              >
+                Notes{notebookCount > 0 ? ` (${notebookCount})` : ""}
+              </button>
+            ) : null}
+
+            {/* Re-process */}
+            {selectedDocument ? (
+              <button
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                disabled={isProcessing}
+                onClick={onReprocess}
+                title="Re-extract text from this document"
+                type="button"
+              >
+                {isProcessing ? "Processing…" : "Re-process"}
+              </button>
+            ) : null}
+
+            {/* Download */}
             <button
-              className={showProperties
-                ? "cursor-pointer rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
-                : "cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"}
-              onClick={() => setShowProperties((value) => !value)}
+              aria-label="Download document"
+              className="cursor-pointer rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!pdfBlobUrl}
+              onClick={handleDownload}
               type="button"
             >
-              Properties
+              <DownloadIcon size={13} />
             </button>
-          ) : null}
-
-          {selectedDocument ? (
-            <button
-              className="cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isProcessing}
-              onClick={onReprocess}
-              type="button"
-            >
-              {isProcessing ? "Processing..." : "Re-process"}
-            </button>
-          ) : null}
-
-          {selectedDocument ? (
-            <button
-              className={showNotebookPanel
-                ? "cursor-pointer rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
-                : "cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"}
-              onClick={() => setShowNotebookPanel((value) => !value)}
-              type="button"
-            >
-              Notebook ({notebookCount})
-            </button>
-          ) : null}
-
-          <button
-            aria-label="Download document"
-            className="cursor-pointer rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!pdfBlobUrl}
-            onClick={handleDownload}
-            type="button"
-          >
-            <DownloadIcon size={14} />
-          </button>
+          </div>
         </div>
+
+        {/* ── Row 2: meta chips ── */}
+        {selectedDocument ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-1.5">
+            {/* Subject */}
+            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+              📚 {getSubjectLabel(selectedDocument)}
+            </span>
+
+            {/* File type */}
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              {documentType}
+            </span>
+
+            {/* Extraction status */}
+            {(() => {
+              const s = processResult?.status || selectedDocument?.extraction_status;
+              if (s === "ready") {
+                return (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                    ✓ AI ready
+                  </span>
+                );
+              }
+              if (s === "empty") {
+                return (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                    ⚠ No text
+                  </span>
+                );
+              }
+              if (s === "failed") {
+                return (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700">
+                    ✕ Failed
+                  </span>
+                );
+              }
+              return (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                  Processing…
+                </span>
+              );
+            })()}
+
+            {/* Tags */}
+            {selectedDocument.tags?.length ? (
+              <>
+                <div className="h-3 w-px bg-slate-300" />
+                {selectedDocument.tags.slice(0, 4).map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500"
+                  >
+                    #{tag.name}
+                  </span>
+                ))}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* ── Properties panel (expandable) ── */}
         {selectedDocument && showProperties ? (
-          <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 text-[11px] text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 border-t border-slate-100 bg-white px-4 py-3 text-[11px] sm:grid-cols-2 xl:grid-cols-4">
             <div>
               <span className="block font-bold uppercase tracking-wide text-slate-400">Subject</span>
               <strong className="mt-0.5 block truncate text-slate-800">{getSubjectLabel(selectedDocument)}</strong>
@@ -382,6 +488,7 @@ export default function DocumentViewer({
           </div>
         ) : null}
       </header>
+
 
       <div className="workspace-scrollbar workspace-selectable relative min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
         <WorkspaceNotebook

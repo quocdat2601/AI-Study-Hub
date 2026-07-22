@@ -58,7 +58,10 @@ function friendlyGenerationError(raw) {
   if (/connect|connection refused|fetch failed|ECONNREFUSED/i.test(text)) {
     return "Không kết nối được dịch vụ AI. Hãy kiểm tra Ollama/mạng rồi thử lại.";
   }
-  return "Tạo lộ trình học thất bại. Vui lòng thử lại.";
+  if (/no readable text|processed for AI/i.test(text)) {
+    return "Tài liệu chưa có văn bản trích xuất hợp lệ để tạo lộ trình học.";
+  }
+  return text || "Tạo lộ trình học thất bại. Vui lòng thử lại.";
 }
 
 const PENDING_POLL_INTERVAL_MS = 5000;

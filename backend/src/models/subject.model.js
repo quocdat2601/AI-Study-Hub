@@ -4,11 +4,19 @@ class SubjectModel {
   static async findAll() {
     const { data, error } = await supabase
       .from('subjects')
-      .select('*')
+      .select('*, majors (id, code, name)')
       .order('name', { ascending: true });
 
     if (error) throw error;
-    return data;
+
+    // Flatten majors join into major_id / major_code / major_name fields
+    return (data || []).map((s) => ({
+      ...s,
+      major_id: s.majors?.id ?? s.major_id ?? null,
+      major_code: s.majors?.code ?? null,
+      major_name: s.majors?.name ?? null,
+      majors: undefined,
+    }));
   }
 
   static async listSubjects() {
