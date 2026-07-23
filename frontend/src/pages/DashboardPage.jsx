@@ -151,8 +151,11 @@ export default function DashboardPage() {
 
   const usedBytes = Number(dashboard?.storage?.used || 0);
   const limitBytes = Number(dashboard?.storage?.limit || 0);
-  const usedPercent = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 100)) : 0;
+  const usedRatio = limitBytes > 0 ? Math.min(100, (usedBytes / limitBytes) * 100) : 0;
+  const usedPercent = usedRatio < 1 && usedRatio > 0 ? usedRatio.toFixed(1) : Math.round(usedRatio);
   const docCount = dashboard?.stats?.documents ?? 0;
+  const bookmarkCount = dashboard?.stats?.bookmarks ?? 0;
+  const chatCount = dashboard?.stats?.chats ?? 0;
   const recentDocuments = dashboard?.recentDocuments ?? [];
 
   if (redirectPath) {
@@ -220,14 +223,14 @@ export default function DashboardPage() {
         <StatCard
           label="Bookmarks"
           tone="bookmarks"
-          value={0}
+          value={isLoading ? "..." : bookmarkCount}
           icon={<BookmarkIcon className="h-5 w-5" />}
         />
 
         <StatCard
           label="AI Chats"
           tone="chats"
-          value={0}
+          value={isLoading ? "..." : chatCount}
           icon={<MessagesIcon className="h-5 w-5" />}
         />
       </section>

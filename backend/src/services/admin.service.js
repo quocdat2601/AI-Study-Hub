@@ -18,28 +18,27 @@ const aiProvidersConfig = require('../config/ai-providers');
 // =========================================================================
 
 /**
- * Normalizes date timestamps to the absolute start of day.
- * @param {string|Date} date - Input date object.
- * @returns {Date} Date instance set to midnight.
+ * Returns the UTC date string (YYYY-MM-DD) for a given date.
  */
-function startOfDay(date) {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
+function utcDateKey(date) {
+  return date.toISOString().slice(0, 10);
 }
 
+
 /**
- * Generates dates array spanning the last 7 calendar days.
+ * Generates dates array spanning the last 7 calendar days (UTC).
  * @returns {Array<object>} Time-series arrays with zero values.
  */
 function buildLastSevenDays() {
-  const today = startOfDay(new Date());
+  const now = new Date();
+  // Compute today's UTC midnight
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
+    const date = new Date(todayUtc);
+    date.setUTCDate(todayUtc.getUTCDate() - (6 - index));
     return {
-      key: date.toISOString().slice(0, 10),
-      label: date.toLocaleDateString('en', { weekday: 'short' }),
+      key: utcDateKey(date),
+      label: date.toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' }),
       value: 0,
     };
   });
@@ -301,9 +300,8 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
 }
 
 async function getAiUsageOverview() {
-  const since7d = new Date();
-  since7d.setDate(since7d.getDate() - 6);
-  since7d.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const since7d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6));
 
   const [byModel, topUsers, rawLogs7d] = await Promise.all([
     aiUsageModel.aggregateByModel({ since: since7d }),

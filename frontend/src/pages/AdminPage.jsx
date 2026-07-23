@@ -327,92 +327,291 @@ function AdminSidebar({
 }
 
 function BarChart({ data }) {
+  const [hovered, setHovered] = React.useState(null);
   const values = data?.length ? data : [];
   const max = Math.max(...values.map((item) => item.value), 1);
-  const yTicks = [max, Math.round(max / 2), 0];
 
   if (!values.length || values.every((item) => Number(item.value || 0) === 0)) {
     return (
-      <div className="mt-5 flex h-[170px] items-center justify-center rounded-md border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
+      <div className="mt-5 flex h-[190px] items-center justify-center rounded-xl border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
         No user registrations in this period.
       </div>
     );
   }
 
+  const W = 480;
+  const H = 160;
+  const PADDING = { top: 16, bottom: 28, left: 32, right: 8 };
+  const chartW = W - PADDING.left - PADDING.right;
+  const chartH = H - PADDING.top - PADDING.bottom;
+  const barW = Math.min(36, (chartW / values.length) * 0.55);
+  const gap = chartW / values.length;
+
+  const yTicks = [max, Math.round(max / 2), 0].filter((v, i, arr) => arr.indexOf(v) === i);
+
+  function handleMouseMove(e) {
+    const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) * (W / rect.width);
+    const relX = mouseX - PADDING.left;
+    const idx = Math.floor(relX / gap);
+    setHovered(Math.max(0, Math.min(values.length - 1, idx)));
+  }
+
   return (
-    <div className="mt-5 grid h-[170px] grid-cols-[34px_1fr] gap-2">
-      <div className="flex h-[132px] flex-col justify-between text-right text-[10px] font-semibold text-[#66758a]">
-        {yTicks.map((tick, index) => <span key={`${tick}-${index}`}>{tick}</span>)}
-      </div>
-      <div>
-        <div className="relative h-[132px] border-b border-l border-[#d9dde6]">
-          <div className="absolute inset-0 grid grid-rows-2">
-            <span className="border-b border-[#eef0f3]" />
-            <span />
-          </div>
-          <div className="absolute inset-x-2 bottom-0 grid h-[112px] grid-cols-7 items-end gap-2">
-          {values.map((item, index) => (
-            <span
-              className={index === values.length - 1 ? "rounded-t-md bg-[#4648d4]" : "rounded-t-md bg-[#a7a8f4]"}
-              key={item.key || item.label}
-              style={{ height: `${Math.max(4, (item.value / max) * 104)}px` }}
-              title={`${item.label}: ${item.value}`}
-            >
-              <span className="sr-only">{item.label}: {item.value}</span>
-            </span>
-          ))}
-          </div>
-        </div>
-        <div className="mt-2 grid grid-cols-7 text-center text-[10px] text-[#464554]">
-          {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
-        </div>
-      </div>
+    <div className="relative mt-3 select-none">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full overflow-visible"
+        aria-label="User growth bar chart"
+        style={{ height: 190 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHovered(null)}
+      >
+        <defs>
+          <linearGradient id="barGradActive" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#4648d4" />
+          </linearGradient>
+          <linearGradient id="barGradInactive" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a5b4fc" />
+            <stop offset="100%" stopColor="#c7d2fe" />
+          </linearGradient>
+          <filter id="barShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#4648d4" floodOpacity="0.25" />
+          </filter>
+        </defs>
+
+        {/* Y-axis grid lines + labels */}
+        {yTicks.map((tick) => {
+          const y = PADDING.top + chartH - (tick / max) * chartH;
+          return (
+            <g key={tick}>
+              <line x1={PADDING.left} x2={W - PADDING.right} y1={y} y2={y}
+                stroke="#e5e7ef" strokeWidth="1" strokeDasharray={tick === 0 ? "0" : "4 3"} />
+              <text x={PADDING.left - 6} y={y + 4} textAnchor="end"
+                fontSize="9" fill="#94a3b8" fontWeight="600">{tick}</text>
+            </g>
+          );
+        })}
+
+        {/* Bars + labels (no mouse events — handled by overlay) */}
+        {values.map((item, index) => {
+          const barH = Math.max(4, (item.value / max) * chartH);
+          const x = PADDING.left + index * gap + gap / 2 - barW / 2;
+          const y = PADDING.top + chartH - barH;
+          const isHovered = hovered === index;
+          const isLast = index === values.length - 1;
+          return (
+            <g key={item.key || item.label} style={{ pointerEvents: 'none' }}>
+              <rect
+                x={x} y={y} width={barW} height={barH} rx="5" ry="5"
+                fill={isHovered || isLast ? "url(#barGradActive)" : "url(#barGradInactive)"}
+                filter={isHovered ? "url(#barShadow)" : "none"}
+                style={{ transition: "all 0.15s ease" }}
+              />
+              <text
+                x={PADDING.left + index * gap + gap / 2} y={H - 6}
+                textAnchor="middle" fontSize="9"
+                fill={isHovered ? "#4648d4" : "#94a3b8"}
+                fontWeight={isHovered ? "700" : "600"}
+              >
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Single transparent overlay — owns all mouse events */}
+        <rect
+          x={PADDING.left} y={PADDING.top}
+          width={chartW} height={chartH}
+          fill="transparent"
+        />
+
+        {/* Tooltip (on top of overlay) */}
+        {hovered !== null && (() => {
+          const item = values[hovered];
+          const cx = PADDING.left + hovered * gap + gap / 2;
+          const tw = 72;
+          const tx = Math.min(Math.max(cx - tw / 2, 4), W - tw - 4);
+          const barH = Math.max(4, (item.value / max) * chartH);
+          const ty = PADDING.top + chartH - barH - 36;
+          return (
+            <g style={{ pointerEvents: 'none' }}>
+              <rect x={tx} y={ty} width={tw} height={24} rx="6" fill="#1e1b4b" opacity="0.92" />
+              <text x={tx + tw / 2} y={ty + 10} textAnchor="middle" fontSize="9" fill="#c7d2fe" fontWeight="600">
+                {item.label}
+              </text>
+              <text x={tx + tw / 2} y={ty + 20} textAnchor="middle" fontSize="11" fill="white" fontWeight="800">
+                {item.value} {item.value === 1 ? "user" : "users"}
+              </text>
+            </g>
+          );
+        })()}
+      </svg>
     </div>
   );
 }
 
+
+
+// Compute smooth cubic bezier path through points, clamped to [yMin, yMax]
+function smoothPath(pts, yMin = -Infinity, yMax = Infinity) {
+  if (pts.length < 2) return "";
+  const clamp = (v) => Math.min(yMax, Math.max(yMin, v));
+  const d = [`M ${pts[0].x} ${pts[0].y}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const cp1x = pts[i].x + (pts[i + 1].x - (pts[i - 1]?.x ?? pts[i].x)) / 6;
+    const cp1y = clamp(pts[i].y + (pts[i + 1].y - (pts[i - 1]?.y ?? pts[i].y)) / 6);
+    const cp2x = pts[i + 1].x - ((pts[i + 2]?.x ?? pts[i + 1].x) - pts[i].x) / 6;
+    const cp2y = clamp(pts[i + 1].y - ((pts[i + 2]?.y ?? pts[i + 1].y) - pts[i].y) / 6);
+    d.push(`C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${pts[i + 1].x} ${pts[i + 1].y}`);
+  }
+  return d.join(" ");
+}
+
 function AreaChart({ data }) {
+  const [hovered, setHovered] = React.useState(null);
   const values = data?.length ? data : [];
   const max = Math.max(...values.map((item) => item.value), 1);
-  const points = values.map((item, index) => {
-    const x = 8 + index * (272 / Math.max(values.length - 1, 1));
-    const y = 114 - (item.value / max) * 78;
-    return { x, y };
-  });
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const area = points.length ? `8,124 ${line} 280,124` : "";
 
   if (!values.length || values.every((item) => Number(item.value || 0) === 0)) {
     return (
-      <div className="mt-4 flex h-[166px] items-center justify-center rounded-md border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
+      <div className="mt-4 flex h-[190px] items-center justify-center rounded-xl border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
         No document uploads in this period.
       </div>
     );
   }
 
+  const W = 480;
+  const H = 160;
+  const PAD = { top: 16, bottom: 28, left: 32, right: 8 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const pts = values.map((item, i) => ({
+    x: PAD.left + (i / Math.max(values.length - 1, 1)) * chartW,
+    y: PAD.top + chartH - (item.value / max) * chartH,
+  }));
+
+  const yMin = PAD.top;
+  const yMax = PAD.top + chartH;
+  const linePath = smoothPath(pts, yMin, yMax);
+  const areaPath = pts.length
+    ? `${linePath} L ${pts[pts.length - 1].x} ${PAD.top + chartH} L ${pts[0].x} ${PAD.top + chartH} Z`
+    : "";
+
+  const yTicks = [max, Math.round(max / 2), 0].filter((v, i, arr) => arr.indexOf(v) === i);
+
+  function handleMouseMove(e) {
+    const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) * (W / rect.width);
+    // Find nearest point by X distance
+    let nearest = 0;
+    let minDist = Infinity;
+    pts.forEach((pt, i) => {
+      const d = Math.abs(pt.x - mouseX);
+      if (d < minDist) { minDist = d; nearest = i; }
+    });
+    setHovered(nearest);
+  }
+
   return (
-    <div className="mt-4 rounded-md border border-[#d9dde6] bg-[#f7f9fb] p-2">
-      <svg className="h-[150px] w-full" viewBox="0 0 288 132" preserveAspectRatio="none" aria-label="Document uploads chart">
+    <div className="relative mt-3 select-none">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full overflow-visible"
+        aria-label="Document uploads area chart"
+        style={{ height: 190 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHovered(null)}
+      >
         <defs>
-          <linearGradient id="adminUploadArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#4648d4" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#4648d4" stopOpacity="0.04" />
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.22" />
+            <stop offset="75%" stopColor="#6366f1" stopOpacity="0.04" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
           </linearGradient>
+          <filter id="dotGlow">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
         </defs>
-        <polygon points={area} fill="url(#adminUploadArea)" />
-        <polyline points={line} fill="none" stroke="#4648d4" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((point, index) => (
-          <circle key={values[index]?.key || values[index]?.label || index} cx={point.x} cy={point.y} r="3" fill="#4648d4">
-            <title>{values[index]?.label}: {values[index]?.value}</title>
-          </circle>
-        ))}
+
+        {/* Y-axis grid + labels */}
+        {yTicks.map((tick) => {
+          const y = PAD.top + chartH - (tick / max) * chartH;
+          return (
+            <g key={tick} style={{ pointerEvents: 'none' }}>
+              <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y}
+                stroke="#e5e7ef" strokeWidth="1" strokeDasharray={tick === 0 ? "0" : "4 3"} />
+              <text x={PAD.left - 6} y={y + 4} textAnchor="end"
+                fontSize="9" fill="#94a3b8" fontWeight="600">{tick}</text>
+            </g>
+          );
+        })}
+
+        {/* Area fill + line (no mouse events) */}
+        <g style={{ pointerEvents: 'none' }}>
+          <path d={areaPath} fill="url(#areaGrad)" />
+          <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+
+        {/* Dots + labels + crosshair (no mouse events) */}
+        {values.map((item, i) => {
+          const pt = pts[i];
+          const isHovered = hovered === i;
+          return (
+            <g key={item.key || item.label} style={{ pointerEvents: 'none' }}>
+              {isHovered && (
+                <line x1={pt.x} x2={pt.x} y1={PAD.top} y2={PAD.top + chartH}
+                  stroke="#6366f1" strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
+              )}
+              <circle cx={pt.x} cy={pt.y} r={isHovered ? 5 : 3}
+                fill={isHovered ? "#6366f1" : "#fff"}
+                stroke="#6366f1" strokeWidth={isHovered ? 0 : 2}
+                filter={isHovered ? "url(#dotGlow)" : "none"}
+                style={{ transition: "r 0.12s ease, fill 0.12s ease" }}
+              />
+              <text x={pt.x} y={H - 6} textAnchor="middle" fontSize="9"
+                fill={isHovered ? "#4648d4" : "#94a3b8"}
+                fontWeight={isHovered ? "700" : "600"}>
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Single transparent overlay — owns all mouse events */}
+        <rect x={PAD.left} y={PAD.top} width={chartW} height={chartH} fill="transparent" />
+
+        {/* Tooltip (on top, no mouse events) */}
+        {hovered !== null && (() => {
+          const item = values[hovered];
+          const pt = pts[hovered];
+          const tw = 80;
+          const tx = Math.min(Math.max(pt.x - tw / 2, 4), W - tw - 4);
+          const ty = Math.max(4, pt.y - 40);
+          return (
+            <g style={{ pointerEvents: 'none' }}>
+              <rect x={tx} y={ty} width={tw} height={28} rx="6" fill="#1e1b4b" opacity="0.92" />
+              <text x={tx + tw / 2} y={ty + 11} textAnchor="middle" fontSize="9" fill="#c7d2fe" fontWeight="600">
+                {item.label}
+              </text>
+              <text x={tx + tw / 2} y={ty + 22} textAnchor="middle" fontSize="11" fill="white" fontWeight="800">
+                {item.value} {item.value === 1 ? "upload" : "uploads"}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
-      <div className="grid grid-cols-7 text-center text-[10px] text-[#464554]">
-        {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
-      </div>
     </div>
   );
 }
+
 
 function ChartCard({ title, children, action }) {
   return (
