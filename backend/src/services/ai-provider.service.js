@@ -58,7 +58,7 @@ function buildSourceLabel(chunk, index) {
   const pageLabel = pageStart == null
     ? ''
     : pageStart === pageEnd ? ` | page ${pageStart}` : ` | pages ${pageStart}-${pageEnd}`;
-  return `[Source ${index + 1}${title ? ` | Document: ${title}` : ''} | chunk ${chunkIndex}${pageLabel}]`;
+  return `[${index + 1}]${title ? ` Document: ${title}` : ''} (chunk ${chunkIndex}${pageLabel})`;
 }
 
 function formatHistory(history) {
@@ -192,7 +192,7 @@ function buildRagPrompts({
       ? 'The requested documents are already attached, authorized, and loaded as evidence. Never ask the user to upload, share, or provide those same files again.'
       : '',
     'Do not use canned headings such as "Based on the compared documents", "Dựa trên tài liệu", or "Dựa trên tài liệu được so sánh". Start directly with the answer unless the user explicitly requests headings.',
-    'Do not write source numbers, chunk numbers, or parenthetical chunk labels in the answer. The application renders citations separately. Never combine a document title with another source chunk.',
+    'When answering based on retrieved source chunks, you MUST insert inline citations (e.g. "[1]", "[2]") immediately after each sentence or clause that references information from that source chunk. Do not invent citation numbers that are not in the list of source chunks. Do not add text like "Source [1]" or "Chunk [1]", just write "[1]".',
     ...constraintInstructions,
     comparisonInstruction,
     multiDocumentInstruction,

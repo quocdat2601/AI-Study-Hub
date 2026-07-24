@@ -403,6 +403,12 @@ function buildAssistantMetadata({
       .filter(Boolean)
   )];
 
+  const citationMap = (sources || []).map((source, idx) => ({
+    citationNumber: idx + 1,
+    chunkId: source.chunkId || source.id || source.chunkIndex,
+    documentId: source.documentId,
+  }));
+
   return {
     provider,
     model,
@@ -412,6 +418,7 @@ function buildAssistantMetadata({
     processingError,
     retrieval: retrievalTypes.length === 1 ? retrievalTypes[0] : retrievalTypes,
     sources,
+    citationMap,
     ...(requestContext ? {
       intent: requestContext.intent,
       comparedDocumentIds: requestContext.comparedDocumentIds,
@@ -1014,9 +1021,17 @@ function buildScopeResponse({
       notReadyDocuments: undefined,
     }
     : excludedAttachments;
+
+  const citationMap = (sources || []).map((source, idx) => ({
+    citationNumber: idx + 1,
+    chunkId: source.chunkId || source.id || source.chunkIndex,
+    documentId: source.documentId,
+  }));
+
   return {
     answer,
     sources,
+    citationMap,
     documents: documents.map((doc) => ({ id: doc.id, title: doc.title })),
     ...(compatibilityDocument ? {
       document: { id: compatibilityDocument.id, title: compatibilityDocument.title },
@@ -1710,6 +1725,7 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
       success: true,
     });
   } catch (err) {
+    console.error('Error generating answer:', err);
     await aiUsageService.logGeminiRequest({
       userId,
       docId: compatibilityDocument?.id || null,

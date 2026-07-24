@@ -120,10 +120,23 @@ function PdfBody({
 
       isJumpingRef.current = true;
       setCurrentPage(page);
-      window.document.getElementById(`workspace-pdf-page-${page}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.setTimeout(() => {
-        isJumpingRef.current = false;
-      }, 450);
+      
+      let attempts = 0;
+      function tryScroll() {
+        const element = window.document.getElementById(`workspace-pdf-page-${page}`);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+          window.setTimeout(() => {
+            isJumpingRef.current = false;
+          }, 450);
+        } else if (attempts < 20) {
+          attempts++;
+          window.setTimeout(tryScroll, 100);
+        } else {
+          isJumpingRef.current = false;
+        }
+      }
+      tryScroll();
     }
 
     window.addEventListener("workspace-jump-to-page", onJump);

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import ChatAttachmentBar from "./ChatAttachmentBar.jsx";
 import ChatSessionMenu from "./ChatSessionMenu.jsx";
 import { renderMarkdownBody } from "../community/communityUtils.js";
+import { useNavigate } from "react-router-dom";
 import { MODEL_LABELS } from "./workspaceDisplay.js";
 import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CopyIcon, SparklesIcon, UploadIcon } from "./WorkspaceIcons.jsx";
 
@@ -84,7 +85,32 @@ function UsagePopover({ activeModel, isLoadingUsage, isOllamaModel, selectedMode
   );
 }
 
-function SourceList({ sources }) {
+function ExpandableText({ text, limit = 500 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  if (!text) return null;
+  if (text.length <= limit) {
+    return <p className="mt-1 select-text whitespace-pre-wrap text-slate-500">{text}</p>;
+  }
+
+  return (
+    <div>
+      <p className="mt-1 select-text whitespace-pre-wrap text-slate-500">
+        {isExpanded ? text : `${text.slice(0, limit)}...`}
+      </p>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="mt-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer border-0 bg-transparent p-0"
+        type="button"
+      >
+        {isExpanded ? "Collapse" : "Read more"}
+      </button>
+    </div>
+  );
+}
+
+function SourceList({ sources, messageId, selectedDocument }) {
+  const navigate = useNavigate();
+
   if (!sources?.length) return null;
   const validSources = sources.filter((source) => (
     source.chunkDocumentId == null
@@ -155,14 +181,53 @@ function SourceList({ sources }) {
                     : pageStart === pageEnd ? ` · Page ${pageStart}` : ` · Pages ${pageStart}-${pageEnd}`;
                   const scoreLabel = source.score ? ` · ${Number(source.score).toFixed(2)}` : "";
 
+                  const handleJumpToSource = () => {
+                    const docId = Number(source.documentId);
+                    if (Number(selectedDocument?.id) !== docId) {
+                      navigate(`/workspace/documents/${docId}`);
+                    }
+                    if (pageStart != null) {
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent("workspace-jump-to-page", {
+                          detail: { page: Number(pageStart) }
+                        }));
+                      }, 100);
+                    }
+                  };
+
+                  const chunkKey = source.chunkId ?? source.id ?? source.chunkIndex;
+
                   return (
-                    <details className="group/chunk rounded border border-transparent hover:bg-slate-100 px-1 py-0.5" key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}>
+                    <details 
+                      id={`source-chunk-${messageId}-${chunkKey}`}
+                      className="group/chunk rounded border border-transparent hover:bg-slate-100 px-1 py-0.5 transition-colors duration-300"
+                      key={`${source.documentId}-${chunkKey}`}
+                    >
                       <summary className="cursor-pointer list-none font-medium text-slate-600 marker:hidden">
                         <span className="mr-1 text-slate-300 group-open/chunk:hidden">+</span>
                         <span className="mr-1 hidden text-slate-300 group-open/chunk:inline">-</span>
                         Chunk {Number(source.chunkIndex || 0) + 1}{pageLabel}{scoreLabel}
                       </summary>
-                      <p className="mt-1 line-clamp-4 select-text whitespace-pre-wrap text-slate-500">{source.content}</p>
+                      <div className="mt-1">
+                        <ExpandableText text={source.content} />
+                        {pageStart != null ? (
+                          <button
+                            onClick={handleJumpToSource}
+                            className="mt-1.5 text-[10px] text-indigo-600 hover:text-indigo-800 underline cursor-pointer border-0 bg-transparent p-0 block font-semibold text-left"
+                            type="button"
+                          >
+                            Xem trang {pageStart} trong tài liệu gốc
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleJumpToSource}
+                            className="mt-1.5 text-[10px] text-indigo-600 hover:text-indigo-800 underline cursor-pointer border-0 bg-transparent p-0 block font-semibold text-left"
+                            type="button"
+                          >
+                            Xem tài liệu gốc
+                          </button>
+                        )}
+                      </div>
                     </details>
                   );
                 })}
@@ -234,7 +299,91 @@ function formatMessageTime(value) {
   return date.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
 }
 
-function MessageBubble({ message }) {
+function renderChatMarkdownBody(text, React, citationMap, onCitationClick) {
+  if (!text || typeof text !== "string") return null;
+
+  const lines = text.split("\n");
+  const nodes = [];
+
+  function parseInline(line) {
+    const parts = [];
+    const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*|!\[([^\]]*)\]\(([^)]+)\)|\[(\d+)\])/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pattern.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+
+      if (match[2] !== undefined) {
+        parts.push(React.createElement("strong", { key: `b-${match.index}` }, match[2]));
+      } else if (match[3] !== undefined) {
+        parts.push(React.createElement("em", { key: `i-${match.index}` }, match[3]));
+      } else if (match[5] !== undefined) {
+        const imgSrc = match[5];
+        const imgAlt = match[4] || "";
+        parts.push(
+          React.createElement("a", {
+            key: `img-link-${match.index}`,
+            href: imgSrc,
+            target: "_blank",
+            rel: "noopener noreferrer"
+          }, React.createElement("img", {
+            src: imgSrc,
+            alt: imgAlt,
+            className: "my-2 max-w-full rounded-xl border border-[#e4e0d8] transition",
+            style: { maxHeight: "480px", display: "block" }
+          }))
+        );
+      } else if (match[6] !== undefined) {
+        const citeNum = Number(match[6]);
+        const citation = Array.isArray(citationMap)
+          ? citationMap.find(c => Number(c.citationNumber) === citeNum)
+          : undefined;
+        if (citation) {
+          parts.push(
+            React.createElement("sup", {
+              key: `cite-${match.index}`,
+              className: "mx-0.5 font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer select-none",
+              onClick: (e) => {
+                e.preventDefault();
+                onCitationClick(citation);
+              }
+            }, `[${citeNum}]`)
+          );
+        } else {
+          parts.push(`[${citeNum}]`);
+        }
+      }
+
+      lastIndex = pattern.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+
+    return parts;
+  }
+
+  lines.forEach((line, index) => {
+    const inlineParts = parseInline(line);
+    const hasImage = line.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+
+    if (hasImage) {
+      nodes.push(React.createElement("span", { key: `line-${index}`, className: "block" }, inlineParts));
+    } else if (line.trim() === "") {
+      nodes.push(React.createElement("br", { key: `br-${index}` }));
+    } else {
+      nodes.push(React.createElement("span", { key: `line-${index}`, className: "block" }, inlineParts));
+    }
+  });
+
+  return nodes;
+}
+
+function MessageBubble({ message, selectedDocument }) {
   async function copyAnswer() {
     try {
       await navigator.clipboard.writeText(message.content || "");
@@ -258,6 +407,31 @@ function MessageBubble({ message }) {
 
   const content = message.isStreaming && !message.content ? message.streamStatus : message.content;
 
+  const onCitationClick = (citation) => {
+    const chunkKey = `${citation.chunkId}`;
+    const targetId = `source-chunk-${message.id || message.createdAt}-${chunkKey}`;
+    const element = document.getElementById(targetId);
+    if (element) {
+      // 1. Open all details ancestor wrappers
+      let parent = element.parentElement;
+      while (parent) {
+        if (parent.tagName === 'DETAILS') {
+          parent.open = true;
+        }
+        parent = parent.parentElement;
+      }
+      // 2. Open this chunk details itself
+      element.open = true;
+      // 3. Scroll to chunk
+      element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // 4. Temporarily highlight the details box
+      element.classList.add("bg-indigo-50", "border-indigo-300");
+      setTimeout(() => {
+        element.classList.remove("bg-indigo-50", "border-indigo-300");
+      }, 1500);
+    }
+  };
+
   return (
     <div className="flex justify-start">
       <div className="max-w-[88%]">
@@ -266,8 +440,10 @@ function MessageBubble({ message }) {
           {message.metadata?.verification && <VerificationBadge verification={message.metadata.verification} />}
         </div>
         <div className="workspace-selectable rounded-2xl rounded-tl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800">
-          <div className="m-0 select-text break-words">{renderMarkdownBody(content, React)}</div>
-          <SourceList sources={message.sources} />
+          <div className="m-0 select-text break-words">
+            {renderChatMarkdownBody(content, React, message.metadata?.citationMap, onCitationClick)}
+          </div>
+          <SourceList sources={message.sources} messageId={message.id || message.createdAt} selectedDocument={selectedDocument} />
         </div>
         <div className="mt-1 flex items-center gap-2 px-1">
           {formatMessageTime(message.createdAt) ? (
@@ -670,7 +846,7 @@ export default function AIChatPanel({
             <div className="ml-auto h-11 w-2/3 animate-pulse rounded-2xl bg-indigo-100" />
           </div>
         ) : messages.length ? (
-          messages.map((message) => <MessageBubble key={message.id} message={message} />)
+          messages.map((message) => <MessageBubble key={message.id} message={message} selectedDocument={selectedDocument} />)
         ) : selectedDocument ? (
           <SuggestionChips onQuestionChange={onQuestionChange} selectedDocument={selectedDocument} />
         ) : (

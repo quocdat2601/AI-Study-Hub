@@ -48,10 +48,7 @@ import {
 import { normalizeAttachmentPayload } from "../utils/chatAttachments.js";
 
 const DEFAULT_GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-3.1-flash-lite",
-  "gemini-3-flash",
+  "gemini-3.6-flash",
   "gemini-3.5-flash",
 ];
 const DEFAULT_OLLAMA_MODELS = [
@@ -86,6 +83,10 @@ function buildAssistantMessage(data) {
     role: "assistant",
     content: data.answer,
     sources: data.sources || [],
+    metadata: {
+      citationMap: data.citationMap || [],
+      sources: data.sources || []
+    },
     mode: data.mode || "hybrid",
     provider: data.provider || "system",
     model: data.model,
@@ -112,6 +113,7 @@ function mapStoredMessage(message) {
     content: rawContent,
     createdAt: message.created_at || message.createdAt || null,
     sources: metadata.sources || [],
+    metadata: metadata,
     mode: metadata.mode || "stored",
     provider: metadata.provider,
     model: metadata.model,
@@ -617,7 +619,7 @@ export default function WorkspacePage() {
         setAvailableModels(nextModels);
         setSelectedModel((current) => {
           const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
-          const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-2.5-flash";
+          const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-3.6-flash";
           cacheWorkspaceState({ selectedModel: nextModel });
           return nextModel;
         });
@@ -627,7 +629,7 @@ export default function WorkspacePage() {
           cacheWorkspaceState({ availableModels: DEFAULT_MODELS });
           setSelectedModel((current) => {
             const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
-            const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || "gemini-2.5-flash";
+            const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || "gemini-3.6-flash";
             cacheWorkspaceState({ selectedModel: nextModel });
             return nextModel;
           });
@@ -1314,7 +1316,7 @@ export default function WorkspacePage() {
 
     const userMessage = buildUserMessage(cleanedDisplay);
     const streamAssistantId = `assistant-stream-${Date.now()}`;
-    const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
+    const activeModel = selectedModel || usage?.model || "gemini-3.6-flash";
     const targetSessionId = sessionId;
     const targetDocumentId = selectedDocument.id;
     const requestId = ++askRequestRef.current;

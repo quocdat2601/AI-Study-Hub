@@ -26,9 +26,10 @@ export async function fetchWorkspacePdf(id) {
   if (cached) return cached;
 
   const response = await api.get(`/workspace/documents/${id}/preview-data`, {
+    responseType: "arraybuffer",
     timeout: 120000,
   });
-  return setCachedPreviewData(cacheKey, base64ToArrayBuffer(response.data?.contentBase64));
+  return setCachedPreviewData(cacheKey, response.data);
 }
 
 export async function sendWorkspaceMessage(sessionId, content) {

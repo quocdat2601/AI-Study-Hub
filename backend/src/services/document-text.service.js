@@ -78,7 +78,8 @@ function buildOcrFailureResult({ error, metadata = {}, fallbackFromPdfParse = fa
 }
 
 async function extractPdfText(buffer) {
-  const pdfText = normalizeText(await pdfService.extractText(buffer));
+  const result = await pdfService.extractText(buffer);
+  const pdfText = normalizeText(result.text);
   if (isExtractedTextUseful(pdfText)) {
     return {
       text: pdfText,
@@ -87,6 +88,7 @@ async function extractPdfText(buffer) {
       metadata: {
         extractionMethod: 'pdf-parse',
         fallbackFromPdfParse: false,
+        pageBoundaries: result.pageBoundaries || [],
       },
     };
   }

@@ -52,11 +52,9 @@ async function getDocumentPreviewData(req, res, next) {
     });
 
     res.setHeader('Cache-Control', 'private, max-age=300');
-    res.json({
-      fileName,
-      mimeType,
-      contentBase64: buffer.toString('base64'),
-    });
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.send(buffer);
   } catch (err) {
     next(err);
   }
