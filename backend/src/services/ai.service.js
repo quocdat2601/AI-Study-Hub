@@ -385,6 +385,14 @@ function mergeHybridChunks({ vectorChunks, keywordChunks, embeddingModel, limit 
     .slice(0, limit);
 }
 
+function buildCitationMap(sources) {
+  return (sources || []).map((source, idx) => ({
+    citationNumber: idx + 1,
+    chunkId: source.chunkId || source.id || source.chunkIndex,
+    documentId: source.documentId,
+  }));
+}
+
 function buildAssistantMetadata({
   provider,
   model,
@@ -403,11 +411,7 @@ function buildAssistantMetadata({
       .filter(Boolean)
   )];
 
-  const citationMap = (sources || []).map((source, idx) => ({
-    citationNumber: idx + 1,
-    chunkId: source.chunkId || source.id || source.chunkIndex,
-    documentId: source.documentId,
-  }));
+  const citationMap = buildCitationMap(sources);
 
   return {
     provider,
@@ -2042,6 +2046,7 @@ async function toggleRoadmapStep({ id, userId, stepOrder, completed }) {
 }
 
 module.exports = {
+  buildCitationMap,
   processDocument,
   retryDocumentOverview,
   getDocumentRoadmap,

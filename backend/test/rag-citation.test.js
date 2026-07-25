@@ -22,18 +22,12 @@ test('RAG inline citations metadata integration', async (t) => {
   });
 
   await t.test('buildScopeResponse / database metadata structure matches spec', () => {
-    // Let's test buildScopeResponse via a mock or verify the logic manually because it is not exported.
-    // Instead we can write a test validating that citationMap is constructed from sources array.
     const sources = [
       { id: 101, chunkId: 101, chunkIndex: 0, documentId: 44, documentTitle: 'Doc A' },
       { id: 102, chunkId: 102, chunkIndex: 1, documentId: 44, documentTitle: 'Doc A' }
     ];
 
-    const citationMap = (sources || []).map((source, idx) => ({
-      citationNumber: idx + 1,
-      chunkId: source.chunkId || source.id || source.chunkIndex,
-      documentId: source.documentId,
-    }));
+    const citationMap = aiService.buildCitationMap(sources);
 
     assert.ok(Array.isArray(citationMap), 'citationMap should be an array');
     assert.equal(citationMap.length, 2, 'citationMap should have exactly 2 entries');
