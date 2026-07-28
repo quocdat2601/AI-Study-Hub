@@ -4,6 +4,7 @@ import "../../lib/pdfWorker.js";
 import { PDF_DOCUMENT_OPTIONS } from "../../lib/pdfWorker.js";
 import WorkspaceLazyPdfPage from "./WorkspaceLazyPdfPage.jsx";
 import WorkspaceTextView from "./WorkspaceTextView.jsx";
+import WorkspaceDocxViewer from "./WorkspaceDocxViewer.jsx";
 import WorkspaceNotebook from "./WorkspaceNotebook.jsx";
 import { loadNotebookNotes } from "../../utils/workspaceNotebook.js";
 import { DownloadIcon, FileTextIcon } from "./WorkspaceIcons.jsx";
@@ -83,6 +84,7 @@ function PdfBody({
   selectedDocument,
   setCurrentPage,
   setTotalPages,
+  setViewMode,
   viewMode,
   zoom,
 }) {
@@ -129,6 +131,23 @@ function PdfBody({
     window.addEventListener("workspace-jump-to-page", onJump);
     return () => window.removeEventListener("workspace-jump-to-page", onJump);
   }, [setCurrentPage]);
+
+  useEffect(() => {
+    function onHighlightCitation(event) {
+      const { documentId } = event.detail || {};
+      if (documentId && selectedDocument?.id && Number(documentId) !== Number(selectedDocument.id)) return;
+
+      if (documentType === "DOCX" && viewMode !== "text") {
+        setViewMode("text");
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("workspace-highlight-citation", { detail: event.detail }));
+        }, 200);
+      }
+    }
+
+    window.addEventListener("workspace-highlight-citation", onHighlightCitation);
+    return () => window.removeEventListener("workspace-highlight-citation", onHighlightCitation);
+  }, [selectedDocument?.id, documentType, viewMode, setViewMode]);
 
   if (!selectedDocument) {
     return (
@@ -508,6 +527,7 @@ export default function DocumentViewer({
             selectedDocument={selectedDocument}
             setCurrentPage={setCurrentPage}
             setTotalPages={setTotalPages}
+            setViewMode={setViewMode}
             viewMode={viewMode}
             zoom={zoom}
           />

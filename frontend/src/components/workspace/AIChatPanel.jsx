@@ -148,6 +148,7 @@ function SourceList({ sources }) {
               </summary>
               <div className="mt-1.5 grid gap-1 border-l-2 border-slate-100 pl-2.5">
                 {group.chunks.map((source) => {
+                  const sourceIndex = (sources.indexOf(source) >= 0 ? sources.indexOf(source) : validSources.indexOf(source)) + 1;
                   const pageStart = source.pageStart ?? source.pageNumber;
                   const pageEnd = source.pageEnd ?? source.pageNumber;
                   const pageLabel = pageStart == null
@@ -160,7 +161,7 @@ function SourceList({ sources }) {
                       <summary className="cursor-pointer list-none font-medium text-slate-600 marker:hidden">
                         <span className="mr-1 text-slate-300 group-open/chunk:hidden">+</span>
                         <span className="mr-1 hidden text-slate-300 group-open/chunk:inline">-</span>
-                        Chunk {Number(source.chunkIndex || 0) + 1}{pageLabel}{scoreLabel}
+                        Source [{sourceIndex}]{pageLabel}{scoreLabel}
                       </summary>
                       <p className="mt-1 line-clamp-4 select-text whitespace-pre-wrap text-slate-500">{source.content}</p>
                     </details>
@@ -234,7 +235,7 @@ function formatMessageTime(value) {
   return date.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onCitationClick }) {
   async function copyAnswer() {
     try {
       await navigator.clipboard.writeText(message.content || "");
@@ -266,7 +267,9 @@ function MessageBubble({ message }) {
           {message.metadata?.verification && <VerificationBadge verification={message.metadata.verification} />}
         </div>
         <div className="workspace-selectable rounded-2xl rounded-tl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800">
-          <div className="m-0 select-text break-words">{renderMarkdownBody(content, React)}</div>
+          <div className="m-0 select-text break-words">
+            {renderMarkdownBody(content, React, null, onCitationClick, message.sources)}
+          </div>
           <SourceList sources={message.sources} />
         </div>
         <div className="mt-1 flex items-center gap-2 px-1">
@@ -564,6 +567,26 @@ export default function AIChatPanel({
   const [dragDepth, setDragDepth] = useState(0);
   const isDropActive = dragDropAttachmentsEnabled && dragDepth > 0;
 
+  const handleCitationClick = React.useCallback((citationNumber, source) => {
+    if (!source) return;
+    const targetDocId = Number(source.documentId);
+    if (!targetDocId) return;
+
+    window.dispatchEvent(
+      new CustomEvent("workspace-highlight-citation", {
+        detail: {
+          documentId: targetDocId,
+          pageNumber: source.pageStart ?? source.pageNumber,
+          chunkIndex: source.chunkIndex,
+          content: source.content,
+          startChar: source.startChar ?? source.metadata?.startChar,
+          endChar: source.endChar ?? source.metadata?.endChar,
+          source,
+        },
+      })
+    );
+  }, []);
+
   function hasFiles(event) {
     return Array.from(event.dataTransfer?.types || []).includes("Files");
   }
@@ -670,7 +693,9 @@ export default function AIChatPanel({
             <div className="ml-auto h-11 w-2/3 animate-pulse rounded-2xl bg-indigo-100" />
           </div>
         ) : messages.length ? (
-          messages.map((message) => <MessageBubble key={message.id} message={message} />)
+          messages.map((message) => (
+            <MessageBubble key={message.id} message={message} onCitationClick={handleCitationClick} />
+          ))
         ) : selectedDocument ? (
           <SuggestionChips onQuestionChange={onQuestionChange} selectedDocument={selectedDocument} />
         ) : (

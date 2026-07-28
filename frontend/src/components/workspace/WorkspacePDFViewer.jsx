@@ -5,6 +5,7 @@ import { PDF_DOCUMENT_OPTIONS } from "../../lib/pdfWorker.js";
 import { useWorkspace } from "../../contexts/WorkspaceContext.jsx";
 import WorkspaceLazyPdfPage from "./WorkspaceLazyPdfPage.jsx";
 import WorkspaceTextView from "./WorkspaceTextView.jsx";
+import WorkspaceDocxViewer from "./WorkspaceDocxViewer.jsx";
 
 export default function WorkspacePDFViewer() {
   const {
@@ -69,6 +70,87 @@ export default function WorkspacePDFViewer() {
     window.addEventListener("workspace-jump-to-page", onJump);
     return () => window.removeEventListener("workspace-jump-to-page", onJump);
   }, [setCurrentPage]);
+
+  useEffect(() => {
+    function onHighlightCitation(event) {
+      const { documentId, pageNumber, content } = event.detail || {};
+      if (documentId && selectedDocument?.id && Number(documentId) !== Number(selectedDocument.id)) return;
+
+      const docMime = selectedDocument?.cloud_files?.mime_type || selectedDocument?.mime_type || "";
+      const docTitle = selectedDocument?.title || selectedDocument?.name || "";
+      const isDocxDoc = selectedDocument?.type === "DOCX" || docMime.includes("word") || docMime.includes("msword") || docTitle.toLowerCase().endsWith(".docx") || docTitle.toLowerCase().endsWith(".doc");
+
+      if (isDocxDoc && viewMode !== "text") {
+        setViewMode("text");
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("workspace-highlight-citation", { detail: event.detail }));
+        }, 200);
+        return;
+      }
+
+      const page = Number(pageNumber);
+      if (page) {
+        isJumpingRef.current = true;
+        setCurrentPage(page);
+        const pageEl = window.document.getElementById(`workspace-pdf-page-${page}`);
+        pageEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.setTimeout(() => {
+          isJumpingRef.current = false;
+        }, 450);
+      }
+
+      window.setTimeout(() => {
+        const searchScope = page
+          ? window.document.getElementById(`workspace-pdf-page-${page}`)
+          : window.document;
+
+        if (!searchScope) return;
+
+        const cleanChunkText = String(content || "").toLowerCase().replace(/\s+/g, " ").trim();
+        if (!cleanChunkText) return;
+
+        const spans = Array.from(searchScope.querySelectorAll(".react-pdf__Page__textContent span"));
+        const matchedSpans = spans.filter((span) => {
+          const spanText = span.textContent.toLowerCase().replace(/\s+/g, " ").trim();
+          if (!spanText || spanText.length < 2) return false;
+          return cleanChunkText.includes(spanText) || spanText.includes(cleanChunkText.slice(0, Math.min(30, cleanChunkText.length)));
+        });
+
+        if (matchedSpans.length) {
+          window.document.querySelectorAll(".citation-highlight-active").forEach((el) => {
+            el.classList.remove("citation-highlight-active");
+          });
+
+          matchedSpans.forEach((span) => span.classList.add("citation-highlight-active"));
+          matchedSpans[0].scrollIntoView({ behavior: "smooth", block: "center" });
+
+          let removed = false;
+          const removeHighlight = () => {
+            if (removed) return;
+            removed = true;
+            window.document.querySelectorAll(".citation-highlight-active").forEach((el) => {
+              el.classList.remove("citation-highlight-active");
+            });
+          };
+
+          const timer = window.setTimeout(removeHighlight, 8000);
+
+          const handleDocClick = () => {
+            removeHighlight();
+            window.clearTimeout(timer);
+            window.removeEventListener("click", handleDocClick, true);
+          };
+
+          window.setTimeout(() => {
+            window.addEventListener("click", handleDocClick, { capture: true, once: true });
+          }, 50);
+        }
+      }, 350);
+    }
+
+    window.addEventListener("workspace-highlight-citation", onHighlightCitation);
+    return () => window.removeEventListener("workspace-highlight-citation", onHighlightCitation);
+  }, [selectedDocument, setViewMode, viewMode, setCurrentPage]);
 
   if (!selectedDocument) {
     return (

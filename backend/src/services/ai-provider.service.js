@@ -52,13 +52,12 @@ function buildModeInstruction(mode, { provider } = {}) {
 function buildSourceLabel(chunk, index) {
   const metadata = chunk.metadata || {};
   const title = chunk.documentTitle || metadata.documentTitle;
-  const chunkIndex = chunk.chunk_index ?? index;
   const pageStart = metadata.pageStart ?? metadata.pageNumber;
   const pageEnd = metadata.pageEnd ?? metadata.pageNumber;
   const pageLabel = pageStart == null
     ? ''
     : pageStart === pageEnd ? ` | page ${pageStart}` : ` | pages ${pageStart}-${pageEnd}`;
-  return `[Source ${index + 1}${title ? ` | Document: ${title}` : ''} | chunk ${chunkIndex}${pageLabel}]`;
+  return `[Source [${index + 1}]${title ? ` | Document: ${title}` : ''}${pageLabel}]`;
 }
 
 function formatHistory(history) {
@@ -70,7 +69,7 @@ function formatHistory(history) {
 function sanitizeAnswerCitationAttribution(answer) {
   return String(answer || '')
     .replace(/\s*\([^)]*\b(?:chunk|source|nguon|nguồn)\b[^)]*\)/giu, '')
-    .replace(/\s*\[(?:source|nguon|nguồn)\s*\d+[^\]]*\]/giu, '')
+    .replace(/\s*\[(?:source|nguon|nguồn)\s*:\s*\d+[^\]]*\]/giu, '')
     .replace(/[ \t]+\n/g, '\n')
     .trim();
 }
@@ -192,7 +191,7 @@ function buildRagPrompts({
       ? 'The requested documents are already attached, authorized, and loaded as evidence. Never ask the user to upload, share, or provide those same files again.'
       : '',
     'Do not use canned headings such as "Based on the compared documents", "Dựa trên tài liệu", or "Dựa trên tài liệu được so sánh". Start directly with the answer unless the user explicitly requests headings.',
-    'Do not write source numbers, chunk numbers, or parenthetical chunk labels in the answer. The application renders citations separately. Never combine a document title with another source chunk.',
+    'When stating facts derived from the retrieved source chunks, include inline citations using bracket numbers corresponding to the 1-based sequential source index (e.g. [1], [2], or [1, 2]) right after the statement. Always cite sources by their sequential index number [1], [2], etc., as labeled in the retrieved sources (Source [1], Source [2], ...). Do not use raw database chunk IDs or skip numbers.',
     ...constraintInstructions,
     comparisonInstruction,
     multiDocumentInstruction,
