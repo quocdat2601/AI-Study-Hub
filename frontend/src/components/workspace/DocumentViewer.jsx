@@ -6,7 +6,8 @@ import WorkspaceLazyPdfPage from "./WorkspaceLazyPdfPage.jsx";
 import WorkspaceTextView from "./WorkspaceTextView.jsx";
 import WorkspaceDocxViewer from "./WorkspaceDocxViewer.jsx";
 import WorkspaceNotebook from "./WorkspaceNotebook.jsx";
-import { loadNotebookNotes } from "../../utils/workspaceNotebook.js";
+import WorkspaceNotesPopover from "./WorkspaceNotesPopover.jsx";
+import { loadNotebookNotes, removeNotebookNote } from "../../utils/workspaceNotebook.js";
 import { DownloadIcon, FileTextIcon } from "./WorkspaceIcons.jsx";
 import { getStatusLabel, getSubjectLabel } from "./workspaceDisplay.js";
 import { formatFileSize } from "../../lib/formatFileSize.js";
@@ -394,11 +395,11 @@ export default function DocumentViewer({
 }) {
   const [showNotebookPanel, setShowNotebookPanel] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
-  const [notebookCount, setNotebookCount] = useState(0);
+  const [notebookNotes, setNotebookNotes] = useState([]);
   const documentType = getDocumentType(selectedDocument);
 
   useEffect(() => {
-    setNotebookCount(0);
+    setNotebookNotes([]);
     setShowNotebookPanel(false);
     setShowProperties(false);
     if (!selectedDocument?.id) return undefined;
@@ -406,10 +407,10 @@ export default function DocumentViewer({
     let isMounted = true;
     loadNotebookNotes(selectedDocument.id)
       .then((items) => {
-        if (isMounted) setNotebookCount(items.length);
+        if (isMounted) setNotebookNotes(items);
       })
       .catch(() => {
-        if (isMounted) setNotebookCount(0);
+        if (isMounted) setNotebookNotes([]);
       });
 
     return () => {
@@ -418,6 +419,12 @@ export default function DocumentViewer({
   }, [selectedDocument?.id]);
   const showPdfControls = viewMode === "pdf" && documentType === "PDF" && selectedDocument;
   const status = processResult?.status || selectedDocument?.extraction_status || selectedDocument?.status;
+
+  const handleDeleteNote = useCallback(async (noteId) => {
+    if (!selectedDocument?.id) return;
+    await removeNotebookNote(selectedDocument.id, noteId);
+    setNotebookNotes((current) => current.filter((n) => n.id !== noteId));
+  }, [selectedDocument?.id]);
 
   function handleDownload() {
     if (!selectedDocument || !pdfBlobUrl) return;
@@ -521,17 +528,28 @@ export default function DocumentViewer({
 
             {/* Notebook toggle */}
             {selectedDocument ? (
-              <button
-                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
-                  showNotebookPanel
-                    ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-                onClick={() => setShowNotebookPanel((v) => !v)}
-                type="button"
-              >
-                Notes{notebookCount > 0 ? ` (${notebookCount})` : ""}
-              </button>
+              <div className="relative">
+                <button
+                  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                    showNotebookPanel
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                  data-notes-trigger="true"
+                  onClick={() => setShowNotebookPanel((v) => !v)}
+                  type="button"
+                >
+                  Notes{notebookNotes.length > 0 ? ` (${notebookNotes.length})` : ""}
+                </button>
+                {showNotebookPanel ? (
+                  <WorkspaceNotesPopover 
+                    notes={notebookNotes} 
+                    documentId={selectedDocument.id}
+                    onClose={() => setShowNotebookPanel(false)}
+                    onDelete={handleDeleteNote}
+                  />
+                ) : null}
+              </div>
             ) : null}
 
             {/* Re-process */}
@@ -650,9 +668,7 @@ export default function DocumentViewer({
       <div className="workspace-scrollbar workspace-selectable relative min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
         <WorkspaceNotebook
           docId={selectedDocument?.id}
-          onNotesChange={setNotebookCount}
-          onTogglePanel={setShowNotebookPanel}
-          showPanel={showNotebookPanel}
+          onNotesChange={setNotebookNotes}
           viewMode={viewMode}
         >
           <PdfBody

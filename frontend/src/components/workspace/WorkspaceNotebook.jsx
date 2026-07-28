@@ -102,17 +102,17 @@ export default function WorkspaceNotebook({
   const refreshNotes = useCallback(async () => {
     if (!docId) {
       setNotes([]);
-      onNotesChange?.(0);
+      onNotesChange?.([]);
       return;
     }
 
     try {
       const nextNotes = await loadNotebookNotes(docId);
       setNotes(nextNotes);
-      onNotesChange?.(nextNotes.length);
+      onNotesChange?.(nextNotes);
     } catch {
       setNotes([]);
-      onNotesChange?.(0);
+      onNotesChange?.([]);
     }
   }, [docId, onNotesChange]);
 
@@ -137,7 +137,7 @@ export default function WorkspaceNotebook({
 
   const handleMouseUp = useCallback((event) => {
     if (!docId || isSavingRef.current || draftRef.current) return;
-    if (event.target.closest("[data-workspace-notebook-popup], [data-workspace-notebook-panel], [data-workspace-note-action]")) {
+    if (event.target.closest("[data-workspace-notebook-popup], [data-workspace-notebook-panel], [data-workspace-note-action], [data-notes-popover]")) {
       return;
     }
 
@@ -175,8 +175,11 @@ export default function WorkspaceNotebook({
           color: color || draftColor,
         });
 
-        setNotes((current) => [...current, saved]);
-        onNotesChange?.(notes.length + 1);
+        setNotes((current) => {
+          const next = [...current, saved];
+          onNotesChange?.(next);
+          return next;
+        });
         setDraft(null);
         setDraftColor(DEFAULT_NOTE_COLOR);
         clearBrowserSelection();
@@ -185,7 +188,7 @@ export default function WorkspaceNotebook({
         setIsSaving(false);
       }
     },
-    [clearBrowserSelection, docId, draft, draftColor, isSaving, notes.length, onNotesChange, onTogglePanel, viewMode]
+    [clearBrowserSelection, docId, draft, draftColor, isSaving, onNotesChange, onTogglePanel, viewMode]
   );
 
   const handleDelete = useCallback(
@@ -193,10 +196,13 @@ export default function WorkspaceNotebook({
       if (!docId) return;
       await removeNotebookNote(docId, noteId);
       if (activeNote?.id === noteId) setActiveNote(null);
-      setNotes((current) => current.filter((note) => note.id !== noteId));
-      onNotesChange?.(Math.max(notes.length - 1, 0));
+      setNotes((current) => {
+        const next = current.filter((note) => note.id !== noteId);
+        onNotesChange?.(next);
+        return next;
+      });
     },
-    [activeNote, docId, notes.length, onNotesChange]
+    [activeNote, docId, onNotesChange]
   );
 
   const handleUpdate = useCallback(
