@@ -249,7 +249,7 @@ async function getUsage(req, res, next) {
  */
 async function getModelStatus(req, res, next) {
   try {
-    res.json(await aiProviderService.getModelStatus());
+    res.json(await aiProviderService.getModelStatus(req.user?.id));
   } catch (err) {
     next(err);
   }

@@ -28,6 +28,31 @@ const ollama = {
   ),
 };
 
+const openai = {
+  provider: 'openai',
+  allowedModels: ['gpt-4o', 'gpt-4o-mini', 'o1-mini', 'gpt-3.5-turbo'],
+};
+
+const anthropic = {
+  provider: 'anthropic',
+  allowedModels: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
+};
+
+const grok = {
+  provider: 'grok',
+  allowedModels: ['grok-beta', 'grok-2', 'grok-2-mini'],
+};
+
+const groq = {
+  provider: 'groq',
+  allowedModels: [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
+  ],
+};
+
 function getDefaultModel() {
   return defaultProvider === 'ollama' ? ollama.defaultModel : gemini.defaultModel;
 }
@@ -49,6 +74,22 @@ function resolveModel(selectedModel) {
     return { provider: 'ollama', model };
   }
 
+  if (openai.allowedModels.includes(model)) {
+    return { provider: 'openai', model };
+  }
+
+  if (anthropic.allowedModels.includes(model)) {
+    return { provider: 'anthropic', model };
+  }
+
+  if (grok.allowedModels.includes(model)) {
+    return { provider: 'grok', model };
+  }
+
+  if (groq.allowedModels.includes(model)) {
+    return { provider: 'groq', model };
+  }
+
   throw createError(400, 'Selected AI model is not allowed');
 }
 
@@ -56,6 +97,10 @@ module.exports = {
   defaultProvider,
   gemini,
   ollama,
+  openai,
+  anthropic,
+  grok,
+  groq,
   getDefaultModel,
   resolveModel,
 };

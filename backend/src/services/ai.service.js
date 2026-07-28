@@ -1695,6 +1695,7 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
       overviewIntent,
       imageQuestionType: requestContext.imageQuestionType,
       verificationBadge,
+      userId,
     });
 
     await aiUsageService.logGeminiRequest({
@@ -1821,6 +1822,7 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
       overviewIntent,
       imageQuestionType: requestContext.imageQuestionType,
       verificationBadge,
+      userId,
     })) {
       if (event.type === 'token' && event.text) {
         answer += event.text;

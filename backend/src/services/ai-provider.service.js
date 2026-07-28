@@ -1,7 +1,30 @@
 const aiProviders = require('../config/ai-providers');
 const geminiService = require('./gemini.service');
 const ollamaService = require('./ollama.service');
+const openaiService = require('./openai.service');
+const anthropicService = require('./anthropic.service');
 const chatContextService = require('./chat-context.service');
+const UserApiKeyModel = require('../models/user-api-key.model');
+const { decrypt } = require('../utils/crypto.utils');
+
+/**
+ * Resolve the user's custom API key if available.
+ * Decrypts in-memory for this request only; variable is immediately eligible for GC.
+ * @param {number|string|null} userId
+ * @param {string} provider
+ * @returns {Promise<string|null>}
+ */
+async function resolveUserKey(userId, provider) {
+  if (!userId) return null;
+  try {
+    const payload = await UserApiKeyModel.findRawByUserAndProvider(userId, provider);
+    if (!payload) return null;
+    return decrypt(payload);
+  } catch {
+    // Key lookup failure should never block a chat request
+    return null;
+  }
+}
 
 function logImagePromptDebug({ provider, model, imageQuestionType, systemPrompt, userPrompt }) {
   if (process.env.NODE_ENV === 'production' || !imageQuestionType) return;
@@ -215,7 +238,7 @@ function buildRagPrompts({
 }
 
 async function generateAnswer(options) {
-  const { provider, model, question, documentTitle, chunks, mode } = options;
+  const { provider, model, question, documentTitle, chunks, mode, userId } = options;
   const prompts = buildRagPrompts(options);
   logImagePromptDebug({
     provider,
@@ -239,6 +262,39 @@ async function generateAnswer(options) {
     };
   }
 
+  // Check BYOK specific providers
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'anthropic') {
+    const userApiKey = await resolveUserKey(userId, provider);
+    if (!userApiKey) {
+      throw new Error(`You must provide an API key for ${provider} to use its models.`);
+    }
+
+    const service = provider === 'anthropic' ? anthropicService : openaiService;
+    const baseURL = provider === 'grok' 
+      ? 'https://api.x.ai/v1' 
+      : provider === 'groq'
+      ? 'https://api.groq.com/openai/v1'
+      : 'https://api.openai.com/v1';
+
+    const result = await service.generateAnswer({
+      apiKey: userApiKey,
+      baseURL,
+      model,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+    });
+    return {
+      answer: result.text,
+      provider,
+      model: result.model,
+      usageMetadata: result.usageMetadata,
+      usingByok: true,
+    };
+  }
+
+  // Resolve user's custom Gemini key (BYOK) if available
+  const userApiKey = await resolveUserKey(userId, 'gemini');
+
   const result = await geminiService.queryDocumentChunks({
     question,
     documentTitle,
@@ -247,17 +303,19 @@ async function generateAnswer(options) {
     model,
     systemPrompt: prompts.systemPrompt,
     userPrompt: prompts.userPrompt,
+    apiKey: userApiKey || undefined,
   });
   return {
     answer: result.text,
     provider: 'gemini',
     model: result.model,
     usageMetadata: result.usageMetadata,
+    usingByok: Boolean(userApiKey),
   };
 }
 
 async function* streamAnswer(options) {
-  const { provider, model, question, documentTitle, chunks, mode } = options;
+  const { provider, model, question, documentTitle, chunks, mode, userId } = options;
   const prompts = buildRagPrompts(options);
   logImagePromptDebug({
     provider,
@@ -276,6 +334,33 @@ async function* streamAnswer(options) {
     return;
   }
 
+  // Check BYOK specific providers
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'anthropic') {
+    const userApiKey = await resolveUserKey(userId, provider);
+    if (!userApiKey) {
+      throw new Error(`You must provide an API key for ${provider} to use its models.`);
+    }
+
+    const service = provider === 'anthropic' ? anthropicService : openaiService;
+    const baseURL = provider === 'grok' 
+      ? 'https://api.x.ai/v1' 
+      : provider === 'groq'
+      ? 'https://api.groq.com/openai/v1'
+      : 'https://api.openai.com/v1';
+
+    yield* service.streamAnswer({
+      apiKey: userApiKey,
+      baseURL,
+      model,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+    });
+    return;
+  }
+
+  // Resolve user's custom Gemini key (BYOK) if available
+  const userApiKey = await resolveUserKey(userId, 'gemini');
+
   yield* geminiService.streamDocumentChunks({
     question,
     documentTitle,
@@ -284,21 +369,61 @@ async function* streamAnswer(options) {
     model,
     systemPrompt: prompts.systemPrompt,
     userPrompt: prompts.userPrompt,
+    apiKey: userApiKey || undefined,
   });
 }
 
-async function getModelStatus() {
+async function getModelStatus(userId) {
   const ollama = await ollamaService.getStatus();
+  
+  let savedKeys = [];
+  if (userId) {
+    try {
+      savedKeys = await UserApiKeyModel.findByUserId(userId);
+    } catch {
+      // ignore
+    }
+  }
+
+  const hasOpenAI = savedKeys.some((k) => k.provider === 'openai');
+  const hasAnthropic = savedKeys.some((k) => k.provider === 'anthropic');
+  const hasGrok = savedKeys.some((k) => k.provider === 'grok');
+  const hasGroq = savedKeys.some((k) => k.provider === 'groq');
+
   return {
     defaultProvider: aiProviders.defaultProvider,
     defaultModel: aiProviders.getDefaultModel(),
     gemini: {
-      available: Boolean(process.env.GEMINI_API_KEY),
+      available: Boolean(process.env.GEMINI_API_KEY) || savedKeys.some(k => k.provider === 'gemini'),
       models: aiProviders.gemini.allowedModels,
       allowedModels: aiProviders.gemini.allowedModels,
       defaultModel: aiProviders.gemini.defaultModel,
     },
     ollama,
+    ...(hasOpenAI ? {
+      openai: {
+        available: true,
+        models: aiProviders.openai.allowedModels,
+      }
+    } : {}),
+    ...(hasAnthropic ? {
+      anthropic: {
+        available: true,
+        models: aiProviders.anthropic.allowedModels,
+      }
+    } : {}),
+    ...(hasGrok ? {
+      grok: {
+        available: true,
+        models: aiProviders.grok.allowedModels,
+      }
+    } : {}),
+    ...(hasGroq ? {
+      groq: {
+        available: true,
+        models: aiProviders.groq.allowedModels,
+      }
+    } : {})
   };
 }
 
