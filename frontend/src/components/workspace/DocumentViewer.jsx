@@ -134,7 +134,7 @@ function PdfBody({
 
   useEffect(() => {
     function onHighlightCitation(event) {
-      const { documentId } = event.detail || {};
+      const { documentId, pageNumber, content } = event.detail || {};
       if (documentId && selectedDocument?.id && Number(documentId) !== Number(selectedDocument.id)) return;
 
       if (documentType === "DOCX" && viewMode !== "text") {
@@ -142,12 +142,150 @@ function PdfBody({
         window.setTimeout(() => {
           window.dispatchEvent(new CustomEvent("workspace-highlight-citation", { detail: event.detail }));
         }, 200);
+        return;
+      }
+
+      if (documentType === "PDF" && viewMode === "pdf") {
+        const page = Number(pageNumber);
+        if (page) {
+          isJumpingRef.current = true;
+          setCurrentPage(page);
+          const pageEl = window.document.getElementById(`workspace-pdf-page-${page}`);
+          pageEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+          window.setTimeout(() => {
+            isJumpingRef.current = false;
+          }, 450);
+        }
+
+        window.setTimeout(() => {
+          const searchScope = page
+            ? window.document.getElementById(`workspace-pdf-page-${page}`)
+            : window.document;
+
+          if (!searchScope) return;
+
+          window.document.querySelectorAll(".citation-highlight-active").forEach((el) => {
+            el.classList.remove("citation-highlight-active");
+          });
+
+          const spans = Array.from(searchScope.querySelectorAll(".react-pdf__Page__textContent span"));
+          let matchedSpans = [];
+
+          if (spans.length > 0) {
+            let pageText = "";
+            const spanRanges = [];
+            spans.forEach((span) => {
+              const text = span.textContent;
+              const start = pageText.length;
+              pageText += text + " "; // Add space to separate spans
+              spanRanges.push({ span, start, end: start + text.length });
+            });
+
+            let normalizedPageText = "";
+            const indexMap = [];
+            for (let i = 0; i < pageText.length; i++) {
+              const char = pageText[i];
+              if (!/\s/.test(char)) {
+                normalizedPageText += char.toLowerCase();
+                indexMap.push(i);
+              }
+            }
+
+            const normalizedChunk = String(content || "").replace(/\s+/g, "").toLowerCase();
+            let originalStartIndex = -1;
+            let originalEndIndex = -1;
+
+            if (normalizedChunk) {
+              let startIndexInNormalized = normalizedPageText.indexOf(normalizedChunk);
+              if (startIndexInNormalized !== -1) {
+                originalStartIndex = indexMap[startIndexInNormalized];
+                originalEndIndex = indexMap[startIndexInNormalized + normalizedChunk.length - 1];
+              } else {
+                // Try partial matching if exact match fails
+                const startChunk = normalizedChunk.slice(0, 40);
+                const endChunk = normalizedChunk.slice(-40);
+                const startMatch = startChunk ? normalizedPageText.indexOf(startChunk) : -1;
+                const endMatch = endChunk ? normalizedPageText.lastIndexOf(endChunk) : -1;
+
+                if (startMatch !== -1 && endMatch !== -1 && endMatch >= startMatch) {
+                  originalStartIndex = indexMap[startMatch];
+                  originalEndIndex = indexMap[endMatch + endChunk.length - 1];
+                } else if (startMatch !== -1) {
+                  originalStartIndex = indexMap[startMatch];
+                  let endIdx = startMatch + normalizedChunk.length - 1;
+                  if (endIdx >= indexMap.length) endIdx = indexMap.length - 1;
+                  originalEndIndex = indexMap[endIdx];
+                } else if (endMatch !== -1) {
+                  let startIdx = endMatch - (normalizedChunk.length - endChunk.length);
+                  if (startIdx < 0) startIdx = 0;
+                  originalStartIndex = indexMap[startIdx];
+                  originalEndIndex = indexMap[endMatch + endChunk.length - 1];
+                }
+              }
+            }
+
+            if (originalStartIndex !== -1 && originalEndIndex !== -1) {
+              matchedSpans = spanRanges
+                .filter((range) => range.end > originalStartIndex && range.start <= originalEndIndex)
+                .map((range) => range.span);
+            }
+
+            // Fallback: block-level word matching if string map fails
+            if (matchedSpans.length === 0) {
+              const chunkWords = new Set(
+                (String(content || "").toLowerCase().match(/[\p{L}\d]+/gu) || []).filter((w) => w.length > 2)
+              );
+              if (chunkWords.size > 0) {
+                const overlappingSpans = spans.filter((span) => {
+                  const spanText = span.textContent.toLowerCase().replace(/\s+/g, " ").trim();
+                  if (!spanText || spanText.length < 2) return false;
+                  const spanWords = (spanText.match(/[\p{L}\d]+/gu) || []).filter((w) => w.length > 2);
+                  if (!spanWords.length) return false;
+                  const matchCount = spanWords.filter((w) => chunkWords.has(w)).length;
+                  return (matchCount / spanWords.length) >= 0.4 || (spanWords.length <= 3 && matchCount >= 1);
+                });
+
+                if (overlappingSpans.length > 0) {
+                  const firstIndex = spans.indexOf(overlappingSpans[0]);
+                  const lastIndex = spans.indexOf(overlappingSpans[overlappingSpans.length - 1]);
+                  matchedSpans = spans.slice(firstIndex, lastIndex + 1);
+                }
+              }
+            }
+          }
+
+          if (matchedSpans.length) {
+            matchedSpans.forEach((span) => span.classList.add("citation-highlight-active"));
+            matchedSpans[0].scrollIntoView({ behavior: "smooth", block: "center" });
+
+            let removed = false;
+            const removeHighlight = () => {
+              if (removed) return;
+              removed = true;
+              window.document.querySelectorAll(".citation-highlight-active").forEach((el) => {
+                el.classList.remove("citation-highlight-active");
+              });
+            };
+
+            const timer = window.setTimeout(removeHighlight, 8000);
+
+            const handleDocClick = () => {
+              removeHighlight();
+              window.clearTimeout(timer);
+              window.removeEventListener("click", handleDocClick, true);
+            };
+
+            window.setTimeout(() => {
+              window.addEventListener("click", handleDocClick, { capture: true, once: true });
+            }, 50);
+          }
+        }, 350);
       }
     }
 
     window.addEventListener("workspace-highlight-citation", onHighlightCitation);
     return () => window.removeEventListener("workspace-highlight-citation", onHighlightCitation);
-  }, [selectedDocument?.id, documentType, viewMode, setViewMode]);
+  }, [selectedDocument?.id, documentType, viewMode, setViewMode, setCurrentPage]);
 
   if (!selectedDocument) {
     return (

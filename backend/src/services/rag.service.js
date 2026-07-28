@@ -85,7 +85,7 @@ function splitTextIntoChunks(text, metadata = {}) {
           ...chunkMetadata,
           startChar: start,
           endChar: end,
-          pageNumber: chunkPages.length === 1 ? Number(chunkPages[0].pageNumber) : null,
+          pageNumber: chunkPages.length ? Number(chunkPages[0].pageNumber) : null,
           pageStart: chunkPages.length ? Number(chunkPages[0].pageNumber) : null,
           pageEnd: chunkPages.length
             ? Number(chunkPages[chunkPages.length - 1].pageNumber)

@@ -106,15 +106,89 @@ export default function WorkspacePDFViewer() {
 
         if (!searchScope) return;
 
-        const cleanChunkText = String(content || "").toLowerCase().replace(/\s+/g, " ").trim();
-        if (!cleanChunkText) return;
-
         const spans = Array.from(searchScope.querySelectorAll(".react-pdf__Page__textContent span"));
-        const matchedSpans = spans.filter((span) => {
-          const spanText = span.textContent.toLowerCase().replace(/\s+/g, " ").trim();
-          if (!spanText || spanText.length < 2) return false;
-          return cleanChunkText.includes(spanText) || spanText.includes(cleanChunkText.slice(0, Math.min(30, cleanChunkText.length)));
-        });
+        let matchedSpans = [];
+
+        if (spans.length > 0) {
+          let pageText = "";
+          const spanRanges = [];
+          spans.forEach((span) => {
+            const text = span.textContent;
+            const start = pageText.length;
+            pageText += text + " ";
+            spanRanges.push({ span, start, end: start + text.length });
+          });
+
+          let normalizedPageText = "";
+          const indexMap = [];
+          for (let i = 0; i < pageText.length; i++) {
+            const char = pageText[i];
+            if (!/\s/.test(char)) {
+              normalizedPageText += char.toLowerCase();
+              indexMap.push(i);
+            }
+          }
+
+          const normalizedChunk = String(content || "").replace(/\s+/g, "").toLowerCase();
+          let originalStartIndex = -1;
+          let originalEndIndex = -1;
+
+          if (normalizedChunk) {
+            let startIndexInNormalized = normalizedPageText.indexOf(normalizedChunk);
+            if (startIndexInNormalized !== -1) {
+              originalStartIndex = indexMap[startIndexInNormalized];
+              originalEndIndex = indexMap[startIndexInNormalized + normalizedChunk.length - 1];
+            } else {
+              const startChunk = normalizedChunk.slice(0, 40);
+              const endChunk = normalizedChunk.slice(-40);
+              const startMatch = startChunk ? normalizedPageText.indexOf(startChunk) : -1;
+              const endMatch = endChunk ? normalizedPageText.lastIndexOf(endChunk) : -1;
+
+              if (startMatch !== -1 && endMatch !== -1 && endMatch >= startMatch) {
+                originalStartIndex = indexMap[startMatch];
+                originalEndIndex = indexMap[endMatch + endChunk.length - 1];
+              } else if (startMatch !== -1) {
+                originalStartIndex = indexMap[startMatch];
+                let endIdx = startMatch + normalizedChunk.length - 1;
+                if (endIdx >= indexMap.length) endIdx = indexMap.length - 1;
+                originalEndIndex = indexMap[endIdx];
+              } else if (endMatch !== -1) {
+                let startIdx = endMatch - (normalizedChunk.length - endChunk.length);
+                if (startIdx < 0) startIdx = 0;
+                originalStartIndex = indexMap[startIdx];
+                originalEndIndex = indexMap[endMatch + endChunk.length - 1];
+              }
+            }
+          }
+
+          if (originalStartIndex !== -1 && originalEndIndex !== -1) {
+            matchedSpans = spanRanges
+              .filter((range) => range.end > originalStartIndex && range.start <= originalEndIndex)
+              .map((range) => range.span);
+          }
+
+          if (matchedSpans.length === 0) {
+            const chunkWords = new Set(
+              (String(content || "").toLowerCase().match(/[\p{L}\d]+/gu) || []).filter((w) => w.length > 2)
+            );
+            if (chunkWords.size > 0) {
+              const overlappingSpans = spans.filter((span) => {
+                const spanText = span.textContent.toLowerCase().replace(/\s+/g, " ").trim();
+                if (!spanText || spanText.length < 2) return false;
+                const spanWords = (spanText.match(/[\p{L}\d]+/gu) || []).filter((w) => w.length > 2);
+                if (!spanWords.length) return false;
+                const matchCount = spanWords.filter((w) => chunkWords.has(w)).length;
+                return (matchCount / spanWords.length) >= 0.4 || (spanWords.length <= 3 && matchCount >= 1);
+              });
+
+              if (overlappingSpans.length > 0) {
+                const firstIndex = spans.indexOf(overlappingSpans[0]);
+                const lastIndex = spans.indexOf(overlappingSpans[overlappingSpans.length - 1]);
+                matchedSpans = spans.slice(firstIndex, lastIndex + 1);
+              }
+            }
+          }
+        }
 
         if (matchedSpans.length) {
           window.document.querySelectorAll(".citation-highlight-active").forEach((el) => {

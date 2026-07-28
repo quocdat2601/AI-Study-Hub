@@ -552,3 +552,27 @@ body,
   animation: citation-pulse 0.8s ease-in-out 2 alternate;
   transition: background-color 0.4s ease, box-shadow 0.4s ease;
 }
+
+/* 
+  Overrides for PDF text layer spans to prevent the "overlapping bricks" effect.
+  PDF text spans are disjointed, so box-shadows with opacity create dark overlapping edges.
+*/
+.react-pdf__Page__textContent span.citation-highlight-active {
+  background-color: rgba(253, 224, 71, 0.45) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  animation: citation-pdf-pulse 0.8s ease-in-out 2 alternate !important;
+  mix-blend-mode: multiply;
+}
+
+@keyframes citation-pdf-pulse {
+  0% {
+    background-color: rgba(250, 204, 21, 0.65);
+  }
+  50% {
+    background-color: rgba(250, 204, 21, 0.35);
+  }
+  100% {
+    background-color: rgba(250, 204, 21, 0.45);
+  }
+}

@@ -69,7 +69,7 @@ function formatHistory(history) {
 function sanitizeAnswerCitationAttribution(answer) {
   return String(answer || '')
     .replace(/\s*\([^)]*\b(?:chunk|source|nguon|nguồn)\b[^)]*\)/giu, '')
-    .replace(/\s*\[(?:source|nguon|nguồn)\s*:\s*\d+[^\]]*\]/giu, '')
+    .replace(/\s*\[(?:source|nguon|nguồn)\s*:?\s*\d+[^\]]*\]/giu, '')
     .replace(/[ \t]+\n/g, '\n')
     .trim();
 }
