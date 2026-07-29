@@ -232,7 +232,8 @@ async function updateProfile(userId, payload) {
 }
 
 async function updatePreferences(userId, payload) {
-  const theme = payload.theme === 'dark' ? 'dark' : 'light';
+  // Dark mode đã bỏ khỏi UI — cột theme giữ lại nhưng luôn là light
+  const theme = 'light';
   const languageInput = String(payload.language || 'en-US').trim() || 'en-US';
   const language = SUPPORTED_LANGUAGES.includes(languageInput) ? languageInput : 'en-US';
 
