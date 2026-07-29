@@ -27,7 +27,7 @@ export const translations = {
     // Upload Modal
     'upload.badge': 'Upload',
     'upload.title': 'Add New Document',
-    'upload.subtitle': 'PDF, DOCX, or image up to {maxMB}MB',
+    'upload.subtitle': 'PDF, DOCX, DOC, or image up to {maxMB}MB',
     'upload.dropzoneTitle': 'Drop your file here',
     'upload.dropzoneSub': 'or click to browse',
     'upload.docTitleLabel': 'Document Title',
@@ -195,7 +195,7 @@ export const translations = {
     // Upload Modal
     'upload.badge': 'Tải lên',
     'upload.title': 'Thêm tài liệu mới',
-    'upload.subtitle': 'Hỗ trợ tệp PDF, DOCX hoặc hình ảnh tối đa {maxMB}MB',
+    'upload.subtitle': 'Hỗ trợ tệp PDF, DOCX, DOC hoặc hình ảnh tối đa {maxMB}MB',
     'upload.dropzoneTitle': 'Kéo thả tệp vào đây',
     'upload.dropzoneSub': 'hoặc nhấp để chọn tệp từ máy tính',
     'upload.docTitleLabel': 'Tên tài liệu',

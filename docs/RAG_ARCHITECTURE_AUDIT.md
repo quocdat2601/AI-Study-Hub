@@ -332,3 +332,59 @@ Khi người dùng nhấp vào trích dẫn:
    - **Tô sáng chữ**: Tìm các thẻ span trong PDF Text Layer khớp với `content`, gắn class CSS `.citation-highlight-active` (hiệu ứng nền màu vàng/xanh neon phát sáng).
    - **Cuộn mượt**: Gọi `scrollIntoView({ behavior: 'smooth', block: 'center' })` đưa vị trí trích dẫn ra chính giữa tầm mắt người dùng.
 
+---
+
+## VII. BẢNG ÁNH XẠ THAO TÁC NÚT BẤM FRONTEND (FE) $\rightarrow$ BACKEND CONTROLLER $\rightarrow$ SERVICE & RAG PIPELINE
+
+Dưới đây là sơ đồ và bảng ánh xạ chi tiết từng nút bấm / hành động người dùng trên giao diện Frontend (FE), hàm API được gọi, Endpoint backend, Controller, Service và toàn bộ luồng RAG tương ứng:
+
+```mermaid
+flowchart TD
+    subgraph FE["Tầng Frontend (UI Components)"]
+        FE1["Nút 'Upload Document' (UploadDocModal.jsx)"]
+        FE2["Nút 'Gửi câu hỏi' / Enter (AIChatPanel.jsx)"]
+        FE3["Nút 'Thẻ ghi nhớ / Bài kiểm tra / Bản đồ' (WorkspaceStudioPanel.jsx)"]
+        FE4["Nút 'Lộ trình học' (WorkspaceRoadmapView.jsx)"]
+        FE5["Nút 'Re-process' (DocumentViewer.jsx)"]
+        FE6["Nhấp thẻ Trích dẫn [Doc: ... | Page X] (AIChatPanel.jsx)"]
+    end
+
+    subgraph API["Tầng Frontend API Client"]
+        API1["uploadDocApi.js: uploadDocument()"]
+        API2["aiApi.js: askSessionStream() / askDocumentStream()"]
+        API3["aiApi.js: generateStudyMaterial()"]
+        API4["documentApi.js: retryDocumentRoadmap()"]
+        API5["aiApi.js: processDocumentForAi()"]
+        API6["CustomEvent: 'workspace-highlight-citation'"]
+    end
+
+    subgraph BE["Tầng Backend (Controller & Service RAG)"]
+        BE1["uploadDoc.controller.js -> uploadDoc.service.js -> rag.service.js (split & embed)"]
+        BE2["ai.controller.js -> ai.service.js -> Hybrid Retrieval + Neighbor + Rerank + LLM Stream"]
+        BE3["ai.controller.js -> ai.service.js -> prompt generate JSON -> study_materials DB"]
+        BE4["documentRoadmap.controller.js -> documentRoadmap.service.js -> document_roadmaps DB"]
+        BE5["ai.controller.js -> documentText.service.js -> rag.service.js (re-chunk & re-embed)"]
+        BE6["WorkspacePDFViewer.jsx: Jump to page & Highlight text span"]
+    end
+
+    FE1 --> API1 --> BE1
+    FE2 --> API2 --> BE2
+    FE3 --> API3 --> BE3
+    FE4 --> API4 --> BE4
+    FE5 --> API5 --> BE5
+    FE6 --> API6 --> BE6
+```
+
+### Bảng Ánh Xạ Chi Tiết Thao Tác UI Frontend $\rightarrow$ Backend RAG
+
+| Nút Bấm / Hành Động FE | Component Frontend | File API Client (FE) | HTTP Endpoint & Controller Backend | Service Backend & Luồng Xử Lý RAG |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Tải lên tài liệu mới**<br>*(Nút "Upload Document" trong Modal)* | [`UploadDocModal.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/pages/UploadDocModal.jsx) | `uploadDocApi.js`<br>`uploadDocument()` | `POST /api/upload-doc`<br>$\rightarrow$ `uploadDoc.controller.js`<br>`uploadDocument()` | `uploadDoc.service.js` $\rightarrow$ `documentText.service.js` (trích xuất văn bản) $\rightarrow$ `rag.service.js` (`splitTextIntoChunks`) $\rightarrow$ `embedding.service.js` (`embedChunks` - 768 dims) $\rightarrow$ `documentChunk.model.js` (`replaceForDocument` lưu Supabase vector DB). |
+| **2. Gửi câu hỏi Chat RAG**<br>*(Nút "Send Question" / phím Enter)* | [`AIChatPanel.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/components/workspace/AIChatPanel.jsx) | `aiApi.js`<br>`askSessionStream()` hoặc `askDocumentStream()` | `POST /api/ai/sessions/:id/ask-stream`<br>$\rightarrow$ `ai.controller.js`<br>`askSessionStream()` | `ai.service.js` (`executeAskStream`) $\rightarrow$ `chatContextService.analyzeRequest()` (phân tích intent) $\rightarrow$ `retrieveChunksForQuestion()` (Hybrid Search: 0.7 Vector + 0.3 Keyword) $\rightarrow$ `ragNeighborService` (mở rộng chunk lân cận) $\rightarrow$ `ragRerankService` (Rerank Top 4-6) $\rightarrow$ `verificationService` (kiểm chứng bằng chứng) $\rightarrow$ `aiProviderService` (stream LLM SSE token). |
+| **3. Tạo Học liệu AI**<br>*(Thẻ "Thẻ ghi nhớ", "Bài kiểm tra", "Bản đồ tư duy")* | [`WorkspaceStudioPanel.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/components/workspace/WorkspaceStudioPanel.jsx) | `aiApi.js`<br>`generateStudyMaterial()` | `POST /api/ai/documents/:id/study-materials`<br>$\rightarrow$ `ai.controller.js`<br>`generateStudyMaterial()` | `ai.service.js` $\rightarrow$ Đọc chunks của tài liệu qua `documentChunk.model` $\rightarrow$ Tạo Prompt định dạng JSON (Flashcard/Quiz) $\rightarrow$ `aiProviderService.generateContent()` $\rightarrow$ Parse kết quả JSON $\rightarrow$ Lưu vào bảng `study_materials`. |
+| **4. Tạo Lộ trình học AI**<br>*(Tab "Lộ trình học" / Nút "Tạo lộ trình")* | [`WorkspaceRoadmapView.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/components/workspace/WorkspaceRoadmapView.jsx) | `documentApi.js`<br>`retryDocumentRoadmap()` | `POST /api/documents/:id/roadmap/retry`<br>$\rightarrow$ `documentRoadmap.controller.js`<br>`retryRoadmap()` | `documentRoadmap.service.js` $\rightarrow$ `generateRoadmapForDocument()` $\rightarrow$ Đọc văn bản trích xuất $\rightarrow$ Chia thành các phần mục cấu trúc $\rightarrow$ Gọi `aiProviderService` $\rightarrow$ Lưu cây lộ trình vào bảng `document_roadmaps`. |
+| **5. Xử lý lại tài liệu (Re-process)**<br>*(Nút "Re-process" trên thanh công cụ)* | [`DocumentViewer.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/components/workspace/DocumentViewer.jsx) | `aiApi.js`<br>`processDocumentForAi()` | `POST /api/ai/documents/:id/process`<br>$\rightarrow$ `ai.controller.js`<br>`processDocument()` | `documentText.service.js` (trích xuất lại text từ PDF/DOCX) $\rightarrow$ `rag.service.js` (`splitTextIntoChunks`) $\rightarrow$ `embedding.service.js` (`embedChunks`) $\rightarrow$ Cập nhật lại các vectors mới vào Supabase DB. |
+| **6. Xem tóm tắt tài liệu (Overview)**<br>*(Khi mở tài liệu hoặc chuyển tab Tóm tắt)* | [`WorkspaceStudioPanel.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/components/workspace/WorkspaceStudioPanel.jsx) | `documentOverviewApi.js`<br>`getDocumentOverview()` | `GET /api/documents/:id/overview`<br>$\rightarrow$ `documentOverview.controller.js`<br>`getOverview()` | `documentOverview.service.js` $\rightarrow$ Kiểm tra cache DB `document_overviews`. Nếu chưa có: `generateOverviewForDocument()` đọc chunks đại diện $\rightarrow$ Gọi LLM tổng hợp Tóm tắt & Key Takeaways $\rightarrow$ Lưu DB. |
+| **7. Nhấp trích dẫn nguồn bằng chứng**<br>*(Thẻ `[Doc: ... \| Page X]` hoặc danh sách Source)* | [`AIChatPanel.jsx`](file:///c:/QUOC%20DAT/STUDY/SWP/AI-Study-Hub/frontend/src/components/workspace/AIChatPanel.jsx) | Event Bus:<br>`window.dispatchEvent("workspace-highlight-citation")` | *(Thao tác hoàn toàn trên Frontend Client)* | `WorkspacePDFViewer.jsx` / `WorkspaceTextView.jsx` lắng nghe event $\rightarrow$ Tự động chuyển tài liệu active $\rightarrow$ Nhảy số trang (`setCurrentPage`) $\rightarrow$ Bôi sáng chữ đoạn văn bản bằng class `.citation-highlight-active` $\rightarrow$ Cuộn mượt (smooth scroll) ra giữa màn hình. |
+
+

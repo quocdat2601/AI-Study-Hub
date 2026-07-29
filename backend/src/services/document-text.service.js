@@ -5,12 +5,21 @@ const ocrService = require('./ocr.service');
 const MIME_TYPES = {
   PDF: 'application/pdf',
   DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  DOC: 'application/msword',
   PNG: 'image/png',
   JPEG: 'image/jpeg',
   TIFF: 'image/tiff',
   BMP: 'image/bmp',
   TXT: 'text/plain',
 };
+
+const DOC_MIME_TYPES = new Set([
+  'application/msword',
+  'application/x-msword',
+  'application/vnd.ms-word',
+  'application/doc',
+  'application/x-doc',
+]);
 
 const MIN_READABLE_CHARS = 50;
 const PAGE_OCR_THRESHOLD_CHARS = 100;
@@ -40,9 +49,29 @@ function isExtractedTextUseful(text) {
   return !PLACEHOLDER_TEXTS.has(normalizedText);
 }
 
+function extractBinaryDocText(buffer) {
+  const strUtf16 = buffer.toString('utf16le');
+  const matchesUtf16 = strUtf16.match(/[\x20-\x7E\xA0-\xFF\u0100-\u024F\u1EA0-\u1EF9]{4,}/g) || [];
+
+  const strAscii = buffer.toString('binary');
+  const matchesAscii = strAscii.match(/[\x20-\x7E\xA0-\xFF\u0100-\u024F\u1EA0-\u1EF9]{4,}/g) || [];
+
+  const combined = [...matchesUtf16, ...matchesAscii]
+    .filter((s) => s.trim().length > 3)
+    .join(' ');
+  return normalizeText(combined);
+}
+
 async function extractDocxText(buffer) {
-  const result = await mammoth.extractRawText({ buffer });
-  return result.value || '';
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    if (result.value && result.value.trim().length > 10) {
+      return result.value;
+    }
+  } catch {
+    // If mammoth fails (e.g. legacy binary DOC file), fallback to binary text extraction
+  }
+  return extractBinaryDocText(buffer);
 }
 
 function buildExtractionResult(text, metadata = {}, emptyError) {
@@ -209,7 +238,7 @@ async function extractTextFromBuffer(buffer, mimeType) {
     return extractPdfText(buffer);
   }
 
-  if (mimeType === MIME_TYPES.DOCX) {
+  if (mimeType === MIME_TYPES.DOCX || DOC_MIME_TYPES.has(mimeType)) {
     return buildExtractionResult(await extractDocxText(buffer), {
       extractionMethod: 'docx',
       fallbackFromPdfParse: false,
@@ -229,7 +258,7 @@ async function extractTextFromBuffer(buffer, mimeType) {
 
   const err = new Error('Unsupported document type');
   err.statusCode = 400;
-  err.publicMessage = 'Only PDF, DOCX, TXT, PNG, JPEG, TIFF, and BMP files are accepted';
+  err.publicMessage = 'Only PDF, DOCX, DOC, TXT, PNG, JPEG, TIFF, and BMP files are accepted';
   throw err;
 }
 
