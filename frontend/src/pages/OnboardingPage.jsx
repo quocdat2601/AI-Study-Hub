@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 import {
   getOnboardingOptions,
+  getOnboardingStatus,
   getSuggestedTags,
   getSubjectsByMajor,
   saveOnboarding,
@@ -25,8 +26,12 @@ function normalizeTopic(name) {
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, refreshUser } = useAuth();
   const { addToast } = useToast();
+
+  // ?edit=1 → sửa lại lựa chọn cũ từ trang Account thay vì onboard lần đầu
+  const isEdit = searchParams.get("edit") === "1";
 
   const [step, setStep] = useState(0);
   const [majors, setMajors] = useState([]);
@@ -42,20 +47,30 @@ export default function OnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSkipping, setIsSkipping] = useState(false);
 
-  // Đã onboard rồi thì không cần ở lại trang này
+  // Đã onboard rồi thì không cần ở lại trang này (trừ khi đang chủ động sửa)
   useEffect(() => {
-    if (user?.onboarded) navigate("/dashboard", { replace: true });
-  }, [user?.onboarded, navigate]);
+    if (!isEdit && user?.onboarded) navigate("/dashboard", { replace: true });
+  }, [isEdit, user?.onboarded, navigate]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const options = await getOnboardingOptions();
+        // getOptions đã trả môn/tag theo ngành đã lưu nên chỉ cần nạp lựa chọn cũ đè lên
+        const [options, status] = await Promise.all([
+          getOnboardingOptions(),
+          isEdit ? getOnboardingStatus() : null,
+        ]);
         if (!mounted) return;
         setMajors(options.majors || []);
         setSubjects(options.subjects || []);
         setSuggestedTags(options.suggestedTags || []);
+        if (status) {
+          setMajorId(status.majorId);
+          setSelectedSubjects(status.subjectIds || []);
+          setSelectedTopics((status.topics || []).map((topic) => normalizeTopic(topic.name)));
+          setGoal(status.goal);
+        }
       } catch {
         if (mounted) addToast({ type: "error", message: "Failed to load onboarding data." });
       } finally {
@@ -65,9 +80,16 @@ export default function OnboardingPage() {
     return () => {
       mounted = false;
     };
-  }, [addToast]);
+  }, [addToast, isEdit]);
 
   async function handleSelectMajor(id) {
+    // Đổi ngành lúc sửa sẽ xoá môn đã chọn — hỏi trước cho khỏi mất dữ liệu bất ngờ
+    if (isEdit && id !== majorId && selectedSubjects.length) {
+      const ok = window.confirm(
+        "Changing your major clears the subjects you picked.\n\nYour topics are kept — they aren't tied to a major. Unselect the ones that no longer fit in the next step."
+      );
+      if (!ok) return;
+    }
     // Click lại ngành đang chọn → bỏ chọn, dọn môn & gợi ý theo ngành
     if (majorId === id) {
       setMajorId(null);
@@ -155,6 +177,8 @@ export default function OnboardingPage() {
 
   // Bước 2 chỉ bắt buộc chọn ≥1 môn học; chủ đề (tag) là tùy chọn
   const canNext = step === 0 ? Boolean(majorId) : step === 1 ? selectedSubjects.length > 0 : Boolean(goal);
+  // Lúc sửa có thể lưu từ bất kỳ bước nào nên phải kiểm tra đủ điều kiện của cả 3 bước
+  const canSave = selectedSubjects.length > 0 && Boolean(goal);
 
   async function handleSkip() {
     setIsSkipping(true);
@@ -169,13 +193,13 @@ export default function OnboardingPage() {
   }
 
   async function handleFinish() {
-    if (!goal || !selectedSubjects.length) return;
+    if (!canSave) return;
     setIsSubmitting(true);
     try {
       await saveOnboarding({ majorId, goal, subjects: selectedSubjects, topics: selectedTopics });
       await refreshUser();
       addToast({ type: "success", message: "Your preferences have been saved!" });
-      navigate("/dashboard", { replace: true });
+      navigate(isEdit ? "/account" : "/dashboard", { replace: true });
     } catch (err) {
       addToast({ type: "error", message: err.response?.data?.error || "Couldn't save. Please try again." });
     } finally {
@@ -186,13 +210,13 @@ export default function OnboardingPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 dark:bg-slate-950">
       <div className="relative mx-auto w-full max-w-2xl rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
-        {/* Skip onboarding — gợi ý sẽ rơi về trending */}
+        {/* Skip onboarding — gợi ý sẽ rơi về trending. Lúc sửa thì đây là nút huỷ */}
         <button
           type="button"
-          onClick={handleSkip}
+          onClick={isEdit ? () => navigate("/account") : handleSkip}
           disabled={isSkipping}
-          aria-label="Skip"
-          title="Skip"
+          aria-label={isEdit ? "Cancel" : "Skip"}
+          title={isEdit ? "Cancel" : "Skip"}
           className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -204,15 +228,19 @@ export default function OnboardingPage() {
           {STEPS.map((label, index) => (
             <React.Fragment key={label}>
               <div className="flex items-center gap-2">
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                {/* Lúc sửa dữ liệu đã hợp lệ sẵn nên cho nhảy thẳng tới bước cần đổi */}
+                <button
+                  type="button"
+                  disabled={!isEdit}
+                  onClick={() => setStep(index)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition disabled:cursor-default ${
                     index <= step
                       ? "bg-indigo-600 text-white"
                       : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                  }`}
+                  } ${isEdit ? "cursor-pointer hover:ring-2 hover:ring-indigo-300" : ""}`}
                 >
                   {index + 1}
-                </span>
+                </button>
                 <span
                   className={`hidden text-sm font-medium sm:inline ${
                     index <= step ? "text-slate-900 dark:text-slate-100" : "text-slate-400"
@@ -388,25 +416,33 @@ export default function OnboardingPage() {
               >
                 Back
               </button>
-              {step < STEPS.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setStep((s) => s + 1)}
-                  disabled={!canNext}
-                  className="min-h-10 rounded-lg bg-indigo-600 px-6 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Continue
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleFinish}
-                  disabled={!canNext || isSubmitting}
-                  className="min-h-10 rounded-lg bg-indigo-600 px-6 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isSubmitting ? "Saving..." : "Done"}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {step < STEPS.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setStep((s) => s + 1)}
+                    disabled={!canNext}
+                    className={`min-h-10 rounded-lg px-6 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isEdit
+                        ? "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                        : "bg-indigo-600 text-white hover:bg-indigo-700"
+                    }`}
+                  >
+                    Continue
+                  </button>
+                ) : null}
+                {/* Lúc sửa thì lưu được từ bất kỳ bước nào */}
+                {isEdit || step === STEPS.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={handleFinish}
+                    disabled={!canSave || isSubmitting}
+                    className="min-h-10 rounded-lg bg-indigo-600 px-6 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Saving..." : isEdit ? "Save changes" : "Done"}
+                  </button>
+                ) : null}
+              </div>
             </div>
           </>
         )}

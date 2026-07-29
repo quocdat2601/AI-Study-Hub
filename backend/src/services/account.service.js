@@ -75,6 +75,7 @@ const ACTIVITY_LABELS = {
   'community.reply.accept': 'Accepted an answer',
   'community.report.create': 'Reported community content',
   'onboarding.complete': 'Completed onboarding',
+  'onboarding.update': 'Updated study preferences',
   'account.profile.update': 'Updated profile',
   'account.password.update': 'Changed password',
   'account.email.update': 'Updated email',
@@ -186,7 +187,6 @@ async function getAccount(userId) {
 async function updateProfile(userId, payload) {
   const displayName = String(payload.displayName || '').trim();
   const handle = normalizeHandle(payload.handle);
-  const major = String(payload.major || '').trim();
 
   if (!displayName) {
     throw createError(400, 'Display name is required');
@@ -201,13 +201,15 @@ async function updateProfile(userId, payload) {
     throw createError(409, 'Handle is already taken');
   }
 
+  // major giờ do onboarding quản lý — chỉ ghi khi caller thực sự gửi lên
+  const updates = { display_name: displayName, handle };
+  if (payload.major !== undefined) {
+    updates.major = String(payload.major).trim() || null;
+  }
+
   let user;
   try {
-    user = await accountModel.updateProfile(userId, {
-      display_name: displayName,
-      handle,
-      major: major || null,
-    });
+    user = await accountModel.updateProfile(userId, updates);
   } catch (err) {
     handleAccountError(err);
   }

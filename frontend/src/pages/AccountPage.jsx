@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import {
   CloudStorageIcon,
@@ -128,6 +129,7 @@ function languageLabel(code) {
 }
 
 export default function AccountPage() {
+  const navigate = useNavigate();
   const { refreshUser } = useAuth();
   const { setTheme, setLanguage } = usePreferences();
   const { addToast } = useToast();
@@ -302,6 +304,16 @@ export default function AccountPage() {
             <SettingRow action={<ChevronRightIcon />} description={t("account.editProfileDesc")} icon={<UserIcon />} onClick={() => setActiveModal("profile")} title={t("account.editProfile")} />
             <SettingRow action={<ChevronRightIcon />} description={t("account.changePasswordDesc")} icon={<LockIcon />} onClick={() => setActiveModal("password")} title={t("account.changePassword")} />
             <SettingRow action={<ChevronRightIcon />} description={profile?.email} icon={<MailIcon />} onClick={() => setActiveModal("email")} title={t("account.updateEmail")} />
+            {/* /onboarding là route student-only nên admin bấm vào sẽ bị đá về /admin */}
+            {profile?.role === "admin" ? null : (
+              <SettingRow
+                action={<ChevronRightIcon />}
+                description={profile?.major}
+                icon={<GraduationCapIcon className="h-5 w-5" />}
+                onClick={() => navigate("/onboarding?edit=1")}
+                title={t("account.studyPreferences")}
+              />
+            )}
 
             <div className="my-2 border-t border-slate-100 dark:border-slate-800" />
 
@@ -357,7 +369,7 @@ export default function AccountPage() {
 
       {activeModal === "profile" && profile ? (
         <AccountEditProfileModal
-          initialValues={{ displayName: profile.displayName, handle: profile.handle?.replace(/^@/, ""), major: profile.major }}
+          initialValues={{ displayName: profile.displayName, handle: profile.handle?.replace(/^@/, "") }}
           onClose={() => setActiveModal("")}
           onSave={async (payload) => {
             await saveProfile(payload);

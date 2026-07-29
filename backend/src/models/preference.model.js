@@ -103,17 +103,18 @@ class PreferenceModel {
     return data || [];
   }
 
-  static async getTopicIds(userId) {
+  // Kèm tên tag vì form onboarding làm việc bằng tên, không phải id
+  static async getTopics(userId) {
     const { data, error } = await supabase
       .from('user_topic_selections')
-      .select('tag_id')
+      .select('tags ( id, name )')
       .eq('user_id', userId);
 
     if (error) {
       if (isMissingRelation(error)) return [];
       throw error;
     }
-    return (data || []).map((row) => row.tag_id);
+    return (data || []).map((row) => row.tags).filter(Boolean);
   }
 
   static async upsertPreferences(userId, { majorId, goal, onboardedAt }) {

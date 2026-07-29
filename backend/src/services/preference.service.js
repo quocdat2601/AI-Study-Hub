@@ -32,9 +32,9 @@ async function getSubjectsByMajor(majorId) {
 }
 
 async function getStatus(userId) {
-  const [prefs, topicIds, subjectIds] = await Promise.all([
+  const [prefs, topics, subjectIds] = await Promise.all([
     preferenceModel.getPreferences(userId),
-    preferenceModel.getTopicIds(userId),
+    preferenceModel.getTopics(userId),
     preferenceModel.getSubjectIds(userId),
   ]);
 
@@ -42,7 +42,8 @@ async function getStatus(userId) {
     onboarded: Boolean(prefs?.onboarded_at),
     majorId: prefs?.major_id || null,
     goal: prefs?.goal || null,
-    topicIds,
+    topics,
+    topicIds: topics.map((topic) => topic.id),
     subjectIds,
   };
 }
@@ -59,6 +60,8 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
     throw createError(400, 'Please select at least one subject');
   }
 
+
+  const previous = await preferenceModel.getPreferences(userId);
 
   const tagNames = tagModel.parseNames((topics || []).join(','));
   const tags = [];
@@ -88,7 +91,7 @@ async function saveOnboarding(userId, { majorId, goal, subjects, topics }) {
 
   activityService.log({
     userId,
-    action: 'onboarding.complete',
+    action: previous?.onboarded_at ? 'onboarding.update' : 'onboarding.complete',
     metadata: { majorId: prefs.major_id, goal: prefs.goal, subjectCount: subjectIds.length, topicCount: tags.length },
   });
 
