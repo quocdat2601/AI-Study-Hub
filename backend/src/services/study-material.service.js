@@ -9,6 +9,17 @@ const documentTextService = require('./document-text.service');
 const ragService = require('./rag.service');
 const createError = require('../utils/createError');
 
+// =========================================================================
+// SECTION 1: JSON PARSING & LENIENT REPAIR HELPERS
+// Functions in this section handle cleaning, parsing, and salvaging JSON
+// payloads returned by various LLMs (especially local Ollama models).
+// =========================================================================
+
+/**
+ * Cleans and parses a JSON string, handling Markdown code block fencing and trailing commas.
+ * @param {string} text - Raw string output from LLM.
+ * @returns {any} Parsed JSON object/array.
+ */
 function cleanAndParseJson(text) {
   let cleaned = String(text || '').trim();
   if (!cleaned) {
@@ -69,6 +80,11 @@ function cleanAndParseJson(text) {
   throw createError(500, 'AI response was not in a valid JSON format. Please try again.');
 }
 
+/**
+ * Heuristically closes unclosed JSON brackets and curly braces to salvage truncated streaming outputs.
+ * @param {string} text - Partial/truncated JSON string.
+ * @returns {string} Repaired JSON string.
+ */
 function salvageTruncatedJson(text) {
   let s = String(text || '').trim();
   const objStart = s.indexOf('{');
@@ -98,6 +114,11 @@ function salvageTruncatedJson(text) {
   return s;
 }
 
+/**
+ * Attempts to parse JSON string, falling back to salvage repair if first attempt fails.
+ * @param {string} text - Raw LLM string.
+ * @returns {any|null} Parsed JSON or null if parsing fails entirely.
+ */
 function parseJsonLenient(text) {
   try {
     return cleanAndParseJson(text);
@@ -110,6 +131,11 @@ function parseJsonLenient(text) {
   }
 }
 
+/**
+ * Strictly parses JSON and throws a user-friendly error if parsing fails completely.
+ * @param {string} text - Raw LLM string.
+ * @returns {any} Parsed JSON payload.
+ */
 function cleanAndParseJsonStrict(text) {
   const parsed = parseJsonLenient(text);
   if (parsed === null) {
@@ -121,6 +147,12 @@ function cleanAndParseJsonStrict(text) {
   return parsed;
 }
 
+/**
+ * Extracts the target array from wrappers if the LLM returned an object instead of a raw array.
+ * @param {any} parsed - Parsed JSON object.
+ * @param {'flashcard'|'quiz'} materialType - Target material type.
+ * @returns {Array} Extracted items list.
+ */
 function normalizeArrayContent(parsed, materialType) {
   let content = parsed;
 
@@ -162,8 +194,19 @@ function normalizeArrayContent(parsed, materialType) {
   return content;
 }
 
+// =========================================================================
+// SECTION 2: FLASHCARD NORMALIZATION HELPERS
+// Rules and functions to format, truncate, and validate generated flashcards.
+// =========================================================================
+
 const MAX_BACK_WORDS = 25;
 
+/**
+ * Truncates text to a specified word limit, attempting to split at a natural sentence boundary.
+ * @param {string} text - Target text to truncate.
+ * @param {number} maxWords - Maximum number of words.
+ * @returns {string} Truncated text.
+ */
 function truncateToWords(text, maxWords) {
   const words = String(text || '').trim().split(/\s+/);
   if (words.length <= maxWords) return String(text || '').trim();
@@ -176,6 +219,11 @@ function truncateToWords(text, maxWords) {
   return truncated + '.';
 }
 
+/**
+ * Checks if a sentence ends with proper ending punctuation.
+ * @param {string} text - Target text.
+ * @returns {boolean} True if sentence has ending punctuation.
+ */
 function isBackComplete(text) {
   const t = text.trim();
   if (!t) return false;
@@ -183,6 +231,11 @@ function isBackComplete(text) {
   return /[.!?。…]$/.test(t);
 }
 
+/**
+ * Standardizes raw flashcard properties to front/back format and filters out incomplete/invalid pairs.
+ * @param {Array} items - List of raw flashcard objects.
+ * @returns {Array} Normalized flashcards.
+ */
 function normalizeFlashcardItems(items) {
   return items
     .map((item) => ({
@@ -205,10 +258,27 @@ function normalizeFlashcardItems(items) {
     });
 }
 
+// =========================================================================
+// SECTION 3: QUIZ NORMALIZATION & REALIGNMENT HELPERS
+// Functions to normalize option formats, validate correct answers, and align
+// answers with explanations to ensure high-quality multiple choice questions.
+// =========================================================================
+
+/**
+ * Removes option letter prefix (e.g. "A. ", "b)", "A - ") from the choice text.
+ * @param {string} text - Raw choice string.
+ * @returns {string} Choice string without option letter prefix.
+ */
 function stripOptionPrefix(text) {
   return String(text || '').trim().replace(/^[A-Da-d][.)]\s*/, '');
 }
 
+/**
+ * Extracts and normalizes a list of choices from various LLM quiz structures.
+ * Supports multiple common formats: array of strings, array of objects, map/dictionary, or multiline strings.
+ * @param {object} item - Raw LLM question object.
+ * @returns {Array<string>} Normalized list of options.
+ */
 function normalizeQuizOptionsFromItem(item) {
   if (Array.isArray(item?.options)) {
     return item.options
@@ -266,6 +336,12 @@ function normalizeQuizOptionsFromItem(item) {
   return [];
 }
 
+/**
+ * Searches the raw object properties to locate the raw answer key.
+ * Checks for fields like `answer`, `correct_answer`, `correctOption`, or numeric indices.
+ * @param {object} item - Raw LLM question object.
+ * @returns {string|number} Raw answer label, text, or index.
+ */
 function getRawQuizAnswer(item) {
   const fields = [
     'answer',
@@ -291,10 +367,21 @@ function getRawQuizAnswer(item) {
   return '';
 }
 
+/**
+ * Normalizes option/answer text to lowcase, trimmed representation for comparison checks.
+ * @param {string} value - Raw string value.
+ * @returns {string} Lowercased, stripped string.
+ */
 function normalizeQuizText(value) {
   return stripOptionPrefix(String(value || '')).trim().toLowerCase();
 }
 
+/**
+ * Detects if the option text contains generic placeholder words (e.g., "Option A", "Incorrect 1").
+ * Keeps questions high-quality by filtering out bad outputs.
+ * @param {string} text - Choice text to examine.
+ * @returns {boolean} True if placeholder text.
+ */
 function isQuizPlaceholderText(text) {
   const normalized = normalizeQuizText(text)
     .normalize('NFD')
@@ -307,10 +394,21 @@ function isQuizPlaceholderText(text) {
   return false;
 }
 
+/**
+ * Checks if any option in options list is detected as placeholder text.
+ * @param {Array<string>} options - List of choices.
+ * @returns {boolean} True if placeholders are present.
+ */
 function hasQuizPlaceholderOptions(options) {
   return (options || []).some((opt) => isQuizPlaceholderText(opt));
 }
 
+/**
+ * Matches a raw answer identifier (index, letter prefix, or full text) to the corresponding choice in options.
+ * @param {Array<string>} options - Quiz choices list.
+ * @param {string|number} rawAnswer - Identifier to match.
+ * @returns {string} The matched option string, or empty string.
+ */
 function resolveQuizAnswer(options, rawAnswer) {
   if (!Array.isArray(options) || options.length === 0) return '';
   const answer = String(rawAnswer ?? '').trim();
@@ -351,6 +449,12 @@ function resolveQuizAnswer(options, rawAnswer) {
   return '';
 }
 
+/**
+ * Verifies the correctness of the answer by checking if the explanation text matches another option.
+ * Automatically switches the answer to match the explanation if there is a mismatch.
+ * @param {object} question - Question object under check.
+ * @returns {object} The realigned question object.
+ */
 function alignQuizAnswerWithExplanation(question) {
   const explanation = normalizeQuizText(question.explanation);
   if (!explanation || !Array.isArray(question.options) || question.options.length < 2) {
@@ -397,6 +501,12 @@ function alignQuizAnswerWithExplanation(question) {
   return question;
 }
 
+/**
+ * Validates structure, cleans choices, resolves correct answers, and runs explanation alignment checks on a quiz item.
+ * @param {object} item - Cleaned item data candidate.
+ * @param {object} rawItem - Original raw LLM item context.
+ * @returns {object|null} The validated quiz question, or null if validation fails.
+ */
 function finalizeQuizItem(item, rawItem) {
   if (!item.question) return null;
 
@@ -458,6 +568,11 @@ function finalizeQuizItem(item, rawItem) {
   };
 }
 
+/**
+ * Maps, normalizes, and filters raw arrays into properly formatted quiz items.
+ * @param {Array} items - List of raw items.
+ * @returns {Array<object>} Normalized quiz questions array.
+ */
 function normalizeQuizItems(items) {
   return items
     .map((item) => {
@@ -529,6 +644,17 @@ function assertMaterialTargetCount(content, materialType, { provider, model }) {
   );
 }
 
+// =========================================================================
+// SECTION 4: DEDUPLICATION & SIMILARITY CHECKS
+// Helpers to check if generated questions or flashcards are duplicates of
+// already existing ones based on string similarity and Jaccard distance.
+// =========================================================================
+
+/**
+ * Normalizes text by removing accents, special characters, and converting to lowercase for similarity checks.
+ * @param {string} text - Target text to normalize.
+ * @returns {string} Cleaned, lowercase, normalized string.
+ */
 function normalizeDedupeText(text) {
   return String(text || '')
     .trim()
@@ -541,9 +667,12 @@ function normalizeDedupeText(text) {
     .slice(0, 80);
 }
 
-// Two keys are "similar" if they are identical, or one is a leading substring of the other
-// (covers "X được đề xuất?" vs "X được đề xuất trong dự án?").
-// The min-length guard (5 words) prevents false positives on short generic keys.
+/**
+ * Computes whether two questions/terms are highly similar based on prefix matching or Jaccard overlap.
+ * @param {string} a - First comparison string.
+ * @param {string} b - Second comparison string.
+ * @returns {boolean} True if the two terms are deemed duplicates.
+ */
 function isSimilarKey(a, b) {
   if (a === b) return true;
 
@@ -573,16 +702,34 @@ function isSimilarKey(a, b) {
   return false;
 }
 
+/**
+ * Checks if a candidate flashcard front is similar to any existing item in the collection.
+ * @param {string} front - Candidate flashcard front prompt.
+ * @param {Array<object>} mergedItems - Current list of normalized items.
+ * @returns {boolean} True if the front is a duplicate.
+ */
 function isKnownMaterialFront(front, mergedItems) {
   const key = normalizeDedupeText(front);
   return mergedItems.some((item) => isSimilarKey(normalizeDedupeText(item.front), key));
 }
 
+/**
+ * Checks if a candidate quiz question is similar to any existing item in the collection.
+ * @param {string} question - Candidate quiz question text.
+ * @param {Array<object>} mergedItems - Current list of normalized items.
+ * @returns {boolean} True if the question is a duplicate.
+ */
 function isKnownQuizQuestion(question, mergedItems) {
   const key = normalizeDedupeText(question);
   return mergedItems.some((item) => isSimilarKey(normalizeDedupeText(item.question), key));
 }
 
+/**
+ * Filters out duplicate items from a candidate array based on the target type's content (front or question).
+ * @param {Array<object>} items - List of candidate items.
+ * @param {'flashcard'|'quiz'} materialType - Target material type.
+ * @returns {Array<object>} Filtered deduplicated items list.
+ */
 function dedupeMaterialItems(items, materialType) {
   const seen = [];
   return items.filter((item) => {
@@ -594,6 +741,17 @@ function dedupeMaterialItems(items, materialType) {
   });
 }
 
+// =========================================================================
+// SECTION 5: LOOSE TEXT PARSING & REPAIR FOR FLASHCARDS
+// When strict JSON parsing fails, these functions attempt regex fallback
+// extraction and secondary API calls to salvage/repair incomplete items.
+// =========================================================================
+
+/**
+ * Unescapes JSON string control sequences (like newlines and quotes) from raw string segments.
+ * @param {string} value - Escaped string segment.
+ * @returns {string} Unescaped formatted string.
+ */
 function unescapeJsonString(value) {
   return String(value || '')
     .replace(/\\"/g, '"')
@@ -602,6 +760,11 @@ function unescapeJsonString(value) {
     .replace(/\\t/g, '\t');
 }
 
+/**
+ * Heuristically extracts flashcards using regex patterns when the LLM response is not valid JSON.
+ * @param {string} text - Raw string output from LLM.
+ * @returns {Array<object>} Extracted normalized flashcard items.
+ */
 function extractFlashcardsFromLooseText(text) {
   const results = [];
   const pattern = /"(?:front|Front|question|Q|q)"\s*:\s*"((?:\\.|[^"\\])*)"\s*,\s*"(?:back|Back|answer|A|a)"\s*:\s*"((?:\\.|[^"\\])*)"/gi;
@@ -616,6 +779,12 @@ function extractFlashcardsFromLooseText(text) {
   return normalizeFlashcardItems(results);
 }
 
+/**
+ * Checks for truncated object frames containing a front property but lacking a back property.
+ * Used to salvage partial flashcards during processing.
+ * @param {string} text - Raw output segment.
+ * @returns {string|null} The extracted front question or null.
+ */
 function extractPartialFlashcardFront(text) {
   const parsed = parseJsonLenient(text);
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -636,6 +805,14 @@ function extractPartialFlashcardFront(text) {
   return null;
 }
 
+/**
+ * Triggers a secondary, high-accuracy completion request to generate the missing back page of a salvaged flashcard.
+ * @param {object} params
+ * @param {string} params.front - Flashcard front text.
+ * @param {string} params.batchText - The text snippet context.
+ * @param {function} params.callMaterialAi - The execution model helper function.
+ * @returns {Promise<object|null>} Complete flashcard object or null if repair failed.
+ */
 async function repairFlashcardBack({ front, batchText, callMaterialAi }) {
   const repairSystemPrompt = `Bạn là trợ lý học tập. Trả về JSON duy nhất {"back":"..."} — câu trả lời ngắn (tối đa 20 từ) bằng tiếng Việt cho câu hỏi đã cho, dựa trên tài liệu. Không markdown, không giải thích.`;
   const userPrompt = `Câu hỏi flashcard:\n${front}\n\nTài liệu:\n${batchText}\n\nTrả về {"back":"..."} duy nhất.`;
@@ -661,12 +838,32 @@ async function repairFlashcardBack({ front, batchText, callMaterialAi }) {
   return null;
 }
 
+/**
+ * Slices the collection of elements to ensure it matches targeted quotas.
+ * @param {Array} items - Target collection.
+ * @param {'flashcard'|'quiz'} materialType - Target material type.
+ * @returns {Array} Sliced list.
+ */
 function enforceTargetCount(items, materialType) {
   const target = MATERIAL_TARGETS[materialType];
   if (!target) return items;
   return items.slice(0, target);
 }
 
+// =========================================================================
+// SECTION 6: PROMPT & DOCUMENT CONTEXT BUILDERS
+// Helper functions to construct localized prompt rules, retrieve document chunks
+// from database/RAG, and slide/sample document context window to fit model limits.
+// =========================================================================
+
+/**
+ * Constructs prompt instructions (system and user prompts) tailored to the specified material type and context length.
+ * @param {object} params
+ * @param {'flashcard'|'quiz'|'mindmap'} params.materialType - Target type of material to generate.
+ * @param {string} params.documentContext - Slices/chunks of the document text.
+ * @param {number} params.count - Target number of items to generate.
+ * @returns {object} Object containing systemPrompt and userPrompt strings.
+ */
 function buildMaterialPrompts({ materialType, documentContext, count }) {
   const documentBlock = `Document content:\n${documentContext}\n\n`;
 
@@ -768,6 +965,14 @@ FORMAT:
   return { systemPrompt, userPrompt };
 }
 
+/**
+ * Assures document chunk records are available. Triggers text-splitting RAG services if not yet parsed.
+ * @param {object} params
+ * @param {object} params.doc - Supabase document profile record.
+ * @param {string} params.userId - Owner ID reference.
+ * @param {string} params.text - Fallback extracted text copy.
+ * @returns {Promise<Array>} List of document chunks.
+ */
 async function ensureDocumentChunks({ doc, userId, text }) {
   try {
     let chunks = await DocumentChunkModel.findByDocumentId(doc.id);
@@ -804,12 +1009,22 @@ async function ensureDocumentChunks({ doc, userId, text }) {
   }
 }
 
+/**
+ * Sorts document chunks sequentially by their index.
+ * @param {Array} chunks - Document chunks list.
+ * @returns {Array} Sorted chunks copy.
+ */
 function sortDocumentChunks(chunks) {
   return [...(chunks || [])].sort(
     (a, b) => Number(a.chunk_index ?? 0) - Number(b.chunk_index ?? 0)
   );
 }
 
+/**
+ * Structures single chunk node contents with segment indices, header references, and page values.
+ * @param {object} chunk - Target document chunk.
+ * @returns {string} Structured text header + content.
+ */
 function formatChunkBlock(chunk) {
   const idx = Number(chunk.chunk_index ?? 0) + 1;
   const heading = chunk.metadata?.sectionHeading;
@@ -820,6 +1035,15 @@ function formatChunkBlock(chunk) {
   return `[${labels.join(' | ')}]\n${String(chunk.content || '').trim()}`;
 }
 
+/**
+ * Feeds a sliding contextual window of document chunks to model based on the sequential generation attempt.
+ * @param {Array} chunks - Document chunks list.
+ * @param {object} options
+ * @param {number} options.attempt - Generation attempt step offset.
+ * @param {number} options.maxAttempts - Max execution limit count.
+ * @param {string} options.docTitle - Document title.
+ * @returns {string|null} Sliding window text block context.
+ */
 function buildBatchContextFromChunks(chunks, { attempt, maxAttempts, docTitle }) {
   const sorted = sortDocumentChunks(chunks);
   if (!sorted.length) return null;
@@ -849,6 +1073,14 @@ function buildBatchContextFromChunks(chunks, { attempt, maxAttempts, docTitle })
   return header + parts.join('\n\n');
 }
 
+/**
+ * Samples document chunks evenly to build a comprehensive context for larger context window models (Gemini).
+ * @param {Array} chunks - Document chunks list.
+ * @param {object} options
+ * @param {string} options.docTitle - Document title.
+ * @param {number} [options.maxChars] - Maximum character limits target.
+ * @returns {string|null} Sampled text context block.
+ */
 function buildGeminiContextFromChunks(chunks, { docTitle, maxChars = GEMINI_MATERIAL_MAX_CHARS }) {
   const sorted = sortDocumentChunks(chunks);
   if (!sorted.length) return null;
@@ -873,6 +1105,16 @@ function buildGeminiContextFromChunks(chunks, { docTitle, maxChars = GEMINI_MATE
   return `[Tài liệu: ${docTitle || 'Untitled'} — ${parts.length}/${numChunks} đoạn trích đều từ toàn bộ tài liệu (chunk RAG)]\n\n${parts.join('\n\n')}`;
 }
 
+/**
+ * Returns either sequential chunk block collections or sliced raw text strings suited for Ollama processing.
+ * @param {object} params
+ * @param {Array} params.documentChunks - Database chunks if present.
+ * @param {string} params.docTitle - Document title.
+ * @param {string} params.fallbackText - Document raw text.
+ * @param {number} params.attempt - Current step generation sequence index.
+ * @param {number} params.maxAttempts - Target processing limits.
+ * @returns {string} Resolved contextual input string.
+ */
 function buildBatchDocumentContext({ documentChunks, docTitle, fallbackText, attempt, maxAttempts }) {
   if (documentChunks?.length) {
     return buildBatchContextFromChunks(documentChunks, { attempt, maxAttempts, docTitle });
@@ -880,6 +1122,14 @@ function buildBatchDocumentContext({ documentChunks, docTitle, fallbackText, att
   return getBatchDocumentSlice(fallbackText, attempt, maxAttempts);
 }
 
+/**
+ * Structures document context for Gemini, utilizing chunk sampling if database RAG chunks exist.
+ * @param {object} params
+ * @param {Array} params.documentChunks - Database chunks.
+ * @param {string} params.docTitle - Document title.
+ * @param {string} params.fallbackText - Raw document string fallback.
+ * @returns {string} Resolved Gemini context string.
+ */
 function buildGeminiDocumentContext({ documentChunks, docTitle, fallbackText }) {
   if (documentChunks?.length) {
     return buildGeminiContextFromChunks(documentChunks, { docTitle, maxChars: GEMINI_MATERIAL_MAX_CHARS });
@@ -888,6 +1138,13 @@ function buildGeminiDocumentContext({ documentChunks, docTitle, fallbackText }) 
   return text.length > GEMINI_MATERIAL_MAX_CHARS ? `${text.slice(0, GEMINI_MATERIAL_MAX_CHARS)}...` : text;
 }
 
+/**
+ * Slices raw document text sequentially when RAG databases are offline/missing.
+ * @param {string} fullText - Raw document contents.
+ * @param {number} attempt - Current iteration step index.
+ * @param {number} [maxAttempts] - Limits count configuration.
+ * @returns {string} Custom context slice.
+ */
 function getBatchDocumentSlice(fullText, attempt, maxAttempts = 20) {
   const text = String(fullText || '').trim();
   const windowSize = MATERIAL_CHUNK_WINDOW_CHARS;
@@ -904,6 +1161,11 @@ function getBatchDocumentSlice(fullText, attempt, maxAttempts = 20) {
   return `[Phần ${sliceIndex + 1}/${numSlices} của tài liệu — ký tự ${start}–${start + slice.length} / ${text.length}]\n${slice}`;
 }
 
+/**
+ * Scrapes segment context headings to formulate hints for local LLM generators.
+ * @param {string} batchText - The currently loaded block.
+ * @returns {string|null} Scraped string label hint or null.
+ */
 function extractChunkHint(batchText) {
   const headingMatch = String(batchText || '').match(/\[Chunk \d+ \| ([^\]|]+)/);
   if (headingMatch) return headingMatch[1].trim();
@@ -912,6 +1174,16 @@ function extractChunkHint(batchText) {
   return null;
 }
 
+/**
+ * Appends details of previously generated items and anti-looping rules to prevent models from outputting duplicates.
+ * @param {string} userPrompt - Original user instruction string.
+ * @param {'flashcard'|'quiz'} materialType - Target material type.
+ * @param {Array<object>} existingItems - Active collection of generated items.
+ * @param {object} [options]
+ * @param {boolean} [options.stalled] - System marker to inject anti-repetition templates.
+ * @param {string|null} [options.chunkHint] - Highlight label hint.
+ * @returns {string} Formulated user instruction context.
+ */
 function appendExistingItemsPrompt(userPrompt, materialType, existingItems, { stalled = false, chunkHint = null } = {}) {
   if (!existingItems.length && !stalled && !chunkHint) return userPrompt;
 
@@ -945,6 +1217,12 @@ function appendExistingItemsPrompt(userPrompt, materialType, existingItems, { st
   return `${userPrompt}${suffix}`;
 }
 
+/**
+ * Decodes candidate strings, executing loose regex parse extraction fallback if native JSON parsing fails.
+ * @param {string} responseText - LLM raw completion.
+ * @param {'flashcard'|'quiz'} materialType - Target material type.
+ * @returns {Array<object>} Decoded normalized list.
+ */
 function parseMaterialArrayResponse(responseText, materialType) {
   const parsed = parseJsonLenient(responseText);
   if (parsed === null) {
@@ -970,6 +1248,24 @@ function parseMaterialArrayResponse(responseText, materialType) {
   return content;
 }
 
+// =========================================================================
+// SECTION 7: OLLAMA SEQUENTIAL BATCH GENERATION
+// Orchestrates batch-based item generation for local LLMs, handling incremental
+// context shifting, duplicate tracking, and loop avoidance.
+// =========================================================================
+
+/**
+ * Iteratively prompts local Ollama models to generate study items, shift context window indices,
+ * check duplicate titles, repair failing parts, and enforce target quotas.
+ * @param {object} params
+ * @param {'flashcard'|'quiz'} params.materialType - Target type of study materials.
+ * @param {string} params.fallbackText - Complete raw document string fallback.
+ * @param {Array} params.documentChunks - Database document chunks.
+ * @param {string} params.docTitle - Document title.
+ * @param {number} params.targetCount - Target number of valid items.
+ * @param {function} params.callMaterialAi - Provider execution prompt wrapper.
+ * @returns {Promise<object>} Merged generated items list and token usage logs.
+ */
 async function generateOllamaBatches({
   materialType,
   fallbackText,
@@ -1135,7 +1431,20 @@ async function generateOllamaBatches({
   return { items: mergedItems, usageMetadata };
 }
 
+// =========================================================================
+// SECTION 8: MAIN STUDY MATERIAL SERVICE CLASS
+// Serves as the primary controller-facing service interface, implementing
+// methods to fetch, generate (Gemini/Ollama), and delete study materials.
+// =========================================================================
+
 class StudyMaterialService {
+  /**
+   * Retrieves all study materials generated for a document and verified user.
+   * @param {object} params
+   * @param {number|string} params.docId - Target document identifier.
+   * @param {string} params.userId - Authenticated user identifier.
+   * @returns {Promise<Array>} List of generated materials.
+   */
   static async getMaterials({ docId, userId }) {
     const id = Number(docId);
     if (!Number.isInteger(id) || id <= 0) {
@@ -1149,6 +1458,16 @@ class StudyMaterialService {
     return StudyMaterialModel.findByDocAndUser(id, userId);
   }
 
+  /**
+   * Generates new study materials (flashcards, quiz, or mindmap) using Gemini or local Ollama model.
+   * Runs validation, deduplication, auto-realigning, and repairs, then stores the materials in Supabase.
+   * @param {object} params
+   * @param {number|string} params.docId - Target document identifier.
+   * @param {string} params.userId - Authenticated user identifier.
+   * @param {'flashcard'|'quiz'|'mindmap'} params.materialType - Type of material to build.
+   * @param {string} params.model - Target model configuration indicator.
+   * @returns {Promise<object>} The newly generated and stored study material object.
+   */
   static async generateMaterial({ docId, userId, materialType, model }) {
     const id = Number(docId);
     if (!Number.isInteger(id) || id <= 0) {
@@ -1386,6 +1705,13 @@ class StudyMaterialService {
     return saved;
   }
 
+  /**
+   * Deletes a study material by its ID if ownership matches.
+   * @param {object} params
+   * @param {number|string} params.materialId - Target material identifier.
+   * @param {string} params.userId - Authenticated user identifier.
+   * @returns {Promise<{success: boolean}>} Object indicating deletion status.
+   */
   static async deleteMaterial({ materialId, userId }) {
     const result = await StudyMaterialModel.deleteById({ materialId, userId });
     if (!result) {
@@ -1394,7 +1720,5 @@ class StudyMaterialService {
     return { success: true };
   }
 }
-
-module.exports = StudyMaterialService;
 
 module.exports = StudyMaterialService;

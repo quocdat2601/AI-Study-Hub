@@ -109,7 +109,7 @@ export function getCommunityBadgeToneClasses(tone, variant = "light") {
   return toneMap[normalizedTone] || toneMap.indigo;
 }
 
-export function renderMarkdownBody(text, React, onImageClick) {
+export function renderMarkdownBody(text, React, onImageClick, onCitationClick, sources) {
   if (!text || typeof text !== "string") return null;
 
   const lines = text.split("\n");
@@ -117,7 +117,7 @@ export function renderMarkdownBody(text, React, onImageClick) {
 
   function parseInline(line) {
     const parts = [];
-    const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*|!\[([^\]]*)\]\(([^)]+)\))/g;
+    const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*|!\[([^\]]*)\]\(([^)]+)\)|\[(\d+(?:\s*,\s*\d+)*)\])/g;
     let lastIndex = 0;
     let match;
 
@@ -154,6 +154,37 @@ export function renderMarkdownBody(text, React, onImageClick) {
                 target: "_blank",
                 rel: "noopener noreferrer"
               }, imgElement)
+        );
+      } else if (match[6] !== undefined) {
+        const citationNums = match[6].split(",").map((s) => parseInt(s.trim(), 10)).filter(Boolean);
+        const buttons = citationNums.map((num, idx) => {
+          const source = Array.isArray(sources) ? sources[num - 1] : null;
+          const docTitle = source?.documentTitle || source?.metadata?.documentTitle || "";
+          const pageStart = source?.pageStart ?? source?.pageNumber;
+          const tooltipText = source
+            ? `Jump to ${docTitle}${pageStart ? ` (Page ${pageStart})` : ""}`
+            : `Citation [${num}]`;
+
+          return React.createElement("button", {
+            key: `cite-${match.index}-${num}-${idx}`,
+            type: "button",
+            className: "citation-badge-inline",
+            title: tooltipText,
+            onClick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (onCitationClick) {
+                onCitationClick(num, source);
+              }
+            }
+          }, `[${num}]`);
+        });
+
+        parts.push(
+          React.createElement("span", {
+            key: `cite-group-${match.index}`,
+            className: "inline-block leading-none select-none"
+          }, buttons)
         );
       }
 

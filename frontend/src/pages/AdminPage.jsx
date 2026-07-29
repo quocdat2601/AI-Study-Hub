@@ -15,8 +15,12 @@ import {
   deleteAdminSubject,
   listAdminDocuments,
   purgeAdminDocument,
+  getAiUsage,
+  createAnnouncement,
+  listAnnouncements,
+  deleteAnnouncement,
 } from "../services/adminApi.js";
-import { getDocumentSignedUrl } from "../services/documentApi.js";
+import { getDocumentSignedUrl, deleteDocument as softDeleteDocumentApi, restoreDocument as restoreDocumentApi, updateDocumentVisibility } from "../services/documentApi.js";
 import { renderMarkdownBody } from "../components/community/communityUtils.js";
 import { useToast } from "../contexts/ToastContext.jsx";
 
@@ -25,10 +29,12 @@ const ADMIN_SIDEBAR_COLLAPSED_KEY = "aiStudyHub.adminSidebarCollapsed";
 
 const adminSidebarItems = [
   { id: "dashboard", icon: "dashboard", label: "Dashboard" },
+  { id: "ai-usage", icon: "chip", label: "AI Usage" },
   { id: "users", icon: "users", label: "Users" },
   { id: "documents", icon: "document", label: "Documents" },
   { id: "subjects", icon: "book", label: "Subjects" },
   { id: "reports", icon: "reports", label: "Reports" },
+  { id: "announcements", icon: "megaphone", label: "Announcements" },
   { id: "activity-logs", icon: "activity", label: "Activity Logs" },
 ];
 
@@ -321,92 +327,291 @@ function AdminSidebar({
 }
 
 function BarChart({ data }) {
+  const [hovered, setHovered] = React.useState(null);
   const values = data?.length ? data : [];
   const max = Math.max(...values.map((item) => item.value), 1);
-  const yTicks = [max, Math.round(max / 2), 0];
 
   if (!values.length || values.every((item) => Number(item.value || 0) === 0)) {
     return (
-      <div className="mt-5 flex h-[170px] items-center justify-center rounded-md border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
+      <div className="mt-5 flex h-[190px] items-center justify-center rounded-xl border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
         No user registrations in this period.
       </div>
     );
   }
 
+  const W = 480;
+  const H = 160;
+  const PADDING = { top: 16, bottom: 28, left: 32, right: 8 };
+  const chartW = W - PADDING.left - PADDING.right;
+  const chartH = H - PADDING.top - PADDING.bottom;
+  const barW = Math.min(36, (chartW / values.length) * 0.55);
+  const gap = chartW / values.length;
+
+  const yTicks = [max, Math.round(max / 2), 0].filter((v, i, arr) => arr.indexOf(v) === i);
+
+  function handleMouseMove(e) {
+    const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) * (W / rect.width);
+    const relX = mouseX - PADDING.left;
+    const idx = Math.floor(relX / gap);
+    setHovered(Math.max(0, Math.min(values.length - 1, idx)));
+  }
+
   return (
-    <div className="mt-5 grid h-[170px] grid-cols-[34px_1fr] gap-2">
-      <div className="flex h-[132px] flex-col justify-between text-right text-[10px] font-semibold text-[#66758a]">
-        {yTicks.map((tick, index) => <span key={`${tick}-${index}`}>{tick}</span>)}
-      </div>
-      <div>
-        <div className="relative h-[132px] border-b border-l border-[#d9dde6]">
-          <div className="absolute inset-0 grid grid-rows-2">
-            <span className="border-b border-[#eef0f3]" />
-            <span />
-          </div>
-          <div className="absolute inset-x-2 bottom-0 grid h-[112px] grid-cols-7 items-end gap-2">
-          {values.map((item, index) => (
-            <span
-              className={index === values.length - 1 ? "rounded-t-md bg-[#4648d4]" : "rounded-t-md bg-[#a7a8f4]"}
-              key={item.key || item.label}
-              style={{ height: `${Math.max(4, (item.value / max) * 104)}px` }}
-              title={`${item.label}: ${item.value}`}
-            >
-              <span className="sr-only">{item.label}: {item.value}</span>
-            </span>
-          ))}
-          </div>
-        </div>
-        <div className="mt-2 grid grid-cols-7 text-center text-[10px] text-[#464554]">
-          {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
-        </div>
-      </div>
+    <div className="relative mt-3 select-none">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full overflow-visible"
+        aria-label="User growth bar chart"
+        style={{ height: 190 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHovered(null)}
+      >
+        <defs>
+          <linearGradient id="barGradActive" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#4648d4" />
+          </linearGradient>
+          <linearGradient id="barGradInactive" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a5b4fc" />
+            <stop offset="100%" stopColor="#c7d2fe" />
+          </linearGradient>
+          <filter id="barShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#4648d4" floodOpacity="0.25" />
+          </filter>
+        </defs>
+
+        {/* Y-axis grid lines + labels */}
+        {yTicks.map((tick) => {
+          const y = PADDING.top + chartH - (tick / max) * chartH;
+          return (
+            <g key={tick}>
+              <line x1={PADDING.left} x2={W - PADDING.right} y1={y} y2={y}
+                stroke="#e5e7ef" strokeWidth="1" strokeDasharray={tick === 0 ? "0" : "4 3"} />
+              <text x={PADDING.left - 6} y={y + 4} textAnchor="end"
+                fontSize="9" fill="#94a3b8" fontWeight="600">{tick}</text>
+            </g>
+          );
+        })}
+
+        {/* Bars + labels (no mouse events — handled by overlay) */}
+        {values.map((item, index) => {
+          const barH = Math.max(4, (item.value / max) * chartH);
+          const x = PADDING.left + index * gap + gap / 2 - barW / 2;
+          const y = PADDING.top + chartH - barH;
+          const isHovered = hovered === index;
+          const isLast = index === values.length - 1;
+          return (
+            <g key={item.key || item.label} style={{ pointerEvents: 'none' }}>
+              <rect
+                x={x} y={y} width={barW} height={barH} rx="5" ry="5"
+                fill={isHovered || isLast ? "url(#barGradActive)" : "url(#barGradInactive)"}
+                filter={isHovered ? "url(#barShadow)" : "none"}
+                style={{ transition: "all 0.15s ease" }}
+              />
+              <text
+                x={PADDING.left + index * gap + gap / 2} y={H - 6}
+                textAnchor="middle" fontSize="9"
+                fill={isHovered ? "#4648d4" : "#94a3b8"}
+                fontWeight={isHovered ? "700" : "600"}
+              >
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Single transparent overlay — owns all mouse events */}
+        <rect
+          x={PADDING.left} y={PADDING.top}
+          width={chartW} height={chartH}
+          fill="transparent"
+        />
+
+        {/* Tooltip (on top of overlay) */}
+        {hovered !== null && (() => {
+          const item = values[hovered];
+          const cx = PADDING.left + hovered * gap + gap / 2;
+          const tw = 72;
+          const tx = Math.min(Math.max(cx - tw / 2, 4), W - tw - 4);
+          const barH = Math.max(4, (item.value / max) * chartH);
+          const ty = PADDING.top + chartH - barH - 36;
+          return (
+            <g style={{ pointerEvents: 'none' }}>
+              <rect x={tx} y={ty} width={tw} height={24} rx="6" fill="#1e1b4b" opacity="0.92" />
+              <text x={tx + tw / 2} y={ty + 10} textAnchor="middle" fontSize="9" fill="#c7d2fe" fontWeight="600">
+                {item.label}
+              </text>
+              <text x={tx + tw / 2} y={ty + 20} textAnchor="middle" fontSize="11" fill="white" fontWeight="800">
+                {item.value} {item.value === 1 ? "user" : "users"}
+              </text>
+            </g>
+          );
+        })()}
+      </svg>
     </div>
   );
 }
 
+
+
+// Compute smooth cubic bezier path through points, clamped to [yMin, yMax]
+function smoothPath(pts, yMin = -Infinity, yMax = Infinity) {
+  if (pts.length < 2) return "";
+  const clamp = (v) => Math.min(yMax, Math.max(yMin, v));
+  const d = [`M ${pts[0].x} ${pts[0].y}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const cp1x = pts[i].x + (pts[i + 1].x - (pts[i - 1]?.x ?? pts[i].x)) / 6;
+    const cp1y = clamp(pts[i].y + (pts[i + 1].y - (pts[i - 1]?.y ?? pts[i].y)) / 6);
+    const cp2x = pts[i + 1].x - ((pts[i + 2]?.x ?? pts[i + 1].x) - pts[i].x) / 6;
+    const cp2y = clamp(pts[i + 1].y - ((pts[i + 2]?.y ?? pts[i + 1].y) - pts[i].y) / 6);
+    d.push(`C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${pts[i + 1].x} ${pts[i + 1].y}`);
+  }
+  return d.join(" ");
+}
+
 function AreaChart({ data }) {
+  const [hovered, setHovered] = React.useState(null);
   const values = data?.length ? data : [];
   const max = Math.max(...values.map((item) => item.value), 1);
-  const points = values.map((item, index) => {
-    const x = 8 + index * (272 / Math.max(values.length - 1, 1));
-    const y = 114 - (item.value / max) * 78;
-    return { x, y };
-  });
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const area = points.length ? `8,124 ${line} 280,124` : "";
 
   if (!values.length || values.every((item) => Number(item.value || 0) === 0)) {
     return (
-      <div className="mt-4 flex h-[166px] items-center justify-center rounded-md border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
+      <div className="mt-4 flex h-[190px] items-center justify-center rounded-xl border border-dashed border-[#d9dde6] bg-[#f7f9fb] text-sm font-semibold text-[#66758a]">
         No document uploads in this period.
       </div>
     );
   }
 
+  const W = 480;
+  const H = 160;
+  const PAD = { top: 16, bottom: 28, left: 32, right: 8 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const pts = values.map((item, i) => ({
+    x: PAD.left + (i / Math.max(values.length - 1, 1)) * chartW,
+    y: PAD.top + chartH - (item.value / max) * chartH,
+  }));
+
+  const yMin = PAD.top;
+  const yMax = PAD.top + chartH;
+  const linePath = smoothPath(pts, yMin, yMax);
+  const areaPath = pts.length
+    ? `${linePath} L ${pts[pts.length - 1].x} ${PAD.top + chartH} L ${pts[0].x} ${PAD.top + chartH} Z`
+    : "";
+
+  const yTicks = [max, Math.round(max / 2), 0].filter((v, i, arr) => arr.indexOf(v) === i);
+
+  function handleMouseMove(e) {
+    const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) * (W / rect.width);
+    // Find nearest point by X distance
+    let nearest = 0;
+    let minDist = Infinity;
+    pts.forEach((pt, i) => {
+      const d = Math.abs(pt.x - mouseX);
+      if (d < minDist) { minDist = d; nearest = i; }
+    });
+    setHovered(nearest);
+  }
+
   return (
-    <div className="mt-4 rounded-md border border-[#d9dde6] bg-[#f7f9fb] p-2">
-      <svg className="h-[150px] w-full" viewBox="0 0 288 132" preserveAspectRatio="none" aria-label="Document uploads chart">
+    <div className="relative mt-3 select-none">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full overflow-visible"
+        aria-label="Document uploads area chart"
+        style={{ height: 190 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHovered(null)}
+      >
         <defs>
-          <linearGradient id="adminUploadArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#4648d4" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#4648d4" stopOpacity="0.04" />
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.22" />
+            <stop offset="75%" stopColor="#6366f1" stopOpacity="0.04" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
           </linearGradient>
+          <filter id="dotGlow">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
         </defs>
-        <polygon points={area} fill="url(#adminUploadArea)" />
-        <polyline points={line} fill="none" stroke="#4648d4" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((point, index) => (
-          <circle key={values[index]?.key || values[index]?.label || index} cx={point.x} cy={point.y} r="3" fill="#4648d4">
-            <title>{values[index]?.label}: {values[index]?.value}</title>
-          </circle>
-        ))}
+
+        {/* Y-axis grid + labels */}
+        {yTicks.map((tick) => {
+          const y = PAD.top + chartH - (tick / max) * chartH;
+          return (
+            <g key={tick} style={{ pointerEvents: 'none' }}>
+              <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y}
+                stroke="#e5e7ef" strokeWidth="1" strokeDasharray={tick === 0 ? "0" : "4 3"} />
+              <text x={PAD.left - 6} y={y + 4} textAnchor="end"
+                fontSize="9" fill="#94a3b8" fontWeight="600">{tick}</text>
+            </g>
+          );
+        })}
+
+        {/* Area fill + line (no mouse events) */}
+        <g style={{ pointerEvents: 'none' }}>
+          <path d={areaPath} fill="url(#areaGrad)" />
+          <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+
+        {/* Dots + labels + crosshair (no mouse events) */}
+        {values.map((item, i) => {
+          const pt = pts[i];
+          const isHovered = hovered === i;
+          return (
+            <g key={item.key || item.label} style={{ pointerEvents: 'none' }}>
+              {isHovered && (
+                <line x1={pt.x} x2={pt.x} y1={PAD.top} y2={PAD.top + chartH}
+                  stroke="#6366f1" strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
+              )}
+              <circle cx={pt.x} cy={pt.y} r={isHovered ? 5 : 3}
+                fill={isHovered ? "#6366f1" : "#fff"}
+                stroke="#6366f1" strokeWidth={isHovered ? 0 : 2}
+                filter={isHovered ? "url(#dotGlow)" : "none"}
+                style={{ transition: "r 0.12s ease, fill 0.12s ease" }}
+              />
+              <text x={pt.x} y={H - 6} textAnchor="middle" fontSize="9"
+                fill={isHovered ? "#4648d4" : "#94a3b8"}
+                fontWeight={isHovered ? "700" : "600"}>
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Single transparent overlay — owns all mouse events */}
+        <rect x={PAD.left} y={PAD.top} width={chartW} height={chartH} fill="transparent" />
+
+        {/* Tooltip (on top, no mouse events) */}
+        {hovered !== null && (() => {
+          const item = values[hovered];
+          const pt = pts[hovered];
+          const tw = 80;
+          const tx = Math.min(Math.max(pt.x - tw / 2, 4), W - tw - 4);
+          const ty = Math.max(4, pt.y - 40);
+          return (
+            <g style={{ pointerEvents: 'none' }}>
+              <rect x={tx} y={ty} width={tw} height={28} rx="6" fill="#1e1b4b" opacity="0.92" />
+              <text x={tx + tw / 2} y={ty + 11} textAnchor="middle" fontSize="9" fill="#c7d2fe" fontWeight="600">
+                {item.label}
+              </text>
+              <text x={tx + tw / 2} y={ty + 22} textAnchor="middle" fontSize="11" fill="white" fontWeight="800">
+                {item.value} {item.value === 1 ? "upload" : "uploads"}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
-      <div className="grid grid-cols-7 text-center text-[10px] text-[#464554]">
-        {values.map((item) => <span key={item.key || item.label}>{item.label}</span>)}
-      </div>
     </div>
   );
 }
+
 
 function ChartCard({ title, children, action }) {
   return (
@@ -542,6 +747,35 @@ function AdminOverview({ data }) {
   );
 }
 
+function Pagination({ currentPage, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="mt-4 flex items-center justify-between border-t border-[#eef0f3] pt-4">
+      <span className="text-xs text-[#66758a] font-medium">
+        Page <strong className="text-slate-800">{currentPage}</strong> of <strong className="text-slate-800">{totalPages}</strong>
+      </span>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="rounded border border-[#cbd5e1] bg-white px-3 py-1.5 text-xs font-bold text-[#172033] hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          type="button"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="rounded border border-[#cbd5e1] bg-white px-3 py-1.5 text-xs font-bold text-[#172033] hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          type="button"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, logout } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -558,6 +792,9 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [aiUsage, setAiUsage] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementForm, setAnnouncementForm] = useState({ title: "", message: "", targetRole: "all" });
   
   // Selection states (for details sidebars)
   const [selectedUser, setSelectedUser] = useState(null);
@@ -581,6 +818,25 @@ export default function AdminPage() {
   const [docSubjectFilter, setDocSubjectFilter] = useState("all");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [docStatusFilter, setDocStatusFilter] = useState("all");
+  const [docDeletedFilter, setDocDeletedFilter] = useState("active");
+
+  // Pagination states
+  const [userPage, setUserPage] = useState(1);
+  const [docPage, setDocPage] = useState(1);
+  const [logPage, setLogPage] = useState(1);
+
+  // Sorting states
+  const [docSortField, setDocSortField] = useState("created_at");
+  const [docSortAsc, setDocSortAsc] = useState(false);
+
+  // Auto reset page numbers when filters or sorting change
+  useEffect(() => {
+    setUserPage(1);
+  }, [userSearch, userRoleFilter, userStatusFilter, userSortOrder]);
+
+  useEffect(() => {
+    setDocPage(1);
+  }, [docSearch, docSubjectFilter, docTypeFilter, docStatusFilter, docDeletedFilter, docSortField, docSortAsc]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [processingAction, setProcessingAction] = useState(null);
@@ -606,24 +862,28 @@ export default function AdminPage() {
   
   const contentClass = isSidebarCollapsed
     ? "grid min-w-0 w-full max-w-none gap-7 px-5 py-7 lg:px-6"
-    : "grid min-w-0 w-full max-w-[1220px] gap-7 p-8";
+    : "grid min-w-0 w-full max-w-[1440px] gap-7 p-8";
 
   const loadAdminData = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const [overviewData, userData, subjectData, documentData, reportData] = await Promise.all([
+      const [overviewData, userData, subjectData, documentData, reportData, aiUsageData, announcementData] = await Promise.all([
         getAdminOverview(),
         listAdminUsers(),
         listAdminSubjects(),
         listAdminDocuments(),
         listAdminCommunityReports(),
+        getAiUsage(),
+        listAnnouncements(),
       ]);
       setOverview(overviewData);
       setUsers(userData);
       setSubjects(subjectData);
       setDocuments(documentData);
       setReports(reportData);
+      setAiUsage(aiUsageData);
+      setAnnouncements(announcementData);
     } catch (err) {
       showError(messageFromError(err));
     } finally {
@@ -829,6 +1089,113 @@ export default function AdminPage() {
     }
   }
 
+  async function handleSoftDeleteDoc(doc) {
+    const isOwner = doc.user_id === user.id;
+    let reason = null;
+    if (!isOwner) {
+      reason = window.prompt(`Please enter the reason for moderating/deleting "${doc.title}":`);
+      if (reason === null) return; // User cancelled
+      if (reason.trim() === "") {
+        reason = "Content violation";
+      }
+    } else {
+      if (!window.confirm(`Are you sure you want to move "${doc.title}" to trash?`)) {
+        return;
+      }
+    }
+
+    try {
+      await softDeleteDocumentApi(doc.id, reason);
+      showSuccess("Document moved to trash successfully");
+      await loadAdminData();
+      setSelectedDoc(null);
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  async function handleRestoreDoc(doc) {
+    if (!window.confirm(`Are you sure you want to restore "${doc.title}" from trash?`)) {
+      return;
+    }
+    try {
+      await restoreDocumentApi(doc.id);
+      showSuccess("Document restored successfully");
+      await loadAdminData();
+      setSelectedDoc(null);
+    } catch (err) {
+      showError(messageFromError(err));
+    }
+  }
+
+  async function handleToggleVisibility(doc) {
+    setProcessingAction(`toggle-visibility-${doc.id}`);
+    try {
+      const updatedVisibility = !doc.is_public;
+      await updateDocumentVisibility(doc.id, updatedVisibility);
+      showSuccess(`Visibility updated to ${updatedVisibility ? "Public" : "Private"}`);
+      
+      // Update local documents list state
+      setDocuments((current) =>
+        current.map((d) =>
+          d.id === doc.id ? { ...d, is_public: updatedVisibility } : d
+        )
+      );
+      // Update selected document state
+      setSelectedDoc((current) =>
+        current && current.id === doc.id ? { ...current, is_public: updatedVisibility } : current
+      );
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
+  function handleDocHeaderClick(field) {
+    if (docSortField === field) {
+      setDocSortAsc((prev) => !prev);
+    } else {
+      setDocSortField(field);
+      setDocSortAsc(field === "created_at" ? false : true);
+    }
+  }
+
+  async function handleCreateAnnouncement(e) {
+    e.preventDefault();
+    if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
+      showError("Title and message cannot be empty");
+      return;
+    }
+    setProcessingAction("create-announcement");
+    try {
+      await createAnnouncement(announcementForm);
+      showSuccess("Announcement broadcasted successfully");
+      setAnnouncementForm({ title: "", message: "", targetRole: "all" });
+      await loadAdminData();
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
+  async function handleDeleteAnnouncement(id) {
+    if (!window.confirm("Are you sure you want to recall/delete this announcement? It will immediately disappear from all users' notification history.")) {
+      return;
+    }
+    setProcessingAction(`delete-announcement-${id}`);
+    try {
+      await deleteAnnouncement(id);
+      showSuccess("Announcement recalled successfully");
+      await loadAdminData();
+    } catch (err) {
+      showError(messageFromError(err));
+    } finally {
+      setProcessingAction(null);
+    }
+  }
+
   // Computed / Filtered lists
   const filteredUsers = useMemo(() => {
     let list = [...users];
@@ -925,8 +1292,46 @@ export default function AdminPage() {
       );
     }
 
+    // Deletion filter
+    if (docDeletedFilter === "active") {
+      list = list.filter((d) => d.deleted_at === null);
+    } else if (docDeletedFilter === "deleted") {
+      list = list.filter((d) => d.deleted_at !== null);
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      let valA, valB;
+      if (docSortField === "title") {
+        valA = (a.title || "").toLowerCase();
+        valB = (b.title || "").toLowerCase();
+      } else if (docSortField === "owner") {
+        valA = (a.users?.email || "").toLowerCase();
+        valB = (b.users?.email || "").toLowerCase();
+      } else if (docSortField === "type") {
+        const typeA = (a.title || "").toLowerCase().endsWith(".pdf") || a.cloud_files?.mime_type === "application/pdf" ? "pdf" : "docx";
+        const typeB = (b.title || "").toLowerCase().endsWith(".pdf") || b.cloud_files?.mime_type === "application/pdf" ? "pdf" : "docx";
+        valA = typeA;
+        valB = typeB;
+      } else if (docSortField === "size") {
+        valA = Number(a.cloud_files?.size_bytes || 0);
+        valB = Number(b.cloud_files?.size_bytes || 0);
+      } else if (docSortField === "visibility") {
+        valA = a.is_public ? 1 : 0;
+        valB = b.is_public ? 1 : 0;
+      } else {
+        // default to "created_at"
+        valA = new Date(a.created_at || a.createdAt).getTime();
+        valB = new Date(b.created_at || b.createdAt).getTime();
+      }
+
+      if (valA < valB) return docSortAsc ? -1 : 1;
+      if (valA > valB) return docSortAsc ? 1 : -1;
+      return 0;
+    });
+
     return list;
-  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docSearch]);
+  }, [documents, docSubjectFilter, docTypeFilter, docStatusFilter, docDeletedFilter, docSearch, docSortField, docSortAsc]);
 
   const docStats = useMemo(() => {
     const total = documents.length;
@@ -954,7 +1359,7 @@ export default function AdminPage() {
   // Render sub sections
   function renderUsers() {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 min-w-0 w-full">
         <header>
           <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">User Management</h1>
           <p className="mt-1 mb-0 text-sm text-[#464554]">View, search, and manage student accounts.</p>
@@ -1005,8 +1410,8 @@ export default function AdminPage() {
         </section>
 
         {/* Filters and List block */}
-        <div className="flex gap-6 items-start">
-          <section className="flex-1 min-w-0 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className={`flex gap-6 items-start ${isSidebarCollapsed ? "xl:flex-row flex-col" : "2xl:flex-row flex-col"}`}>
+          <section className="flex-1 min-w-0 w-full rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
             {/* Filter Bar */}
             <div className="mb-5 flex flex-wrap gap-4 items-center justify-between">
               <div className="flex flex-wrap gap-3 items-center">
@@ -1062,61 +1467,68 @@ export default function AdminPage() {
 
             {filteredUsers.length === 0 ? (
               <p className="text-[#66758a] text-center py-6">No users found matching the filter criteria.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
-                      <th className="py-3 pr-4">User</th>
-                      <th className="py-3 pr-4">Role</th>
-                      <th className="py-3 pr-4">Status</th>
-                      <th className="py-3 pr-4">Joined</th>
-                      <th className="py-3 pr-4">Storage Limit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((item) => {
-                      const isSelected = selectedUser?.id === item.id;
-                      const userInitials = (item.email || "U").slice(0, 2).toUpperCase();
-                      return (
-                        <tr
-                          className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
-                            isSelected ? "bg-[#f1f5f9]" : ""
-                          }`}
-                          key={item.id}
-                          onClick={() => handleUserClick(item)}
-                        >
-                          <td className="py-3 pr-4 font-bold text-[#191c1e]">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ecebff] text-[10px] font-black text-[#4648d4] shrink-0">
-                                {userInitials}
-                              </span>
-                              <div className="min-w-0">
-                                <span className="block truncate">{getDisplayName(item)}</span>
-                                <span className="block text-xs font-normal text-[#66758a] truncate">{item.email}</span>
+            ) : (() => {
+              const totalUserPages = Math.ceil(filteredUsers.length / 10) || 1;
+              const displayedUsers = filteredUsers.slice((userPage - 1) * 10, userPage * 10);
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
+                        <th className="py-3 pr-4">User</th>
+                        <th className="py-3 pr-4">Role</th>
+                        <th className="py-3 pr-4">Status</th>
+                        <th className="py-3 pr-4">Joined</th>
+                        <th className="py-3 pr-4">Storage Limit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedUsers.map((item) => {
+                        const isSelected = selectedUser?.id === item.id;
+                        const userInitials = (item.email || "U").slice(0, 2).toUpperCase();
+                        return (
+                          <tr
+                            className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
+                              isSelected ? "bg-[#f1f5f9]" : ""
+                            }`}
+                            key={item.id}
+                            onClick={() => handleUserClick(item)}
+                          >
+                            <td className="py-3 pr-4 font-bold text-[#191c1e]">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ecebff] text-[10px] font-black text-[#4648d4] shrink-0">
+                                  {userInitials}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="block truncate">{getDisplayName(item)}</span>
+                                  <span className="block text-xs font-normal text-[#66758a] truncate">{item.email}</span>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554] capitalize">{item.role}</td>
-                          <td className="py-3 pr-4">
-                            <span className={`inline-flex rounded-full px-[10px] py-[3px] text-xs font-extrabold capitalize ${STATUS_CLASSES[item.status] ?? ""}`}>
-                              {item.status}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
-                          <td className="py-3 pr-4 text-[#464554] font-semibold">{formatBytes(item.storage_limit_bytes)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554] capitalize">{item.role}</td>
+                            <td className="py-3 pr-4">
+                              <span className={`inline-flex rounded-full px-[10px] py-[3px] text-xs font-extrabold capitalize ${STATUS_CLASSES[item.status] ?? ""}`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
+                            <td className="py-3 pr-4 text-[#464554] font-semibold">{formatBytes(item.storage_limit_bytes)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <Pagination currentPage={userPage} totalPages={totalUserPages} onPageChange={setUserPage} />
+                </div>
+              );
+            })()}
           </section>
 
           {/* User Details Sidebar Panel */}
           {selectedUser && (
-            <aside className="w-[360px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+            <aside className={`bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px] w-full ${
+              isSidebarCollapsed ? "xl:w-[320px]" : "2xl:w-[320px]"
+            }`}>
               <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
                 <h3 className="m-0 font-extrabold text-base text-[#191c1e]">User Details</h3>
                 <button
@@ -1237,7 +1649,7 @@ export default function AdminPage() {
 
   function renderDocuments() {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 min-w-0 w-full">
         <header>
           <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Document Management</h1>
           <p className="mt-1 mb-0 text-sm text-[#464554]">Monitor, search, and manage uploaded study documents.</p>
@@ -1287,8 +1699,8 @@ export default function AdminPage() {
         </section>
 
         {/* Filters and List panel */}
-        <div className="flex gap-6 items-start">
-          <section className="flex-1 min-w-0 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col xl:flex-row gap-6 items-start">
+          <section className="flex-1 min-w-0 w-full rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
             {/* Filter bar */}
             <div className="mb-5 flex flex-wrap gap-4 items-center justify-between">
               <div className="flex flex-wrap gap-3 items-center">
@@ -1342,85 +1754,152 @@ export default function AdminPage() {
                     <option value="failed">Failed</option>
                   </select>
                 </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-[#464554]">
+                  <span>Moderation:</span>
+                  <select
+                    className="rounded border border-[#cbd5e1] bg-white p-1 text-[#172033] focus:outline-none"
+                    value={docDeletedFilter}
+                    onChange={(e) => setDocDeletedFilter(e.target.value)}
+                  >
+                    <option value="active">Active Documents</option>
+                    <option value="deleted">Trashed / Moderated</option>
+                    <option value="all">All Documents</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             {filteredDocs.length === 0 ? (
               <p className="text-[#66758a] text-center py-6">No documents found matching the filter criteria.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
-                      <th className="py-3 pr-4">Document</th>
-                      <th className="py-3 pr-4">Owner</th>
-                      <th className="py-3 pr-4">Type</th>
-                      <th className="py-3 pr-4">Size</th>
-                      <th className="py-3 pr-4">Status</th>
-                      <th className="py-3 pr-4">Upload Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDocs.map((item) => {
-                      const isSelected = selectedDoc?.id === item.id;
-                      const ownerInitials = (item.users?.email || "U").slice(0, 2).toUpperCase();
-                      const isPdf = item.title?.toLowerCase().endsWith(".pdf") || item.cloud_files?.mime_type === "application/pdf";
-                      
-                      return (
-                        <tr
-                          className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
-                            isSelected ? "bg-[#f1f5f9]" : ""
-                          }`}
-                          key={item.id}
-                          onClick={() => setSelectedDoc(item)}
+            ) : (() => {
+              const totalDocPages = Math.ceil(filteredDocs.length / 10) || 1;
+              const displayedDocs = filteredDocs.slice((docPage - 1) * 10, docPage * 10);
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[#d9dde6] text-xs uppercase tracking-[0.5px] text-[#66758a]">
+                        <th
+                          onClick={() => handleDocHeaderClick("title")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
                         >
-                          <td className="py-3 pr-4 font-bold text-[#191c1e]">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-8 w-8 items-center justify-center rounded bg-[#fff8ef] text-amber-600 text-lg font-bold shrink-0">
-                                {isPdf ? "📄" : "📝"}
-                              </span>
-                              <div className="min-w-0">
-                                <span className="block truncate max-w-xs">{item.title}</span>
-                                <span className="block text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2 w-max mt-0.5">
-                                  {item.subjects?.code || "No Subject"}
+                          <span className="flex items-center">
+                            Document
+                            {docSortField === "title" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("owner")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Owner
+                            {docSortField === "owner" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("type")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Type
+                            {docSortField === "type" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("size")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Size
+                            {docSortField === "size" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("visibility")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Visibility
+                            {docSortField === "visibility" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                        <th
+                          onClick={() => handleDocHeaderClick("created_at")}
+                          className="py-3 pr-4 cursor-pointer select-none hover:text-[#4648d4] transition-colors"
+                        >
+                          <span className="flex items-center">
+                            Upload Date
+                            {docSortField === "created_at" && (docSortAsc ? " ↑" : " ↓")}
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedDocs.map((item) => {
+                        const isSelected = selectedDoc?.id === item.id;
+                        const ownerInitials = (item.users?.email || "U").slice(0, 2).toUpperCase();
+                        const isPdf = item.title?.toLowerCase().endsWith(".pdf") || item.cloud_files?.mime_type === "application/pdf";
+                        
+                        return (
+                          <tr
+                            className={`border-b border-[#eef0f3] last:border-b-0 cursor-pointer transition hover:bg-[#f8fafc] ${
+                              isSelected ? "bg-[#f1f5f9]" : ""
+                            }`}
+                            key={item.id}
+                            onClick={() => setSelectedDoc(item)}
+                          >
+                            <td className="py-3 pr-4 font-bold text-[#191c1e]">
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-8 w-8 items-center justify-center rounded bg-[#fff8ef] text-amber-600 text-lg font-bold shrink-0">
+                                  {isPdf ? "📄" : "📝"}
                                 </span>
+                                <div className="min-w-0">
+                                  <span className={`block truncate transition-all ${
+                                    isSidebarCollapsed ? "max-w-[240px]" : "max-w-[120px] lg:max-w-[160px] xl:max-w-[200px]"
+                                  }`}>{item.title}</span>
+                                  <span className="block text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2 w-max mt-0.5">
+                                    {item.subjects?.code || "No Subject"}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554]">
-                            <div className="flex items-center gap-2">
-                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#eef0f3] text-[9px] font-black text-slate-700 shrink-0">
-                                {ownerInitials}
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554]">
+                              <div className="flex items-center gap-2">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#eef0f3] text-[9px] font-black text-slate-700 shrink-0">
+                                  {ownerInitials}
+                                </span>
+                                <span className={`truncate transition-all ${
+                                  isSidebarCollapsed ? "max-w-[150px]" : "max-w-[80px] xl:max-w-[120px]"
+                                }`}>{item.users?.email || "System"}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554] uppercase text-xs font-semibold">{isPdf ? "PDF" : "DOCX"}</td>
+                            <td className="py-3 pr-4 text-[#464554]">{formatBytes(item.cloud_files?.size_bytes || 0)}</td>
+                            <td className="py-3 pr-4">
+                              <span className={`inline-flex rounded px-2 py-0.5 text-xs font-extrabold capitalize ${
+                                item.is_public
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                                  : "bg-slate-100 text-slate-700 border border-slate-200"
+                              }`}>
+                                {item.is_public ? "Public" : "Private"}
                               </span>
-                              <span className="truncate max-w-[150px]">{item.users?.email || "System"}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554] uppercase text-xs font-semibold">{isPdf ? "PDF" : "DOCX"}</td>
-                          <td className="py-3 pr-4 text-[#464554]">{formatBytes(item.cloud_files?.size_bytes || 0)}</td>
-                          <td className="py-3 pr-4">
-                            <span className={`inline-flex rounded px-2 py-0.5 text-xs font-extrabold capitalize ${
-                              item.status === "indexed" || item.extraction_status === "ready"
-                                ? "bg-[#e8f5ee] text-[#087443]"
-                                : item.status === "failed" || item.extraction_status === "failed"
-                                ? "bg-[#fff0f0] text-[#b42318]"
-                                : "bg-[#f0f4f8] text-[#475569]"
-                            }`}>
-                              {item.status || item.extraction_status || "uploaded"}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </td>
+                            <td className="py-3 pr-4 text-[#464554]">{new Date(item.created_at || item.createdAt).toLocaleDateString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <Pagination currentPage={docPage} totalPages={totalDocPages} onPageChange={setDocPage} />
+                </div>
+              );
+            })()}
           </section>
 
-          {/* Document Details Sidebar Panel */}
           {selectedDoc && (
-            <aside className="w-[360px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
+            <aside className="w-full xl:w-[320px] bg-white border border-[#dfe4ea] rounded-lg p-5 shadow-[0_4px_20px_rgba(0,0,0,0.06)] shrink-0 sticky top-[80px]">
               <header className="flex items-center justify-between border-b border-[#eef0f3] pb-4 mb-4">
                 <h3 className="m-0 font-extrabold text-base text-[#191c1e]">Document Details</h3>
                 <button
@@ -1461,7 +1940,26 @@ export default function AdminPage() {
                 
                 <span className="text-[#66758a]">Status</span>
                 <span className="font-bold text-slate-800 capitalize text-right">{selectedDoc.status || "uploaded"}</span>
+
+                <span className="text-[#66758a]">Visibility</span>
+                <span className="font-bold text-right">
+                  <span className={`inline-flex rounded px-1.5 py-0.2 text-[10px] font-black uppercase ${
+                    selectedDoc.is_public
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                      : "bg-slate-100 text-slate-700 border border-slate-200"
+                  }`}>
+                    {selectedDoc.is_public ? "Public" : "Private"}
+                  </span>
+                </span>
               </div>
+
+              {/* Moderation Section */}
+              {selectedDoc.moderation_reason && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs">
+                  <strong className="text-red-800">Moderation Reason:</strong>
+                  <p className="m-0 mt-1 text-red-700 font-medium">{selectedDoc.moderation_reason}</p>
+                </div>
+              )}
 
               {/* Tags Section */}
               <div className="mb-6">
@@ -1481,22 +1979,58 @@ export default function AdminPage() {
 
               {/* Action Buttons */}
               <div className="grid gap-2 border-t border-[#eef0f3] pt-4">
-                <button
-                  className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer"
-                  onClick={() => handleDownloadDoc(selectedDoc)}
-                  type="button"
-                >
-                  Download File
-                </button>
-                
-                <button
-                  className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-[#b42318] bg-white text-xs font-bold text-[#b42318] hover:bg-[#fff0f0] cursor-pointer"
-                  onClick={() => handlePurgeDoc(selectedDoc)}
-                  type="button"
-                >
-                  Remove Document
-                </button>
-                <p className="text-[10px] text-red-600 text-center italic m-0">Warning: This action cannot be undone.</p>
+                {selectedDoc.deleted_at === null ? (
+                  <>
+                    <button
+                      className={`w-full inline-flex h-9 items-center justify-center rounded-lg border px-3 text-xs font-bold transition cursor-pointer ${
+                        selectedDoc.is_public
+                          ? "border-slate-350 bg-white text-slate-700 hover:bg-slate-50"
+                          : "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
+                      }`}
+                      onClick={() => handleToggleVisibility(selectedDoc)}
+                      disabled={processingAction === `toggle-visibility-${selectedDoc.id}`}
+                      type="button"
+                    >
+                      {processingAction === `toggle-visibility-${selectedDoc.id}`
+                        ? "Updating..."
+                        : selectedDoc.is_public
+                        ? "Make Private"
+                        : "Make Public"}
+                    </button>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer"
+                      onClick={() => handleDownloadDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Download File
+                    </button>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-[#b42318] bg-white text-xs font-bold text-[#b42318] hover:bg-[#fff0f0] cursor-pointer"
+                      onClick={() => handleSoftDeleteDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Delete (Move to Trash)
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border-0 bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer"
+                      onClick={() => handleRestoreDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Restore Document
+                    </button>
+                    <button
+                      className="w-full inline-flex h-9 items-center justify-center rounded-lg border border-red-600 bg-white text-xs font-bold text-red-600 hover:bg-red-50 cursor-pointer"
+                      onClick={() => handlePurgeDoc(selectedDoc)}
+                      type="button"
+                    >
+                      Permanently Delete (Purge)
+                    </button>
+                    <p className="text-[10px] text-red-600 text-center italic m-0">Warning: This action cannot be undone.</p>
+                  </>
+                )}
               </div>
             </aside>
           )}
@@ -1507,7 +2041,7 @@ export default function AdminPage() {
 
   function renderSubjects() {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 min-w-0 w-full">
         <header>
           <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Subject Configuration</h1>
           <p className="mt-1 mb-0 text-sm text-[#464554]">Configure and manage academic subjects for course categorization.</p>
@@ -1607,30 +2141,37 @@ export default function AdminPage() {
   function renderActivityLogs() {
     const logs = overview?.recentActivity || [];
     return (
-      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+      <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)] min-w-0 w-full">
         <h1 className="m-0 text-2xl font-extrabold">Activity Logs</h1>
         <p className="mt-1 mb-5 text-sm text-[#66758a]">Platform audit logs and logs history.</p>
         
         {logs.length === 0 ? (
           <p className="text-sm text-[#66758a] italic">No activity logs recorded.</p>
-        ) : (
-          <div className="grid gap-3">
-            {logs.map((activity) => (
-              <article className="rounded-lg border border-[#eef0f3] p-4 flex justify-between items-start" key={activity.id}>
-                <div>
-                  <strong className="block text-sm text-slate-800">{activity.title}</strong>
-                  <span className="mt-1 block text-xs text-[#66758a]">
-                    Performed by: <span className="font-semibold text-slate-700">{activity.userEmail || "System"}</span>
-                  </span>
-                  {activity.description && (
-                    <span className="block text-xs text-slate-500 mt-0.5">Details: {activity.description}</span>
-                  )}
-                </div>
-                <span className="text-xs text-[#66758a] shrink-0 font-semibold">{timeAgo(activity.created_at)}</span>
-              </article>
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const totalLogPages = Math.ceil(logs.length / 15) || 1;
+          const displayedLogs = logs.slice((logPage - 1) * 15, logPage * 15);
+          return (
+            <>
+              <div className="grid gap-3">
+                {displayedLogs.map((activity) => (
+                  <article className="rounded-lg border border-[#eef0f3] p-4 flex justify-between items-start" key={activity.id}>
+                    <div>
+                      <strong className="block text-sm text-slate-800">{activity.title}</strong>
+                      <span className="mt-1 block text-xs text-[#66758a]">
+                        Performed by: <span className="font-semibold text-slate-700">{activity.userEmail || "System"}</span>
+                      </span>
+                      {activity.description && (
+                        <span className="block text-xs text-slate-500 mt-0.5">Details: {activity.description}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-[#66758a] shrink-0 font-semibold">{timeAgo(activity.created_at)}</span>
+                  </article>
+                ))}
+              </div>
+              <Pagination currentPage={logPage} totalPages={totalLogPages} onPageChange={setLogPage} />
+            </>
+          );
+        })()}
       </section>
     );
   }
@@ -1837,9 +2378,329 @@ export default function AdminPage() {
     );
   }
 
+  function renderAiUsage() {
+    if (!aiUsage) {
+      return (
+        <div className="flex h-[200px] items-center justify-center rounded-lg border border-dashed border-[#dfe4ea] bg-white text-sm font-semibold text-[#66758a]">
+          Loading AI Usage stats...
+        </div>
+      );
+    }
+
+    const { byModel = [], topUsers = [], requestsPerDay = [], liveQuota = [] } = aiUsage;
+
+    return (
+      <div className="flex flex-col gap-6">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">AI Usage & Cost Monitoring</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Real-time query metrics, token consumption, and model quota limits.</p>
+        </header>
+
+        {/* Live Quotas Section */}
+        <section className="grid gap-5 md:grid-cols-2">
+          {liveQuota.map((quota) => {
+            const hasLimits = quota.limits && quota.limits.rpm;
+            const rpmPct = hasLimits ? Math.min(100, Math.round((quota.used.requestsThisMinute / quota.limits.rpm) * 100)) : 0;
+            const tpmPct = hasLimits ? Math.min(100, Math.round((quota.used.tokensThisMinute / quota.limits.tpm) * 100)) : 0;
+            const rpdPct = hasLimits ? Math.min(100, Math.round((quota.used.requestsToday / quota.limits.rpd) * 100)) : 0;
+
+            const getBarColor = (pct) => {
+              if (pct > 85) return "bg-red-600";
+              if (pct > 60) return "bg-amber-500";
+              return "bg-emerald-600";
+            };
+
+            return (
+              <article className="rounded-lg border border-[#c7c4d7] bg-white p-5 shadow-sm" key={quota.model}>
+                <header className="flex items-center justify-between border-b border-[#eef0f3] pb-3 mb-4">
+                  <h3 className="m-0 text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded bg-indigo-50 text-xs">🤖</span>
+                    {quota.model}
+                  </h3>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5">
+                    {quota.provider}
+                  </span>
+                </header>
+
+                <div className="grid gap-4">
+                  {/* Requests per minute */}
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Requests per Minute (RPM)</span>
+                      <span className="text-slate-800">
+                        {quota.used.requestsThisMinute} / {hasLimits ? quota.limits.rpm : "∞"}
+                        {hasLimits ? ` (${rpmPct}%)` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getBarColor(rpmPct)}`}
+                        style={{ width: `${hasLimits ? rpmPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tokens per minute */}
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Tokens per Minute (TPM)</span>
+                      <span className="text-slate-800">
+                        {formatCompact(quota.used.tokensThisMinute)} / {hasLimits ? formatCompact(quota.limits.tpm) : "∞"}
+                        {hasLimits ? ` (${tpmPct}%)` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getBarColor(tpmPct)}`}
+                        style={{ width: `${hasLimits ? tpmPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Requests per day */}
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+                      <span className="text-slate-600">Requests per Day (RPD)</span>
+                      <span className="text-slate-800">
+                        {quota.used.requestsToday} / {hasLimits ? quota.limits.rpd : "∞"}
+                        {hasLimits ? ` (${rpdPct}%)` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${getBarColor(rpdPct)}`}
+                        style={{ width: `${hasLimits ? rpdPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+
+        {/* Charts & Models Overview */}
+        <section className="grid gap-5 lg:grid-cols-[1fr_360px]">
+          <ChartCard title="AI Requests per Day (Last 7 Days)">
+            <BarChart data={requestsPerDay} />
+          </ChartCard>
+
+          <article className="rounded-lg border border-[#c7c4d7] bg-white p-5 flex flex-col justify-between shadow-sm">
+            <header className="border-b border-[#eef0f3] pb-3 mb-4">
+              <h2 className="m-0 text-sm font-extrabold text-slate-900">Usage by Model</h2>
+            </header>
+            <div className="grid gap-3 overflow-y-auto max-h-[220px]">
+              {byModel.length ? byModel.map((modelItem) => (
+                <div className="flex items-center justify-between border-b border-[#f8fafc] pb-2 last:border-b-0" key={modelItem.model}>
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 truncate max-w-[185px]">{modelItem.model}</span>
+                    <span className="text-[10px] text-slate-500 uppercase">{modelItem.provider}</span>
+                  </div>
+                  <div className="text-right text-xs">
+                    <span className="block font-semibold text-slate-700">{modelItem.total_requests} reqs</span>
+                    <span className="text-[10px] text-slate-500">{formatCompact(modelItem.total_tokens)} tokens</span>
+                  </div>
+                </div>
+              )) : (
+                <p className="text-xs text-[#66758a] italic m-0">No API traffic recorded in this period.</p>
+              )}
+            </div>
+          </article>
+        </section>
+
+        {/* Top Consumers Table */}
+        <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-sm">
+          <header className="mb-4">
+            <h2 className="m-0 text-base font-extrabold text-slate-900">Top User Consumers Today</h2>
+            <p className="m-0 mt-0.5 text-xs text-[#66758a]">Students generating the highest volume of prompt requests and tokens today.</p>
+          </header>
+
+          {topUsers.length === 0 ? (
+            <div className="flex h-[100px] items-center justify-center text-xs font-semibold text-[#66758a] italic">
+              No user requests recorded today.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#d9dde6] text-[10px] uppercase tracking-wider text-[#66758a] font-bold">
+                    <th className="py-2.5 pr-4 w-12 text-center">Rank</th>
+                    <th className="py-2.5 pr-4">User Email</th>
+                    <th className="py-2.5 pr-4 text-right">Total Requests</th>
+                    <th className="py-2.5 pr-4 text-right">Total Tokens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topUsers.map((item, idx) => {
+                    const initials = (item.email || "U").slice(0, 2).toUpperCase();
+                    return (
+                      <tr className="border-b border-[#eef0f3] last:border-b-0" key={item.user_id}>
+                        <td className="py-3 pr-4 text-center font-bold text-slate-600">
+                          <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black ${
+                            idx === 0 ? "bg-amber-100 text-amber-800" : idx === 1 ? "bg-slate-100 text-slate-800" : "bg-orange-50 text-orange-700"
+                          }`}>
+                            #{idx + 1}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 font-semibold text-[#191c1e]">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#eef0f3] text-[8px] font-bold text-slate-600">
+                              {initials}
+                            </span>
+                            <span className="truncate max-w-[200px]">{item.email}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 text-right font-bold text-slate-800">{item.request_count}</td>
+                        <td className="py-3 pr-4 text-right text-slate-600">{formatCompact(item.total_tokens)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  function renderAnnouncements() {
+    const totalActiveUsers = users.filter(u => u.status === 'active').length;
+
+    return (
+      <div className="flex flex-col gap-5">
+        <header>
+          <h1 className="m-0 text-[28px] font-extrabold leading-tight text-[#191c1e]">Admin Announcements</h1>
+          <p className="mt-1 mb-0 text-sm text-[#464554]">Broadcast notifications and system-wide announcements to students or administrative users.</p>
+        </header>
+
+        <section className="grid items-start gap-[18px] lg:grid-cols-[360px_1fr]">
+          {/* Broadcast Form */}
+          <form className="grid gap-4 rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]" onSubmit={handleCreateAnnouncement}>
+            <h2 className="m-0 text-lg font-extrabold text-slate-800">Broadcast Announcement</h2>
+            
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Title
+              <input
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none"
+                value={announcementForm.title}
+                onChange={(e) => setAnnouncementForm(current => ({ ...current, title: e.target.value }))}
+                placeholder="e.g., Scheduled System Maintenance"
+                maxLength={150}
+                required
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Message
+              <textarea
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none min-h-[100px] resize-y"
+                value={announcementForm.message}
+                onChange={(e) => setAnnouncementForm(current => ({ ...current, message: e.target.value }))}
+                placeholder="Write your announcement details here..."
+                maxLength={500}
+                required
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-extrabold text-[#344154]">
+              Target Audience
+              <select
+                className="w-full rounded-lg border border-[#cbd5e1] px-[14px] py-3 text-[#172033] text-sm focus:border-[#4648d4] focus:outline-none bg-white"
+                value={announcementForm.targetRole}
+                onChange={(e) => setAnnouncementForm(current => ({ ...current, targetRole: e.target.value }))}
+              >
+                <option value="all">All Users</option>
+                <option value="user">Students Only</option>
+                <option value="admin">Administrators Only</option>
+              </select>
+            </label>
+
+            <button
+              className="w-full inline-flex h-11 items-center justify-center rounded-lg border-0 bg-[#4648d4] text-xs font-bold text-white hover:bg-[#383ac4] cursor-pointer disabled:opacity-50"
+              disabled={processingAction === "create-announcement"}
+              type="submit"
+            >
+              {processingAction === "create-announcement" ? "Broadcasting..." : "Broadcast Megaphone 📢"}
+            </button>
+          </form>
+
+          {/* History list */}
+          <section className="rounded-lg border border-[#dfe4ea] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <h2 className="m-0 text-lg font-extrabold text-slate-800 mb-4">Broadcast History</h2>
+            {announcements.length === 0 ? (
+              <div className="flex h-[200px] items-center justify-center text-sm font-semibold text-[#66758a] italic">
+                No announcements broadcasted yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#d9dde6] text-[10px] uppercase tracking-wider text-[#66758a] font-bold">
+                      <th className="py-3 pr-4">Title</th>
+                      <th className="py-3 pr-4">Target</th>
+                      <th className="py-3 pr-4">Created At</th>
+                      <th className="py-3 pr-4 text-center">Read Ratio</th>
+                      <th className="py-3 pr-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {announcements.map((item) => {
+                      const ratio = totalActiveUsers > 0 ? Math.round((item.read_count / totalActiveUsers) * 100) : 0;
+                      return (
+                        <tr className="border-b border-[#eef0f3] last:border-b-0" key={item.id}>
+                          <td className="py-3 pr-4 max-w-xs">
+                            <span className="block font-bold text-slate-800 break-words">{item.title}</span>
+                            <span className="block text-[10px] text-slate-500 mt-1 line-clamp-2 break-words">{item.message}</span>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-extrabold capitalize ${
+                              item.target_role === "all"
+                                ? "bg-blue-50 text-blue-700 border border-blue-100"
+                                : item.target_role === "admin"
+                                ? "bg-amber-50 text-amber-700 border border-amber-100"
+                                : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                            }`}>
+                              {item.target_role === "all" ? "All" : item.target_role === "admin" ? "Admins" : "Students"}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-slate-600 font-medium">
+                            {new Date(item.created_at).toLocaleString()}
+                          </td>
+                          <td className="py-3 pr-4 text-center">
+                            <div className="flex flex-col items-center">
+                              <span className="font-bold text-slate-800">{item.read_count} read</span>
+                              <span className="text-[10px] text-slate-500 mt-0.5">{ratio}% of active users</span>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 text-right">
+                            <button
+                              className="rounded border border-red-200 bg-white px-2 py-1 text-[10px] font-bold text-red-600 hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                              onClick={() => handleDeleteAnnouncement(item.id)}
+                              disabled={processingAction === `delete-announcement-${item.id}`}
+                              type="button"
+                            >
+                              {processingAction === `delete-announcement-${item.id}` ? "Recalling..." : "Recall"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </section>
+      </div>
+    );
+  }
+
   function renderContent() {
     if (isLoading) return <OverviewSkeleton />;
     if (activeSection === "users") return renderUsers();
+    if (activeSection === "ai-usage") return renderAiUsage();
+    if (activeSection === "announcements") return renderAnnouncements();
     if (activeSection === "documents") return renderDocuments();
     if (activeSection === "subjects") return renderSubjects();
     if (activeSection === "activity-logs") return renderActivityLogs();

@@ -97,26 +97,29 @@ export default function WorkspaceNotebook({
     isSavingRef.current = isSaving;
   }, [isSaving]);
 
+  const [pendingSelection, setPendingSelection] = useState(null);
+
   const refreshNotes = useCallback(async () => {
     if (!docId) {
       setNotes([]);
-      onNotesChange?.(0);
+      onNotesChange?.([]);
       return;
     }
 
     try {
       const nextNotes = await loadNotebookNotes(docId);
       setNotes(nextNotes);
-      onNotesChange?.(nextNotes.length);
+      onNotesChange?.(nextNotes);
     } catch {
       setNotes([]);
-      onNotesChange?.(0);
+      onNotesChange?.([]);
     }
   }, [docId, onNotesChange]);
 
   useEffect(() => {
     refreshNotes();
     setDraft(null);
+    setPendingSelection(null);
     setDraftColor(DEFAULT_NOTE_COLOR);
     setActiveNote(null);
   }, [docId, refreshNotes]);
@@ -128,12 +131,13 @@ export default function WorkspaceNotebook({
   const handleHighlightClick = useCallback((note) => {
     setActiveNote(note);
     setDraft(null);
+    setPendingSelection(null);
     clearBrowserSelection();
   }, [clearBrowserSelection]);
 
   const handleMouseUp = useCallback((event) => {
     if (!docId || isSavingRef.current || draftRef.current) return;
-    if (event.target.closest("[data-workspace-notebook-popup], [data-workspace-notebook-panel]")) {
+    if (event.target.closest("[data-workspace-notebook-popup], [data-workspace-notebook-panel], [data-workspace-note-action], [data-notes-popover]")) {
       return;
     }
 
@@ -142,13 +146,12 @@ export default function WorkspaceNotebook({
 
       const meta = getSelectionMeta(containerRef.current, window.getSelection());
       if (meta) {
-        setDraftColor(DEFAULT_NOTE_COLOR);
-        setDraft(meta);
-        setActiveNote(null);
-        clearBrowserSelection();
+        setPendingSelection(meta);
+      } else {
+        setPendingSelection(null);
       }
-    }, 0);
-  }, [docId, clearBrowserSelection]);
+    }, 10);
+  }, [docId]);
 
   const handleCancel = useCallback(() => {
     setDraft(null);
@@ -172,8 +175,11 @@ export default function WorkspaceNotebook({
           color: color || draftColor,
         });
 
-        setNotes((current) => [...current, saved]);
-        onNotesChange?.(notes.length + 1);
+        setNotes((current) => {
+          const next = [...current, saved];
+          onNotesChange?.(next);
+          return next;
+        });
         setDraft(null);
         setDraftColor(DEFAULT_NOTE_COLOR);
         clearBrowserSelection();
@@ -182,7 +188,7 @@ export default function WorkspaceNotebook({
         setIsSaving(false);
       }
     },
-    [clearBrowserSelection, docId, draft, draftColor, isSaving, notes.length, onNotesChange, onTogglePanel, viewMode]
+    [clearBrowserSelection, docId, draft, draftColor, isSaving, onNotesChange, onTogglePanel, viewMode]
   );
 
   const handleDelete = useCallback(
@@ -190,10 +196,13 @@ export default function WorkspaceNotebook({
       if (!docId) return;
       await removeNotebookNote(docId, noteId);
       if (activeNote?.id === noteId) setActiveNote(null);
-      setNotes((current) => current.filter((note) => note.id !== noteId));
-      onNotesChange?.(Math.max(notes.length - 1, 0));
+      setNotes((current) => {
+        const next = current.filter((note) => note.id !== noteId);
+        onNotesChange?.(next);
+        return next;
+      });
     },
-    [activeNote, docId, notes.length, onNotesChange]
+    [activeNote, docId, onNotesChange]
   );
 
   const handleUpdate = useCallback(
@@ -249,8 +258,28 @@ export default function WorkspaceNotebook({
 
   return (
     <WorkspaceNotebookContext.Provider value={contextValue}>
-      <div className="relative min-h-full" onMouseUp={handleMouseUp} ref={containerRef}>
+      <div className="relative h-full w-full flex-1 min-w-0 flex flex-col" onMouseUp={handleMouseUp} ref={containerRef}>
         {children}
+
+        {pendingSelection && !draft ? (
+          <div
+            className="absolute z-[70] flex cursor-pointer items-center gap-1.5 rounded-full border border-indigo-200 bg-white/95 px-3 py-1.5 text-xs font-bold text-indigo-700 shadow-md backdrop-blur-xs transition hover:bg-indigo-600 hover:text-white"
+            data-workspace-note-action="true"
+            style={{ top: Math.max(10, pendingSelection.cardTop - 36), left: pendingSelection.cardLeft }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setDraftColor(DEFAULT_NOTE_COLOR);
+              setDraft(pendingSelection);
+              setPendingSelection(null);
+              setActiveNote(null);
+              clearBrowserSelection();
+            }}
+          >
+            <span className="text-sm">✏️</span>
+            <span>Tạo ghi chú</span>
+          </div>
+        ) : null}
 
         {draft ? (
           <WorkspaceNotebookPopup

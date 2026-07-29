@@ -12,8 +12,12 @@ const ragComparisonService = require('./rag-comparison.service');
 const ragNeighborService = require('./rag-neighbor.service');
 const ragRerankService = require('./rag-rerank.service');
 const chatContextService = require('./chat-context.service');
+const verificationService = require('./verification.service');
 const documentOverviewModel = require('../models/document-overview.model');
 const documentOverviewService = require('./document-overview.service');
+const documentRoadmapModel = require('../models/document-roadmap.model');
+const documentRoadmapProgressModel = require('../models/document-roadmap-progress.model');
+const documentRoadmapService = require('./document-roadmap.service');
 const { getDocumentOverviewConfig } = require('../config/document-overview');
 const supabaseService = require('./supabase.service');
 const createError = require('../utils/createError');
@@ -218,8 +222,13 @@ async function processDocument({
   }
 
   await documentOverviewService.markStaleBestEffort(doc.id);
+  await documentRoadmapService.markStaleBestEffort(doc.id);
   const savedChunks = await documentChunkModel.replaceForDocument(doc.id, chunksToSave);
   const overview = await documentOverviewService.generateOverviewBestEffort({
+    document: savedDoc,
+    chunks: savedChunks,
+  });
+  const roadmap = await documentRoadmapService.generateRoadmapBestEffort({
     document: savedDoc,
     chunks: savedChunks,
   });
@@ -229,6 +238,7 @@ async function processDocument({
     chunkCount: savedChunks.length,
     status: 'ready',
     overviewStatus: overview?.status || null,
+    roadmapStatus: roadmap?.status || null,
   };
 }
 
@@ -385,6 +395,7 @@ function buildAssistantMetadata({
   processingError = null,
   requestContext = null,
   comparisonMetadata = null,
+  verificationResult = null,
 }) {
   const retrievalTypes = [...new Set(
     sources
@@ -412,6 +423,7 @@ function buildAssistantMetadata({
       inheritedImageTask: requestContext.inheritedImageTask || null,
     } : {}),
     ...(comparisonMetadata ? { comparison: comparisonMetadata } : {}),
+    ...(verificationResult?.verdict ? { verification: verificationResult } : {}),
   };
 }
 
@@ -802,6 +814,7 @@ async function saveAssistantAnswer({
   sources,
   requestContext,
   comparisonMetadata,
+  verificationResult = null,
 }) {
   const assistantMetadata = buildAssistantMetadata({
     provider,
@@ -811,6 +824,7 @@ async function saveAssistantAnswer({
     sources,
     requestContext,
     comparisonMetadata,
+    verificationResult,
   });
   const assistantMessage = await chatModel.addMessage(sessionId, 'assistant', answer, assistantMetadata);
   await safeTouchSession(sessionId);
@@ -1650,6 +1664,17 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
     overviewContext,
     overviewIntent,
   } = prepared;
+
+  // --- Verification layer: post-retrieval, pre-generation ---
+  // Runs only for factual questions in hybrid mode; never blocks the answer.
+  const verificationResult = await verificationService.verifyEvidenceSafe({
+    question: cleanedQuestion,
+    requestContext,
+    answerMode,
+    chunks: relevantChunks,
+  });
+  const verificationBadge = verificationService.buildVerificationBadge(verificationResult.verdict);
+
   let generationResult;
 
   try {
@@ -1669,6 +1694,8 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
       overviewContext,
       overviewIntent,
       imageQuestionType: requestContext.imageQuestionType,
+      verificationBadge,
+      userId,
     });
 
     await aiUsageService.logGeminiRequest({
@@ -1712,6 +1739,7 @@ async function executeAsk({ primaryDocumentId, sessionId, userId, question, disp
     sources,
     requestContext,
     comparisonMetadata,
+    verificationResult,
   });
   const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
@@ -1761,6 +1789,17 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
     overviewIntent,
   } = prepared;
 
+  // --- Verification layer: post-retrieval, pre-generation ---
+  // Runs only for factual questions in hybrid mode; never blocks the answer.
+  sendEvent?.('status', { message: 'Verifying evidence...' });
+  const verificationResult = await verificationService.verifyEvidenceSafe({
+    question: cleanedQuestion,
+    requestContext,
+    answerMode,
+    chunks: relevantChunks,
+  });
+  const verificationBadge = verificationService.buildVerificationBadge(verificationResult.verdict);
+
   let answer = '';
   let usageMetadata = null;
   sendEvent('status', { message: 'Generating answer...' });
@@ -1782,6 +1821,8 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
       overviewContext,
       overviewIntent,
       imageQuestionType: requestContext.imageQuestionType,
+      verificationBadge,
+      userId,
     })) {
       if (event.type === 'token' && event.text) {
         answer += event.text;
@@ -1830,6 +1871,7 @@ async function executeAskStream({ primaryDocumentId, sessionId, userId, question
     sources,
     requestContext,
     comparisonMetadata,
+    verificationResult,
   });
   const usage = await getUsageBestEffort({ model: selectedModel, userId });
 
@@ -1885,9 +1927,113 @@ async function retryDocumentOverview({ id, userId }) {
   };
 }
 
+async function resolveRoadmapDocument({ id, userId }) {
+  const docId = normalizeNumericId(id, 'documentId');
+  let doc = await documentService.canUseDocumentInChat(userId, docId);
+  if (!doc) {
+    const activeDoc = await documentModel.findActiveById(docId);
+    if (activeDoc?.document_scope === 'session' && String(activeDoc.user_id) === String(userId)) {
+      doc = activeDoc;
+    }
+  }
+  if (!doc) {
+    throw createError(404, 'Document not found');
+  }
+  return doc;
+}
+
+async function getDocumentRoadmap({ id, userId }) {
+  const doc = await resolveRoadmapDocument({ id, userId });
+  const roadmap = await documentRoadmapModel.findByDocumentId(doc.id);
+  const completedSteps = roadmap
+    ? await documentRoadmapProgressModel.findByRoadmapAndUser(roadmap.id, userId)
+    : [];
+  return { roadmap, completedSteps };
+}
+
+async function retryDocumentRoadmap({ id, userId }) {
+  const doc = await resolveRoadmapDocument({ id, userId });
+  return {
+    roadmap: await documentRoadmapService.retryRoadmap({ document: doc }),
+  };
+}
+
+// Roadmap user học dở (có tick nhưng chưa xong) cho widget "Tiếp tục học" — sắp theo lần tick gần nhất
+async function listRoadmapsInProgress({ userId, limit = 3 }) {
+  const rows = await documentRoadmapProgressModel.findByUserWithRoadmaps(userId);
+
+  const byRoadmap = new Map();
+  for (const row of rows) {
+    const roadmap = row.document_roadmaps;
+    if (!roadmap || !Array.isArray(roadmap.steps) || !roadmap.steps.length) continue;
+    if (!byRoadmap.has(row.roadmap_id)) {
+      byRoadmap.set(row.roadmap_id, { roadmap, completedOrders: new Set(), lastActivityAt: null });
+    }
+    const entry = byRoadmap.get(row.roadmap_id);
+    entry.completedOrders.add(Number(row.step_order));
+    if (!entry.lastActivityAt || new Date(row.completed_at) > new Date(entry.lastActivityAt)) {
+      entry.lastActivityAt = row.completed_at;
+    }
+  }
+
+  return [...byRoadmap.values()]
+    .map(({ roadmap, completedOrders, lastActivityAt }) => {
+      const steps = roadmap.steps;
+      const completedCount = steps.filter((step) => completedOrders.has(Number(step.order))).length;
+      const nextStep = steps.find((step) => !completedOrders.has(Number(step.order)));
+      return {
+        documentId: roadmap.document_id,
+        documentTitle: roadmap.documents?.title || '',
+        roadmapTitle: roadmap.title,
+        totalSteps: steps.length,
+        completedSteps: completedCount,
+        nextStepHeading: nextStep?.heading || null,
+        lastActivityAt,
+      };
+    })
+    .filter((item) => item.completedSteps > 0 && item.completedSteps < item.totalSteps)
+    .sort((a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt))
+    .slice(0, Math.max(1, Math.min(10, Number(limit) || 3)));
+}
+
+async function toggleRoadmapStep({ id, userId, stepOrder, completed }) {
+  const doc = await resolveRoadmapDocument({ id, userId });
+  const normalizedStepOrder = normalizeNumericId(stepOrder, 'stepOrder');
+  const roadmap = await documentRoadmapModel.findByDocumentId(doc.id);
+  if (!roadmap) {
+    throw createError(404, 'Roadmap not found');
+  }
+  const stepExists = (roadmap.steps || []).some(
+    (step) => Number(step.order) === normalizedStepOrder
+  );
+  if (!stepExists) {
+    throw createError(400, 'stepOrder is invalid');
+  }
+  if (completed) {
+    await documentRoadmapProgressModel.markStepComplete({
+      roadmapId: roadmap.id,
+      userId,
+      stepOrder: normalizedStepOrder,
+    });
+  } else {
+    await documentRoadmapProgressModel.markStepIncomplete({
+      roadmapId: roadmap.id,
+      userId,
+      stepOrder: normalizedStepOrder,
+    });
+  }
+  return {
+    completedSteps: await documentRoadmapProgressModel.findByRoadmapAndUser(roadmap.id, userId),
+  };
+}
+
 module.exports = {
   processDocument,
   retryDocumentOverview,
+  getDocumentRoadmap,
+  retryDocumentRoadmap,
+  toggleRoadmapStep,
+  listRoadmapsInProgress,
   askDocument,
   askDocumentStream,
   askSession,

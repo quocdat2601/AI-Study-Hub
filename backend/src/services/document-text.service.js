@@ -13,6 +13,8 @@ const MIME_TYPES = {
 };
 
 const MIN_READABLE_CHARS = 50;
+const PAGE_OCR_THRESHOLD_CHARS = 100;
+
 const PLACEHOLDER_TEXTS = new Set([
   'Seeded MLN131 study material uploaded from real PDF source.',
   'Seeded personal document categorized as Other.',
@@ -77,7 +79,76 @@ function buildOcrFailureResult({ error, metadata = {}, fallbackFromPdfParse = fa
   };
 }
 
+/**
+ * Hybrid Page-Level PDF Text Extraction.
+ * Splits PDF page-by-page. For each page:
+ * 1. Extract text using pdf-parse.
+ * 2. If page text length (excluding whitespace) < 100 chars, runs OCR for that page.
+ * 3. Constructs exact pageBoundaries metadata for chunk mapping.
+ * 4. Falls back safely to whole-buffer processing if page splitting fails.
+ */
 async function extractPdfText(buffer) {
+  const pageEntries = await pdfService.splitPdfPages(buffer);
+
+  if (Array.isArray(pageEntries) && pageEntries.length > 0) {
+    const textParts = [];
+    const pageBoundaries = [];
+    let cumulativeOffset = 0;
+    let ocrCount = 0;
+
+    for (const page of pageEntries) {
+      const { pageNumber, buffer: pageBuffer } = page;
+      let rawPageText = await pdfService.extractPageText(pageBuffer);
+      let cleanPageText = normalizeText(rawPageText);
+
+      // Check if page needs OCR (< 100 non-whitespace characters)
+      const nonSpaceLength = cleanPageText.replace(/\s+/g, '').length;
+      if (nonSpaceLength < PAGE_OCR_THRESHOLD_CHARS) {
+        try {
+          const pageOcr = await ocrService.extractPdfText(pageBuffer);
+          const ocrText = normalizeText(pageOcr?.text);
+          if (ocrText && ocrText.replace(/\s+/g, '').length > nonSpaceLength) {
+            cleanPageText = ocrText;
+            ocrCount += 1;
+          }
+        } catch {
+          // Ignore single-page OCR error and keep pdf-parse text
+        }
+      }
+
+      if (cleanPageText) {
+        if (textParts.length > 0) {
+          cumulativeOffset += 2; // '\n\n' separator length
+        }
+        const startChar = cumulativeOffset;
+        textParts.push(cleanPageText);
+        cumulativeOffset += cleanPageText.length;
+
+        pageBoundaries.push({
+          pageNumber,
+          startChar,
+          endChar: cumulativeOffset,
+        });
+      }
+    }
+
+    const fullText = textParts.join('\n\n');
+    if (isExtractedTextUseful(fullText)) {
+      return {
+        text: fullText,
+        status: 'ready',
+        error: null,
+        metadata: {
+          extractionMethod: ocrCount > 0 ? 'hybrid-page-ocr' : 'hybrid-page-pdf-parse',
+          ocrPagesCount: ocrCount,
+          totalPagesCount: pageEntries.length,
+          pageBoundaries,
+        },
+      };
+    }
+  }
+
+  // Safe Fallback for encrypted, corrupted, or unsplittable PDFs
   const pdfText = normalizeText(await pdfService.extractText(buffer));
   if (isExtractedTextUseful(pdfText)) {
     return {
@@ -85,7 +156,7 @@ async function extractPdfText(buffer) {
       status: 'ready',
       error: null,
       metadata: {
-        extractionMethod: 'pdf-parse',
+        extractionMethod: 'pdf-parse-fallback',
         fallbackFromPdfParse: false,
       },
     };
@@ -96,7 +167,7 @@ async function extractPdfText(buffer) {
     return buildExtractionResult(
       ocr.text,
       {
-        extractionMethod: 'ocr',
+        extractionMethod: 'ocr-fallback',
         fallbackFromPdfParse: true,
         ...ocr.metadata,
       },

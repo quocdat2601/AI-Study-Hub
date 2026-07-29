@@ -1,8 +1,19 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { getStudyMaterials, generateStudyMaterial, deleteStudyMaterial } from "../../services/aiApi.js";
 import { SparklesIcon, ClockIcon } from "./WorkspaceIcons.jsx";
+import WorkspaceRoadmapView from "./WorkspaceRoadmapView.jsx";
 
-// Custom icons for the Studio panel
+// =========================================================================
+// SECTION 1: CUSTOM SVGS & ICON COMPONENTS
+// Inline SVG component icons used throughout the Studio tab.
+// =========================================================================
+
+/**
+ * Flashcard icon component.
+ * @param {object} props
+ * @param {string} [props.className] - CSS classes.
+ * @param {number} [props.size] - Width/height size (default 20).
+ */
 function FlashcardIcon({ className, size = 20 }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -12,6 +23,12 @@ function FlashcardIcon({ className, size = 20 }) {
   );
 }
 
+/**
+ * Quiz/Question-mark circle icon component.
+ * @param {object} props
+ * @param {string} [props.className] - CSS classes.
+ * @param {number} [props.size] - Width/height size (default 20).
+ */
 function QuizIcon({ className, size = 20 }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -22,6 +39,12 @@ function QuizIcon({ className, size = 20 }) {
   );
 }
 
+/**
+ * Mindmap network connector node icon component.
+ * @param {object} props
+ * @param {string} [props.className] - CSS classes.
+ * @param {number} [props.size] - Width/height size (default 20).
+ */
 function MindmapIcon({ className, size = 20 }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -35,6 +58,12 @@ function MindmapIcon({ className, size = 20 }) {
   );
 }
 
+/**
+ * Lock padlock icon component.
+ * @param {object} props
+ * @param {string} [props.className] - CSS classes.
+ * @param {number} [props.size] - Width/height size (default 16).
+ */
 function LockIcon({ className, size = 16 }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -44,7 +73,19 @@ function LockIcon({ className, size = 16 }) {
   );
 }
 
-// Tree view for Mindmap
+// =========================================================================
+// SECTION 2: MINDMAP COMPONENT & UTILITY HELPERS
+// Recursive mindmap rendering component and formatting utilities to calculate
+// quiz keys letters, answers options formatting, and building chat questions prompts.
+// =========================================================================
+
+/**
+ * Recursive React component that renders nested trees of Mindmap hierarchy.
+ * @param {object} props
+ * @param {object} props.node - Current node metadata containing label and child elements.
+ * @param {number} [props.depth] - Nested tree level offset (default 0).
+ * @param {boolean} [props.forceOpen] - Toggle trigger to force open/close nodes.
+ */
 function MindmapNode({ node, depth = 0, forceOpen }) {
   const [isOpen, setIsOpen] = useState(true);
   const hasChildren = node.children && node.children.length > 0;
@@ -90,21 +131,44 @@ function MindmapNode({ node, depth = 0, forceOpen }) {
 
 const STUDIO_MATERIAL_COUNTS = { flashcard: 10, quiz: 5 };
 
+/**
+ * Normalizes selection option strings for character checking.
+ * @param {string} value - Text input value.
+ * @returns {string} Trimmed lowercase normalization.
+ */
 function normalizeOptionText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+/**
+ * Maps the exact option string index matching the correct answer to its alphabet letter (A, B, C, D).
+ * @param {Array<string>} options - Quiz option arrays.
+ * @param {string} answer - Text answer string.
+ * @returns {string} Capital option letter.
+ */
 function findOptionLetter(options, answer) {
   const idx = (options || []).findIndex((opt) => normalizeOptionText(opt) === normalizeOptionText(answer));
   return idx !== -1 ? String.fromCharCode(65 + idx) : "";
 }
 
+/**
+ * Structures quiz options array into indexed text rows representation (e.g. A. option, B. option).
+ * @param {Array<string>} options - Quiz options list.
+ * @returns {string} Formatted options block string.
+ */
 function formatQuizOptions(options) {
   return (options || [])
     .map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt}`)
     .join("\n");
 }
 
+/**
+ * Forms the detailed ask question context payload to send to Chat when requesting quiz explanations.
+ * @param {object} question - Target quiz question item.
+ * @param {object} [context] - Context options map.
+ * @param {string} [context.userAnswer] - Selection index chosen by user.
+ * @returns {{displayText: string, question: string}} Formulated display chat text and payload.
+ */
 function buildQuizChatPayload(question, { userAnswer } = {}) {
   const options = question.options || [];
   const optionsText = formatQuizOptions(options);
@@ -137,6 +201,12 @@ Giải thích tham khảo: ${question.explanation || "Chưa có"}`;
   return { displayText, question: questionForApi };
 }
 
+/**
+ * Forms ask question details to query Chat workspace logs when requesting flashcard concepts explanations.
+ * @param {string} front - Front question side text.
+ * @param {string} back - Back answer side text.
+ * @returns {{displayText: string, question: string}} Formulated segments map.
+ */
 function buildFlashcardChatPayload(front, back) {
   const displayText = `Tôi đang xem lại thẻ ghi nhớ trong Studio.
 
@@ -152,7 +222,24 @@ Gợi ý đáp án: ${back}`;
   return { displayText, question: questionForApi };
 }
 
-export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, className = "" }) {
+// =========================================================================
+// SECTION 3: WORKSPACE STUDIO PANEL COMPONENT
+// Main React component containing layout handlers and hooks for study
+// material lifecycle management (fetching, generating, rendering, and quizzes).
+// =========================================================================
+
+/**
+ * WorkspaceStudioPanel component.
+ * Allows users to trigger AI generation of quizzes, flashcards, or mindmaps,
+ * and review them inside interactive study modes.
+ * @param {object} props
+ * @param {object} props.selectedDocument - Currently open document.
+ * @param {string} props.selectedModel - Selected LLM engine name.
+ * @param {number} props.width - Sidebar layout width.
+ * @param {Function} props.onAskQuestion - Trigger callback to submit pre-loaded queries to Chat.
+ * @param {string} [props.className] - CSS classes.
+ */
+export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, onPrepareQuestion, className = "" }) {
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -160,8 +247,9 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [studioTab, setStudioTab] = useState("materials"); // "materials" | "roadmap"
 
-  // Flashcards state
+  // Flashcards study mode state parameters
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [cardOrder, setCardOrder] = useState([]);
@@ -171,14 +259,17 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
   const [isPracticeDropdownOpen, setIsPracticeDropdownOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Quiz state
+  // Quiz self-testing state parameters
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState({}); // { [questionIdx]: selectedOptionString }
+  const [selectedAnswers, setSelectedAnswers] = useState({}); // Maps { [questionIdx]: selectedOptionString }
   const [quizScore, setQuizScore] = useState(null);
 
-  // Mindmap state
+  // Mindmap tree toggle parameters
   const [mindmapAllOpen, setMindmapAllOpen] = useState(undefined);
 
+  /**
+   * Fetches previously generated study materials of document from database.
+   */
   const loadMaterials = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -1168,7 +1259,34 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
         </div>
       )}
 
-      {activeMaterial ? renderActiveMaterial() : renderDashboard()}
+      {!activeMaterial && (
+        <div className="px-4 pt-4">
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+            <button
+              onClick={() => setStudioTab("materials")}
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${studioTab === "materials"
+                ? "bg-white text-indigo-600 shadow-sm"
+                : "bg-transparent text-slate-500 hover:text-slate-800"
+                }`}
+            >
+              Học liệu
+            </button>
+            <button
+              onClick={() => setStudioTab("roadmap")}
+              className={`flex-1 text-center py-1.5 text-xs font-bold rounded-lg border-0 cursor-pointer transition-all duration-200 ${studioTab === "roadmap"
+                ? "bg-white text-indigo-600 shadow-sm"
+                : "bg-transparent text-slate-500 hover:text-slate-800"
+                }`}
+            >
+              Lộ trình học
+            </button>
+          </div>
+        </div>
+      )}
+
+      {studioTab === "roadmap" && !activeMaterial
+        ? <WorkspaceRoadmapView selectedDocument={selectedDocument} onAskQuestion={onAskQuestion} onPrepareQuestion={onPrepareQuestion} />
+        : (activeMaterial ? renderActiveMaterial() : renderDashboard())}
 
       {confirmDeleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">

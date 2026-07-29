@@ -59,6 +59,7 @@ export default function TrashPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(() => new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -68,6 +69,7 @@ export default function TrashPage() {
       const data = await listTrash();
       setDocs(Array.isArray(data) ? data : []);
       setSelected(new Set());
+      setIsSelectMode(false);
     } catch (err) {
       setError(err.response?.data?.error || "Could not load trash.");
     } finally {
@@ -93,6 +95,11 @@ export default function TrashPage() {
 
   function toggleSelectAll() {
     setSelected((prev) => (prev.size === docs.length ? new Set() : new Set(docs.map((doc) => doc.id))));
+  }
+
+  function exitSelectMode() {
+    setSelected(new Set());
+    setIsSelectMode(false);
   }
 
   async function handleRestore(doc) {
@@ -140,6 +147,31 @@ export default function TrashPage() {
     }
   }
 
+  async function handleBulkPurge() {
+    if (!selected.size) return;
+    const ok = window.confirm(
+      `Permanently delete ${selected.size} document(s)? This cannot be undone — the files will be removed from storage.`
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      const results = await Promise.allSettled([...selected].map((id) => purgeDocument(id)));
+      const failed = results.filter((item) => item.status === "rejected").length;
+      const purged = results.length - failed;
+      addToast({
+        type: failed ? "error" : "success",
+        title: failed ? "Partially deleted" : "Permanently deleted",
+        message: failed
+          ? `${purged} document(s) removed, ${failed} failed.`
+          : `${purged} document(s) were removed forever.`,
+      });
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleEmptyTrash() {
     if (!docs.length) return;
     const ok = window.confirm(
@@ -163,7 +195,7 @@ export default function TrashPage() {
 
   return (
     <DashboardShell>
-      <div className="mx-auto w-full max-w-[1280px]">
+      <div className={`mx-auto w-full max-w-[1280px] ${isSelectMode ? "pb-24" : ""}`}>
         <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-[#64748b] to-[#475569] p-6 text-white shadow-[0_12px_30px_rgba(71,85,105,0.25)] md:p-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -184,20 +216,22 @@ export default function TrashPage() {
         </section>
 
         {docs.length ? (
-          <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e9ef] bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <label className="flex items-center gap-2 text-sm font-bold text-[#344154] dark:text-slate-200">
-              <input checked={allSelected} className="h-4 w-4 cursor-pointer" onChange={toggleSelectAll} type="checkbox" />
-              {selected.size ? `${selected.size} selected` : "Select all"}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <ActionButton disabled={busy || !selected.size} onClick={handleBulkRestore}>
-                Restore selected
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <ActionButton
+                disabled={busy}
+                onClick={isSelectMode ? exitSelectMode : () => setIsSelectMode(true)}
+              >
+                {isSelectMode ? "Cancel" : "Select"}
               </ActionButton>
-              <ActionButton disabled={busy} onClick={handleEmptyTrash} tone="danger">
-                Empty trash
-              </ActionButton>
+              <p className="m-0 text-sm text-[#66758a] dark:text-slate-400">
+                {docs.length} document{docs.length === 1 ? "" : "s"} in trash
+              </p>
             </div>
-          </section>
+            <ActionButton disabled={busy} onClick={handleEmptyTrash} tone="danger">
+              Empty trash
+            </ActionButton>
+          </div>
         ) : null}
 
         {error ? (
@@ -214,19 +248,27 @@ export default function TrashPage() {
           <div className="grid gap-4">
             {docs.map((doc) => {
               const left = daysLeft(doc.deleted_at);
+              const isSelected = selected.has(doc.id);
               return (
                 <article
-                  className="rounded-2xl border border-[#e5e9ef] bg-white p-5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:shadow-lg dark:hover:shadow-black/20"
+                  className={`rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md dark:bg-slate-900 dark:hover:shadow-lg dark:hover:shadow-black/20 ${
+                    isSelected
+                      ? "border-[#4648d4] ring-1 ring-[#4648d4]/30 dark:border-indigo-500 dark:ring-indigo-500/30"
+                      : "border-[#e5e9ef] dark:border-slate-800"
+                  }`}
                   key={doc.id}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 flex-1 items-start gap-4">
-                      <input
-                        checked={selected.has(doc.id)}
-                        className="mt-1 h-4 w-4 cursor-pointer"
-                        onChange={() => toggleSelect(doc.id)}
-                        type="checkbox"
-                      />
+                      {isSelectMode ? (
+                        <input
+                          aria-label={`Select ${doc.title}`}
+                          checked={isSelected}
+                          className="mt-1 h-4 w-4 flex-none cursor-pointer accent-[#4648d4]"
+                          onChange={() => toggleSelect(doc.id)}
+                          type="checkbox"
+                        />
+                      ) : null}
                       <span className="flex h-16 w-16 flex-none items-center justify-center rounded-xl bg-[#f2f4f6] text-xs font-black text-[#66758a] dark:bg-slate-800 dark:text-slate-400">
                         {getMimeLabel(doc.cloud_files?.mime_type)}
                       </span>
@@ -280,6 +322,35 @@ export default function TrashPage() {
             </Link>
           </div>
         )}
+
+        {isSelectMode && docs.length ? (
+          <div className="fixed inset-x-0 bottom-6 z-40 flex justify-center px-6">
+            <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e5e9ef] bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900">
+              <span className="text-sm font-bold text-[#172033] dark:text-slate-100">
+                {selected.size} selected
+              </span>
+              <button
+                className="text-xs font-bold text-[#4648d4] underline-offset-2 hover:underline cursor-pointer dark:text-indigo-300"
+                onClick={toggleSelectAll}
+                type="button"
+              >
+                {allSelected ? "Clear all" : `Select all (${docs.length})`}
+              </button>
+              <span className="h-5 w-px bg-[#e5e9ef] dark:bg-slate-700" />
+              <div className="flex flex-wrap gap-2">
+                <ActionButton disabled={busy || !selected.size} onClick={handleBulkRestore}>
+                  Restore
+                </ActionButton>
+                <ActionButton disabled={busy || !selected.size} onClick={handleBulkPurge} tone="danger">
+                  Delete permanently
+                </ActionButton>
+                <ActionButton disabled={busy} onClick={exitSelectMode}>
+                  Cancel
+                </ActionButton>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </div>
     </DashboardShell>
   );

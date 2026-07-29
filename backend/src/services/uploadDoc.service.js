@@ -49,10 +49,7 @@ async function cleanupFailedUpload({ storagePath, cloudFile, document }) {
   }
 }
 
-/**
- * Lấy nội dung cho document: nếu file trùng và đã có nguồn trích xuất sẵn thì sao chép
- * lại text + chunks (khỏi gọi lại OCR/Embedding API); nếu không thì trích xuất bình thường.
- */
+
 async function applyExtraction({ document, file, contentHash, deduped }) {
   if (deduped) {
     const source = await documentModel.findReadySourceByHash(contentHash, document.id);
@@ -69,7 +66,7 @@ async function applyExtraction({ document, file, contentHash, deduped }) {
       await documentChunkModel.copyFromDocument(source.id, document.id);
       return savedDocument;
     }
-    // Chưa có nguồn nào trích xuất xong → tự trích xuất từ buffer (vẫn còn trong RAM)
+
   }
 
   let extraction;
@@ -81,9 +78,7 @@ async function applyExtraction({ document, file, contentHash, deduped }) {
   return documentModel.updateExtraction(document.id, extraction);
 }
 
-/**
- * UploadDoc — upload file lên Supabase Storage và lưu metadata vào DB.
- */
+
 async function upload({
   userId,
   file,
@@ -121,7 +116,7 @@ async function upload({
     );
   }
 
-  // Mã định danh độc nhất từ nội dung tệp — để phát hiện file đã có trên hệ thống
+
   const contentHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
   const existingFile = await documentModel.findCloudFileByHash(contentHash);
   const deduped = Boolean(existingFile);
@@ -132,7 +127,7 @@ async function upload({
   let document = null;
 
   try {
-    // Chỉ đẩy file thô lên Storage khi đây là nội dung MỚI (chưa từng tồn tại)
+
     if (!deduped) {
       await supabaseService.uploadFile(file.buffer, storagePath, file.mimetype);
     }
@@ -176,7 +171,7 @@ async function upload({
     if (tags) {
       await tagModel.setForDocument(savedDocument.id, tags);
     } else if (savedDocument?.extraction_status === 'ready') {
-      // Không nhập tag thủ công → AI auto-tag (best-effort, không chặn upload)
+
       await aiTagService.autoTagDocument({
         userId,
         docId: savedDocument.id,
@@ -221,7 +216,7 @@ async function upload({
       document: documentWithTags,
     };
   } catch (err) {
-    // Khi dedup, KHÔNG xóa object vật lý vì nó đang được dùng chung
+
     await cleanupFailedUpload({
       storagePath: deduped ? null : storagePath,
       cloudFile,

@@ -507,3 +507,72 @@ body,
 .card-flip-inner.is-flipped {
   transform: rotateY(180deg);
 }
+
+/* Inline Citation Badge Styles */
+.citation-badge-inline {
+  font-size: 0.85em;
+  vertical-align: baseline;
+  position: relative;
+  top: -0.4em;
+  margin: 0 2px;
+  font-weight: 600;
+  color: #4f46e5;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.citation-badge-inline:hover {
+  color: #3730a3;
+  text-decoration: underline;
+}
+
+@keyframes citation-pulse {
+  0% {
+    background-color: rgba(253, 224, 71, 0.95);
+    box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.5);
+  }
+  50% {
+    background-color: rgba(254, 240, 138, 0.9);
+    box-shadow: 0 0 0 6px rgba(234, 179, 8, 0.3);
+  }
+  100% {
+    background-color: rgba(254, 240, 138, 0.7);
+    box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.4);
+  }
+}
+
+.citation-highlight-active {
+  background-color: rgba(254, 240, 138, 0.85) !important;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.5) !important;
+  border-radius: 4px;
+  animation: citation-pulse 0.8s ease-in-out 2 alternate;
+  transition: background-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+/* 
+  Overrides for PDF text layer spans to prevent the "overlapping bricks" effect.
+  PDF text spans are disjointed, so box-shadows with opacity create dark overlapping edges.
+*/
+.react-pdf__Page__textContent span.citation-highlight-active {
+  background-color: rgba(253, 224, 71, 0.45) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  animation: citation-pdf-pulse 0.8s ease-in-out 2 alternate !important;
+  mix-blend-mode: multiply;
+}
+
+@keyframes citation-pdf-pulse {
+  0% {
+    background-color: rgba(250, 204, 21, 0.65);
+  }
+  50% {
+    background-color: rgba(250, 204, 21, 0.35);
+  }
+  100% {
+    background-color: rgba(250, 204, 21, 0.45);
+  }
+}

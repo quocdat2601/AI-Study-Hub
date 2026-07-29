@@ -150,7 +150,7 @@ export default function DocumentSidebar({
           <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 focus-within:border-[#5b4fd4] focus-within:ring-2 focus-within:ring-[#e4e7ff]">
             <SearchIcon className="shrink-0 text-slate-400" size={15} />
             <input
-              className="min-h-10 w-full border-0 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+              className="h-10 flex-1 min-w-0 border-0 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400 py-0"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search documents..."
               value={search}

@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const adminController = require('../controllers/admin.controller');
+const announcementController = require('../controllers/announcement.controller');
 const verifyToken = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 
@@ -172,5 +173,60 @@ router.patch('/community/replies/:id', adminController.moderateCommunityReply);
  *       200: { description: List of documents }
  */
 router.get('/documents', adminController.getAllDocuments);
+
+/**
+ * @swagger
+ * /api/admin/ai-usage:
+ *   get:
+ *     summary: Get AI usage & cost monitoring statistics
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: AI Usage overview statistics }
+ */
+router.get('/ai-usage', adminController.getAiUsage);
+
+/**
+ * @swagger
+ * /api/admin/announcements:
+ *   post:
+ *     summary: Broadcast a new system-wide or targeted announcement
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, message]
+ *             properties:
+ *               title: { type: string }
+ *               message: { type: string }
+ *               targetRole: { type: string, enum: [all, user, admin] }
+ *     responses:
+ *       201: { description: Announcement created }
+ *   get:
+ *     summary: Get historical announcements list with read count metrics
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: List of announcements }
+ * /api/admin/announcements/{id}:
+ *   delete:
+ *     summary: Recall / delete an announcement
+ *     tags: [Admin]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ */
+router.post('/announcements', announcementController.createAnnouncement);
+router.get('/announcements', announcementController.listAnnouncements);
+router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
 module.exports = router;

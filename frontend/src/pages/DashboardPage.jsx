@@ -22,6 +22,7 @@ import { getDashboardData } from "../services/dashboardApi.js";
 import { listSubjects } from "../services/subjectApi.js";
 import { getRecommendations } from "../services/onboardingApi.js";
 import { listTrendingDocuments } from "../services/documentApi.js";
+import { getRoadmapsInProgress } from "../services/aiApi.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
 import { getDisplayName } from "../lib/userDisplay.js";
 
@@ -113,26 +114,30 @@ export default function DashboardPage() {
   const [subjects, setSubjects] = useState([]);
   const [recommendations, setRecommendations] = useState({ reason: null, items: [] });
   const [trending, setTrending] = useState([]);
+  const [roadmapsInProgress, setRoadmapsInProgress] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [dashboardData, subjectList, recs, trendingDocs] = await Promise.all([
+      const [dashboardData, subjectList, recs, trendingDocs, roadmaps] = await Promise.all([
         getDashboardData(),
         listSubjects(),
         getRecommendations(8).catch(() => ({ reason: null, items: [] })),
         listTrendingDocuments(8).catch(() => []),
+        getRoadmapsInProgress(3).catch(() => []),
       ]);
       setDashboard(dashboardData);
       setSubjects(subjectList);
       setRecommendations(recs);
       setTrending(trendingDocs);
+      setRoadmapsInProgress(roadmaps);
     } catch {
       setDashboard(null);
       setSubjects([]);
       setRecommendations({ reason: null, items: [] });
       setTrending([]);
+      setRoadmapsInProgress([]);
     } finally {
       setIsLoading(false);
     }
@@ -146,8 +151,11 @@ export default function DashboardPage() {
 
   const usedBytes = Number(dashboard?.storage?.used || 0);
   const limitBytes = Number(dashboard?.storage?.limit || 0);
-  const usedPercent = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 100)) : 0;
+  const usedRatio = limitBytes > 0 ? Math.min(100, (usedBytes / limitBytes) * 100) : 0;
+  const usedPercent = usedRatio < 1 && usedRatio > 0 ? usedRatio.toFixed(1) : Math.round(usedRatio);
   const docCount = dashboard?.stats?.documents ?? 0;
+  const bookmarkCount = dashboard?.stats?.bookmarks ?? 0;
+  const chatCount = dashboard?.stats?.chats ?? 0;
   const recentDocuments = dashboard?.recentDocuments ?? [];
 
   if (redirectPath) {
@@ -215,14 +223,14 @@ export default function DashboardPage() {
         <StatCard
           label="Bookmarks"
           tone="bookmarks"
-          value={0}
+          value={isLoading ? "..." : bookmarkCount}
           icon={<BookmarkIcon className="h-5 w-5" />}
         />
 
         <StatCard
           label="AI Chats"
           tone="chats"
-          value={0}
+          value={isLoading ? "..." : chatCount}
           icon={<MessagesIcon className="h-5 w-5" />}
         />
       </section>
@@ -349,6 +357,39 @@ export default function DashboardPage() {
             <div className="mt-4 grid gap-2">
               {isLoading ? (
                 <p className="m-0 text-sm text-slate-500 dark:text-slate-400">Loading activity...</p>
+              ) : roadmapsInProgress.length ? (
+                roadmapsInProgress.map((item) => {
+                  const percent = item.totalSteps
+                    ? Math.round((item.completedSteps / item.totalSteps) * 100)
+                    : 0;
+                  return (
+                    <Link
+                      className="flex flex-col gap-2 rounded-xl border border-slate-200 px-3 py-3 no-underline transition hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-slate-700 dark:hover:border-indigo-600 dark:hover:bg-slate-800"
+                      key={`roadmap-${item.documentId}`}
+                      to={`/workspace/documents/${item.documentId}`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <strong className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {item.documentTitle || item.roadmapTitle}
+                        </strong>
+                        <span className="shrink-0 text-xs font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
+                          {item.completedSteps}/{item.totalSteps} bước
+                        </span>
+                      </span>
+                      <span className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <span
+                          className="block h-full rounded-full bg-indigo-500 transition-all duration-500"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </span>
+                      {item.nextStepHeading && (
+                        <span className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          Tiếp theo: {item.nextStepHeading}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })
               ) : recentDocuments.length ? (
                 recentDocuments.slice(0, 3).map((doc, index) => (
                   <Link

@@ -1,6 +1,28 @@
-const { genAI, modelName } = require('../config/gemini');
+/**
+ * Gemini service — wraps Google GenAI SDK.
+ * Supports an optional `apiKey` override per-request (BYOK).
+ * When `apiKey` is provided, a short-lived client is created for that call only.
+ */
+const { GoogleGenAI } = require('@google/genai');
+const { genAI: defaultGenAI, modelName } = require('../config/gemini');
 
-const GEMINI_TIMEOUT_MS = 15000;
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 90000;
+
+/**
+ * Resolve the correct GoogleGenAI client.
+ * If a custom apiKey is supplied (BYOK), create a short-lived instance.
+ * Otherwise fall back to the module-level singleton.
+ */
+function resolveClient(apiKey) {
+  if (apiKey) return new GoogleGenAI({ apiKey });
+  if (!defaultGenAI) {
+    const err = new Error('Gemini API key is not configured');
+    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
+    err.statusCode = 503;
+    throw err;
+  }
+  return defaultGenAI;
+}
 
 function withTimeout(promise, timeoutMs) {
   let timeoutId;
@@ -25,16 +47,10 @@ function extractUsageMetadata(response) {
 }
 
 async function queryDocument(question, documentText) {
-  if (!genAI) {
-    const err = new Error('Gemini API key is not configured');
-    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
-    err.statusCode = 503;
-    throw err;
-  }
-
+  const client = resolveClient(null);
   const prompt = `You are a study assistant. Answer in the same language as the user question. If the language is unclear or mixed, answer in Vietnamese. Answer ONLY using the document text below. Do not use outside knowledge. If the answer is not in the document, say so clearly. Follow the user's requested length and format without forcing headings.\n\n[Document]\n${documentText}\n\n[Question]\n${question}`;
   const response = await withTimeout(
-    genAI.models.generateContent({ model: modelName, contents: prompt }),
+    client.models.generateContent({ model: modelName, contents: prompt }),
     GEMINI_TIMEOUT_MS
   );
   return response.text || '';
@@ -83,18 +99,14 @@ async function queryDocumentChunks({
   model = modelName,
   systemPrompt,
   userPrompt,
+  apiKey,
 }) {
-  if (!genAI) {
-    const err = new Error('Gemini API key is not configured');
-    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
-    err.statusCode = 503;
-    throw err;
-  }
+  const client = resolveClient(apiKey);
   const prompt = systemPrompt && userPrompt
     ? `${systemPrompt}\n\n${userPrompt}`
     : buildFallbackPrompt({ question, documentTitle, chunks, mode });
   const response = await withTimeout(
-    genAI.models.generateContent({ model, contents: prompt }),
+    client.models.generateContent({ model, contents: prompt }),
     GEMINI_TIMEOUT_MS
   );
   return {
@@ -109,17 +121,12 @@ async function generateText({
   systemPrompt = '',
   userPrompt = '',
   generationConfig,
+  apiKey,
 }) {
-  if (!genAI) {
-    const err = new Error('Gemini API key is not configured');
-    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
-    err.statusCode = 503;
-    throw err;
-  }
-
+  const client = resolveClient(apiKey);
   const prompt = [systemPrompt, userPrompt].filter(Boolean).join('\n\n');
   const response = await withTimeout(
-    genAI.models.generateContent({
+    client.models.generateContent({
       model,
       contents: prompt,
       ...(generationConfig ? { config: generationConfig } : {}),
@@ -141,17 +148,13 @@ async function* streamDocumentChunks({
   model = modelName,
   systemPrompt,
   userPrompt,
+  apiKey,
 }) {
-  if (!genAI) {
-    const err = new Error('Gemini API key is not configured');
-    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
-    err.statusCode = 503;
-    throw err;
-  }
+  const client = resolveClient(apiKey);
   const prompt = systemPrompt && userPrompt
     ? `${systemPrompt}\n\n${userPrompt}`
     : buildFallbackPrompt({ question, documentTitle, chunks, mode });
-  const stream = await genAI.models.generateContentStream({ model, contents: prompt });
+  const stream = await client.models.generateContentStream({ model, contents: prompt });
 
   for await (const chunk of stream) {
     const text = chunk.text || '';
@@ -163,13 +166,8 @@ async function* streamDocumentChunks({
 }
 
 // Sinh 3–5 tag chủ đề cho tài liệu; ưu tiên tái dùng tag đã có (knownTags) để giữ vocabulary sạch.
-async function generateTags({ title, text, knownTags = [], model = modelName }) {
-  if (!genAI) {
-    const err = new Error('Gemini API key is not configured');
-    err.publicMessage = 'AI service is temporarily unavailable. Please try again';
-    err.statusCode = 503;
-    throw err;
-  }
+async function generateTags({ title, text, knownTags = [], model = modelName, apiKey }) {
+  const client = resolveClient(apiKey);
 
   const knownList = (knownTags || []).slice(0, 50).join(', ');
   const snippet = String(text || '').slice(0, 6000);
@@ -185,7 +183,7 @@ async function generateTags({ title, text, knownTags = [], model = modelName }) 
   ].join('\n');
 
   const response = await withTimeout(
-    genAI.models.generateContent({ model, contents: prompt }),
+    client.models.generateContent({ model, contents: prompt }),
     GEMINI_TIMEOUT_MS
   );
 

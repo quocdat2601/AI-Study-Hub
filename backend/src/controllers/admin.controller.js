@@ -154,6 +154,14 @@ async function moderateCommunityReply(req, res, next) {
   }
 }
 
+async function getAiUsage(req, res, next) {
+  try {
+    res.json(await adminService.getAiUsageOverview());
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getOverview,
@@ -168,4 +176,5 @@ module.exports = {
   resolveCommunityReport,
   moderateCommunityPost,
   moderateCommunityReply,
+  getAiUsage,
 };

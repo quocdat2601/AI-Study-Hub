@@ -1,7 +1,30 @@
 const aiProviders = require('../config/ai-providers');
 const geminiService = require('./gemini.service');
 const ollamaService = require('./ollama.service');
+const openaiService = require('./openai.service');
+const anthropicService = require('./anthropic.service');
 const chatContextService = require('./chat-context.service');
+const UserApiKeyModel = require('../models/user-api-key.model');
+const { decrypt } = require('../utils/crypto.utils');
+
+/**
+ * Resolve the user's custom API key if available.
+ * Decrypts in-memory for this request only; variable is immediately eligible for GC.
+ * @param {number|string|null} userId
+ * @param {string} provider
+ * @returns {Promise<string|null>}
+ */
+async function resolveUserKey(userId, provider) {
+  if (!userId) return null;
+  try {
+    const payload = await UserApiKeyModel.findRawByUserAndProvider(userId, provider);
+    if (!payload) return null;
+    return decrypt(payload);
+  } catch {
+    // Key lookup failure should never block a chat request
+    return null;
+  }
+}
 
 function logImagePromptDebug({ provider, model, imageQuestionType, systemPrompt, userPrompt }) {
   if (process.env.NODE_ENV === 'production' || !imageQuestionType) return;
@@ -52,13 +75,12 @@ function buildModeInstruction(mode, { provider } = {}) {
 function buildSourceLabel(chunk, index) {
   const metadata = chunk.metadata || {};
   const title = chunk.documentTitle || metadata.documentTitle;
-  const chunkIndex = chunk.chunk_index ?? index;
   const pageStart = metadata.pageStart ?? metadata.pageNumber;
   const pageEnd = metadata.pageEnd ?? metadata.pageNumber;
   const pageLabel = pageStart == null
     ? ''
     : pageStart === pageEnd ? ` | page ${pageStart}` : ` | pages ${pageStart}-${pageEnd}`;
-  return `[Source ${index + 1}${title ? ` | Document: ${title}` : ''} | chunk ${chunkIndex}${pageLabel}]`;
+  return `[Source [${index + 1}]${title ? ` | Document: ${title}` : ''}${pageLabel}]`;
 }
 
 function formatHistory(history) {
@@ -70,7 +92,7 @@ function formatHistory(history) {
 function sanitizeAnswerCitationAttribution(answer) {
   return String(answer || '')
     .replace(/\s*\([^)]*\b(?:chunk|source|nguon|nguồn)\b[^)]*\)/giu, '')
-    .replace(/\s*\[(?:source|nguon|nguồn)\s*\d+[^\]]*\]/giu, '')
+    .replace(/\s*\[(?:source|nguon|nguồn)\s*:?\s*\d+[^\]]*\]/giu, '')
     .replace(/[ \t]+\n/g, '\n')
     .trim();
 }
@@ -90,6 +112,7 @@ function buildRagPrompts({
   overviewIntent,
   imageQuestionType,
   provider,
+  verificationBadge,
 }) {
   const context = (chunks || [])
     .map((chunk, index) => `${buildSourceLabel(chunk, index)}\n${chunk.promptContent || chunk.content}`)
@@ -191,12 +214,13 @@ function buildRagPrompts({
       ? 'The requested documents are already attached, authorized, and loaded as evidence. Never ask the user to upload, share, or provide those same files again.'
       : '',
     'Do not use canned headings such as "Based on the compared documents", "Dựa trên tài liệu", or "Dựa trên tài liệu được so sánh". Start directly with the answer unless the user explicitly requests headings.',
-    'Do not write source numbers, chunk numbers, or parenthetical chunk labels in the answer. The application renders citations separately. Never combine a document title with another source chunk.',
+    'When stating facts derived from the retrieved source chunks, include inline citations using bracket numbers corresponding to the 1-based sequential source index (e.g. [1], [2], or [1, 2]) right after the statement. Always cite sources by their sequential index number [1], [2], etc., as labeled in the retrieved sources (Source [1], Source [2], ...). Do not use raw database chunk IDs or skip numbers.',
     ...constraintInstructions,
     comparisonInstruction,
     multiDocumentInstruction,
     overviewInstruction,
     imageInstruction,
+    verificationBadge || '',
   ].filter(Boolean).join('\n\n');
   const userPrompt = [
     historyText ? `Recent conversation context:\n${historyText}` : '',
@@ -214,7 +238,7 @@ function buildRagPrompts({
 }
 
 async function generateAnswer(options) {
-  const { provider, model, question, documentTitle, chunks, mode } = options;
+  const { provider, model, question, documentTitle, chunks, mode, userId } = options;
   const prompts = buildRagPrompts(options);
   logImagePromptDebug({
     provider,
@@ -238,6 +262,39 @@ async function generateAnswer(options) {
     };
   }
 
+  // Check BYOK specific providers
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'anthropic') {
+    const userApiKey = await resolveUserKey(userId, provider);
+    if (!userApiKey) {
+      throw new Error(`You must provide an API key for ${provider} to use its models.`);
+    }
+
+    const service = provider === 'anthropic' ? anthropicService : openaiService;
+    const baseURL = provider === 'grok' 
+      ? 'https://api.x.ai/v1' 
+      : provider === 'groq'
+      ? 'https://api.groq.com/openai/v1'
+      : 'https://api.openai.com/v1';
+
+    const result = await service.generateAnswer({
+      apiKey: userApiKey,
+      baseURL,
+      model,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+    });
+    return {
+      answer: result.text,
+      provider,
+      model: result.model,
+      usageMetadata: result.usageMetadata,
+      usingByok: true,
+    };
+  }
+
+  // Resolve user's custom Gemini key (BYOK) if available
+  const userApiKey = await resolveUserKey(userId, 'gemini');
+
   const result = await geminiService.queryDocumentChunks({
     question,
     documentTitle,
@@ -246,17 +303,19 @@ async function generateAnswer(options) {
     model,
     systemPrompt: prompts.systemPrompt,
     userPrompt: prompts.userPrompt,
+    apiKey: userApiKey || undefined,
   });
   return {
     answer: result.text,
     provider: 'gemini',
     model: result.model,
     usageMetadata: result.usageMetadata,
+    usingByok: Boolean(userApiKey),
   };
 }
 
 async function* streamAnswer(options) {
-  const { provider, model, question, documentTitle, chunks, mode } = options;
+  const { provider, model, question, documentTitle, chunks, mode, userId } = options;
   const prompts = buildRagPrompts(options);
   logImagePromptDebug({
     provider,
@@ -275,6 +334,33 @@ async function* streamAnswer(options) {
     return;
   }
 
+  // Check BYOK specific providers
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'anthropic') {
+    const userApiKey = await resolveUserKey(userId, provider);
+    if (!userApiKey) {
+      throw new Error(`You must provide an API key for ${provider} to use its models.`);
+    }
+
+    const service = provider === 'anthropic' ? anthropicService : openaiService;
+    const baseURL = provider === 'grok' 
+      ? 'https://api.x.ai/v1' 
+      : provider === 'groq'
+      ? 'https://api.groq.com/openai/v1'
+      : 'https://api.openai.com/v1';
+
+    yield* service.streamAnswer({
+      apiKey: userApiKey,
+      baseURL,
+      model,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+    });
+    return;
+  }
+
+  // Resolve user's custom Gemini key (BYOK) if available
+  const userApiKey = await resolveUserKey(userId, 'gemini');
+
   yield* geminiService.streamDocumentChunks({
     question,
     documentTitle,
@@ -283,21 +369,61 @@ async function* streamAnswer(options) {
     model,
     systemPrompt: prompts.systemPrompt,
     userPrompt: prompts.userPrompt,
+    apiKey: userApiKey || undefined,
   });
 }
 
-async function getModelStatus() {
+async function getModelStatus(userId) {
   const ollama = await ollamaService.getStatus();
+  
+  let savedKeys = [];
+  if (userId) {
+    try {
+      savedKeys = await UserApiKeyModel.findByUserId(userId);
+    } catch {
+      // ignore
+    }
+  }
+
+  const hasOpenAI = savedKeys.some((k) => k.provider === 'openai');
+  const hasAnthropic = savedKeys.some((k) => k.provider === 'anthropic');
+  const hasGrok = savedKeys.some((k) => k.provider === 'grok');
+  const hasGroq = savedKeys.some((k) => k.provider === 'groq');
+
   return {
     defaultProvider: aiProviders.defaultProvider,
     defaultModel: aiProviders.getDefaultModel(),
     gemini: {
-      available: Boolean(process.env.GEMINI_API_KEY),
+      available: Boolean(process.env.GEMINI_API_KEY) || savedKeys.some(k => k.provider === 'gemini'),
       models: aiProviders.gemini.allowedModels,
       allowedModels: aiProviders.gemini.allowedModels,
       defaultModel: aiProviders.gemini.defaultModel,
     },
     ollama,
+    ...(hasOpenAI ? {
+      openai: {
+        available: true,
+        models: aiProviders.openai.allowedModels,
+      }
+    } : {}),
+    ...(hasAnthropic ? {
+      anthropic: {
+        available: true,
+        models: aiProviders.anthropic.allowedModels,
+      }
+    } : {}),
+    ...(hasGrok ? {
+      grok: {
+        available: true,
+        models: aiProviders.grok.allowedModels,
+      }
+    } : {}),
+    ...(hasGroq ? {
+      groq: {
+        available: true,
+        models: aiProviders.groq.allowedModels,
+      }
+    } : {})
   };
 }
 

@@ -37,7 +37,7 @@ export default function PublicDocumentDetailPage() {
   const [newComment, setNewComment] = useState("");
   const [newRating, setNewRating] = useState(5);
 
-  const [viewMode, setViewMode] = useState("pdf"); // pdf, text
+  const [viewMode, setViewMode] = useState("text"); // pdf, text
 
   // Load document metadata and signed url
   useEffect(() => {
@@ -47,19 +47,8 @@ export default function PublicDocumentDetailPage() {
         const docData = await getPublicDocument(id);
         setDoc(docData);
         
-        const docMime = docData?.cloud_files?.mime_type || "";
-        const docTitle = docData?.title || "";
-        const isDocPdf = docMime.includes("pdf") || docTitle.toLowerCase().endsWith(".pdf");
-        const isDocDocx = docMime.includes("wordprocessingml") || docMime.includes("msword") || docTitle.toLowerCase().endsWith(".docx") || docTitle.toLowerCase().endsWith(".doc");
-        setViewMode(isDocPdf || isDocDocx ? "pdf" : "text");
-
-        // Use signed url from docData directly if present, otherwise fetch
-        if (docData.signedUrl) {
-          setSignedUrl(docData.signedUrl);
-        } else {
-          const urlData = await getPublicDocumentSignedUrl(id);
-          setSignedUrl(urlData.signedUrl);
-        }
+        setSignedUrl("");
+        setViewMode("text");
       } catch (err) {
         addToast({
           type: "error",
@@ -73,6 +62,13 @@ export default function PublicDocumentDetailPage() {
     }
     loadDocData();
   }, [id, navigate, addToast]);
+
+  const ensurePreviewUrl = useCallback(async () => {
+    if (signedUrl) return signedUrl;
+    const urlData = await getPublicDocumentSignedUrl(id);
+    setSignedUrl(urlData.signedUrl);
+    return urlData.signedUrl;
+  }, [id, signedUrl]);
 
   // Load comments
   const loadComments = useCallback(async () => {
@@ -202,7 +198,7 @@ export default function PublicDocumentDetailPage() {
   async function handleDownload() {
     setIsDownloading(true);
     try {
-      const { signedUrl: downloadUrl } = await getPublicDocumentSignedUrl(id);
+      const downloadUrl = await ensurePreviewUrl();
       const link = document.createElement("a");
       link.href = downloadUrl;
       const ext = isPdf ? ".pdf" : (isDocx ? ".docx" : "");
@@ -322,7 +318,20 @@ export default function PublicDocumentDetailPage() {
           </Link>
           <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
             <button
-              onClick={() => setViewMode("pdf")}
+              onClick={async () => {
+                setViewMode("pdf");
+                if (!signedUrl) {
+                  try {
+                    await ensurePreviewUrl();
+                  } catch (err) {
+                    addToast({
+                      type: "error",
+                      title: "Preview unavailable",
+                      message: err.response?.data?.error || "Could not load document preview.",
+                    });
+                  }
+                }
+              }}
               disabled={!isPreviewable}
               className={`cursor-pointer rounded-md border-0 px-3 py-1.5 text-xs font-semibold transition ${viewMode === "pdf"
                   ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-400"

@@ -189,6 +189,13 @@ class CommunityModel {
     return data || [];
   }
 
+  /**
+   * Replaces all subject junction mappings associated with a community post.
+   * Performs an atomic clear (DELETE) and inserts the new collection of junction links.
+   * @param {number} postId - Associated post ID.
+   * @param {Array<number>} subjectIds - Collection of target subject IDs.
+   * @returns {Promise<Array<object>>} Updated subjects mapping.
+   */
   static async replacePostSubjects(postId, subjectIds) {
     const { error: deleteError } = await supabase
       .from('community_post_subjects')
@@ -338,6 +345,14 @@ class CommunityModel {
     return data;
   }
 
+  /**
+   * Tracks user post view counts using an underlying Postgres RPC function.
+   * Leverages a sliding-window duration (e.g., 30 minutes) to deduplicate views based on viewer ip/keys.
+   * @param {number} postId - Target post ID.
+   * @param {string} viewerKey - Unique visitor hash (IP + User Agent).
+   * @param {number} [windowMinutes] - Deduplication window length (default 30).
+   * @returns {Promise<boolean>} Resolves to true if view registration succeeded.
+   */
   static async trackPostView(postId, viewerKey, windowMinutes = 30) {
     const { data, error } = await supabase
       .rpc('track_community_post_view', {

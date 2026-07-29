@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import ChatAttachmentBar from "./ChatAttachmentBar.jsx";
 import ChatSessionMenu from "./ChatSessionMenu.jsx";
+import BYOKModal from "./BYOKModal.jsx";
 import { renderMarkdownBody } from "../community/communityUtils.js";
 import { MODEL_LABELS } from "./workspaceDisplay.js";
 import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CopyIcon, SparklesIcon, UploadIcon } from "./WorkspaceIcons.jsx";
@@ -84,7 +86,7 @@ function UsagePopover({ activeModel, isLoadingUsage, isOllamaModel, selectedMode
   );
 }
 
-function SourceList({ sources }) {
+function SourceList({ sources, onCitationClick }) {
   if (!sources?.length) return null;
   const validSources = sources.filter((source) => (
     source.chunkDocumentId == null
@@ -152,17 +154,102 @@ function SourceList({ sources }) {
                   const pageEnd = source.pageEnd ?? source.pageNumber;
                   const pageLabel = pageStart == null
                     ? ""
-                    : pageStart === pageEnd ? ` · Page ${pageStart}` : ` · Pages ${pageStart}-${pageEnd}`;
-                  const scoreLabel = source.score ? ` · ${Number(source.score).toFixed(2)}` : "";
+                    : pageStart === pageEnd ? `Page ${pageStart}` : `Pages ${pageStart}–${pageEnd}`;
+
+                  // Build a readable excerpt from the chunk text
+                  const rawText = (source.content || "").replace(/\s+/g, " ").trim();
+
+                  // If the chunk starts mid-word (lowercase 1st char = continuation
+                  // of a word from the previous chunk), skip the broken fragment and
+                  // prepend "…" so the citation always starts at a clean word boundary.
+                  let cleanText = rawText;
+                  if (rawText.length > 0 && /^[a-z]/.test(rawText)) {
+                    const firstSpace = rawText.indexOf(" ");
+                    cleanText = firstSpace !== -1
+                      ? "…" + rawText.slice(firstSpace + 1)
+                      : "—"; // entire chunk was one broken word — fallback
+                  }
+
+                  // Try to grab the first meaningful sentence (up to ~80 chars)
+                  const sentenceMatch = cleanText.match(/^.{10,80}[.!?…]/);
+                  const excerpt = sentenceMatch
+                    ? sentenceMatch[0]
+                    : cleanText.length > 72
+                      ? cleanText.slice(0, 72).trimEnd() + "…"
+                      : cleanText || "—";
+
+                  // Relevance badge colour based on score
+                  const score = source.score != null ? Number(source.score) : null;
+                  const scorePct = score != null ? Math.round(score * 100) : null;
+                  const badgeStyle = score == null
+                    ? "bg-slate-100 text-slate-400"
+                    : score >= 0.6
+                      ? "bg-emerald-100 text-emerald-700"
+                      : score >= 0.4
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-500";
+
+                  // Dispatch the same event as inline citation clicks so the
+                  // document viewer scrolls to and highlights this chunk.
+                  function handleSourceClick(e) {
+                    // Only navigate on the summary row click, not expand toggle
+                    // We stop propagation so the <details> still toggles via the
+                    // native summary mechanism; we dispatch separately.
+                    const targetDocId = Number(source.documentId);
+                    if (!targetDocId) return;
+                    window.dispatchEvent(
+                      new CustomEvent("workspace-highlight-citation", {
+                        detail: {
+                          documentId: targetDocId,
+                          pageNumber: source.pageStart ?? source.pageNumber,
+                          chunkIndex: source.chunkIndex,
+                          content: source.content,
+                          startChar: source.startChar ?? source.metadata?.startChar,
+                          endChar: source.endChar ?? source.metadata?.endChar,
+                          source,
+                        },
+                      })
+                    );
+                    if (onCitationClick) onCitationClick(null, source);
+                  }
 
                   return (
-                    <details className="group/chunk rounded border border-transparent hover:bg-slate-100 px-1 py-0.5" key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}>
-                      <summary className="cursor-pointer list-none font-medium text-slate-600 marker:hidden">
-                        <span className="mr-1 text-slate-300 group-open/chunk:hidden">+</span>
-                        <span className="mr-1 hidden text-slate-300 group-open/chunk:inline">-</span>
-                        Chunk {Number(source.chunkIndex || 0) + 1}{pageLabel}{scoreLabel}
+                    <details
+                      className="group/chunk rounded-lg border border-slate-100 bg-white hover:border-indigo-200 hover:bg-indigo-50/30 px-2 py-1.5 transition-colors"
+                      key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}
+                    >
+                      <summary
+                        className="cursor-pointer list-none marker:hidden"
+                        onClick={handleSourceClick}
+                      >
+                        <div className="flex items-start gap-1.5">
+                          <span className="mt-0.5 shrink-0 text-slate-300 group-open/chunk:hidden select-none">+</span>
+                          <span className="mt-0.5 shrink-0 hidden text-slate-300 group-open/chunk:inline select-none">−</span>
+                          <span className="flex-1 min-w-0">
+                            {/* Main excerpt acting as the citation label */}
+                            <span className="font-medium text-slate-700 leading-snug line-clamp-2 break-words">
+                              "{excerpt}"
+                            </span>
+                            {/* Meta row: page + relevance + navigate hint */}
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              {pageLabel && (
+                                <span className="text-[10px] text-slate-400">{pageLabel}</span>
+                              )}
+                              {scorePct != null && (
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${badgeStyle}`}>
+                                  {scorePct}% relevant
+                                </span>
+                              )}
+                              <span className="text-[9px] text-indigo-400 opacity-0 group-open/chunk:opacity-0 group-hover/chunk:opacity-100 transition-opacity">
+                                ↗ Jump to passage
+                              </span>
+                            </span>
+                          </span>
+                        </div>
                       </summary>
-                      <p className="mt-1 line-clamp-4 select-text whitespace-pre-wrap text-slate-500">{source.content}</p>
+                      <p className="mt-1.5 line-clamp-5 select-text whitespace-pre-wrap text-[11px] leading-relaxed text-slate-500 border-t border-slate-100 pt-1.5">
+                        {source.content}
+                      </p>
                     </details>
                   );
                 })}
@@ -191,6 +278,35 @@ function ModelBadge({ message }) {
   return null;
 }
 
+function VerificationBadge({ verification }) {
+  if (!verification || !verification.verdict) return null;
+
+  const tooltipText = {
+    verified: "This answer was generated from your uploaded document. A verification step found no obvious contradiction with general public knowledge.",
+    uncertain: "The verification step could not confidently determine whether the factual claims are correct.",
+    contradicted: "The answer follows your uploaded document, but some factual claims appear to conflict with public knowledge. The document itself was NOT modified."
+  };
+
+  const badgeProps = {
+    verified: { icon: "✅", color: "text-emerald-700 bg-emerald-50 ring-emerald-200", label: "Verified" },
+    uncertain: { icon: "⚠", color: "text-amber-700 bg-amber-50 ring-amber-200", label: "Uncertain" },
+    contradicted: { icon: "❌", color: "text-red-700 bg-red-50 ring-red-200", label: "Contradicted" }
+  };
+
+  const verdict = verification.verdict;
+  const props = badgeProps[verdict];
+  if (!props) return null;
+
+  return (
+    <span 
+      className={`mb-1 ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 cursor-default ${props.color}`}
+      title={tooltipText[verdict]}
+    >
+      <span>{props.icon}</span> {props.label}
+    </span>
+  );
+}
+
 function formatMessageTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -205,7 +321,7 @@ function formatMessageTime(value) {
   return date.toLocaleDateString([], { month: "short", day: "numeric" }) + ` ${time}`;
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onCitationClick }) {
   async function copyAnswer() {
     try {
       await navigator.clipboard.writeText(message.content || "");
@@ -227,15 +343,36 @@ function MessageBubble({ message }) {
     );
   }
 
+  if (message.isError) {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[88%]">
+          <ModelBadge message={message} />
+          <div className="workspace-selectable rounded-2xl rounded-tl-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm leading-relaxed text-red-700 shadow-sm">
+            <p className="m-0 select-text break-words font-medium">{message.content || "An error occurred while communicating with the AI provider."}</p>
+          </div>
+          {formatMessageTime(message.createdAt) ? (
+            <span className="mt-1 block px-1 text-[10px] font-medium text-slate-400">{formatMessageTime(message.createdAt)}</span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   const content = message.isStreaming && !message.content ? message.streamStatus : message.content;
 
   return (
     <div className="flex justify-start">
       <div className="max-w-[88%]">
-        <ModelBadge message={message} />
+        <div className="flex flex-wrap items-center">
+          <ModelBadge message={message} />
+          {message.metadata?.verification && <VerificationBadge verification={message.metadata.verification} />}
+        </div>
         <div className="workspace-selectable rounded-2xl rounded-tl-md bg-slate-100 px-3.5 py-2.5 text-sm leading-relaxed text-slate-800">
-          <div className="m-0 select-text break-words">{renderMarkdownBody(content, React)}</div>
-          <SourceList sources={message.sources} />
+          <div className="m-0 select-text break-words">
+            {renderMarkdownBody(content, React, null, onCitationClick, message.sources)}
+          </div>
+          <SourceList sources={message.sources} onCitationClick={onCitationClick} />
         </div>
         <div className="mt-1 flex items-center gap-2 px-1">
           {formatMessageTime(message.createdAt) ? (
@@ -288,16 +425,33 @@ function SuggestionChips({ onQuestionChange, selectedDocument }) {
 
 function ModelMenu({
   activeModel,
-  geminiModels,
+  modelStatus,
   isAsking,
-  ollamaModels,
   onSelectedModelChange,
+  onReloadModelStatus,
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const groups = [
-    { label: "Gemini", models: geminiModels },
-    { label: "Local Ollama", models: ollamaModels },
-  ];
+  const [showByok, setShowByok] = useState(false);
+  
+  const groups = [];
+  if (modelStatus?.gemini?.models?.length) {
+    groups.push({ label: "Gemini", models: modelStatus.gemini.models });
+  }
+  if (modelStatus?.ollama?.allowedModels?.length) {
+    groups.push({ label: "Local Ollama", models: modelStatus.ollama.allowedModels });
+  }
+  if (modelStatus?.openai?.models?.length) {
+    groups.push({ label: "OpenAI", models: modelStatus.openai.models });
+  }
+  if (modelStatus?.anthropic?.models?.length) {
+    groups.push({ label: "Anthropic", models: modelStatus.anthropic.models });
+  }
+  if (modelStatus?.grok?.models?.length) {
+    groups.push({ label: "Grok", models: modelStatus.grok.models });
+  }
+  if (modelStatus?.groq?.models?.length) {
+    groups.push({ label: "Groq", models: modelStatus.groq.models });
+  }
 
   function chooseModel(model) {
     onSelectedModelChange(model);
@@ -305,56 +459,72 @@ function ModelMenu({
   }
 
   return (
-    <div className="relative min-w-0">
-      <button
-        className="flex max-w-[160px] items-center gap-1.5 truncate rounded-full px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={isAsking}
-        onClick={() => setIsOpen((current) => !current)}
-        type="button"
-      >
-        <span className="truncate">{MODEL_LABELS[activeModel] || activeModel}</span>
-        <ChevronDownIcon className="shrink-0" size={12} />
-      </button>
+    <>
+      <div className="relative min-w-0">
+        <button
+          className="flex max-w-[160px] items-center gap-1.5 truncate rounded-full px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={isAsking}
+          onClick={() => setIsOpen((current) => !current)}
+          type="button"
+        >
+          <span className="truncate">{MODEL_LABELS[activeModel] || activeModel}</span>
+          <ChevronDownIcon className="shrink-0" size={12} />
+        </button>
 
-      {isOpen ? (
-        <div className="absolute bottom-full right-0 z-40 mb-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
-          {groups.map((group) => (
-            <div className="py-1" key={group.label}>
-              <p className="m-0 px-2 pb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{group.label}</p>
-              <div className="grid gap-1">
-                {group.models.map((model) => {
-                  const isActive = model === activeModel;
-                  return (
-                    <button
-                      className={isActive
-                        ? "flex items-center justify-between rounded-xl bg-indigo-50 px-3 py-2 text-left text-sm font-bold text-indigo-600"
-                        : "flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50"}
-                      key={model}
-                      onClick={() => chooseModel(model)}
-                      type="button"
-                    >
-                      <span className="truncate">{MODEL_LABELS[model] || model}</span>
-                      {isActive ? <span className="text-xs">Selected</span> : null}
-                    </button>
-                  );
-                })}
+        {isOpen ? (
+          <div className="absolute bottom-full right-0 z-40 mb-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+            {groups.map((group) => (
+              <div className="py-1" key={group.label}>
+                <p className="m-0 px-2 pb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{group.label}</p>
+                <div className="grid gap-1">
+                  {group.models.map((model) => {
+                    const isActive = model === activeModel;
+                    return (
+                      <button
+                        className={isActive
+                          ? "flex items-center justify-between rounded-xl bg-indigo-50 px-3 py-2 text-left text-sm font-bold text-indigo-600"
+                          : "flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50"}
+                        key={model}
+                        onClick={() => chooseModel(model)}
+                        type="button"
+                      >
+                        <span className="truncate">{MODEL_LABELS[model] || model}</span>
+                        {isActive ? <span className="text-xs">Selected</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            ))}
+
+            {/* BYOK entry */}
+            <div className="mt-1 border-t border-slate-100 pt-1">
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-indigo-600 transition hover:bg-indigo-50"
+                onClick={() => { setIsOpen(false); setShowByok(true); }}
+                type="button"
+              >
+                <span>🔑</span>
+                <span>Use My API Key</span>
+              </button>
             </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
+          </div>
+        ) : null}
+      </div>
+
+      {showByok ? createPortal(<BYOKModal onClose={() => setShowByok(false)} onKeysChanged={onReloadModelStatus} />, document.body) : null}
+    </>
   );
 }
 
 function BottomControls({
   activeModel,
   answerMode,
-  geminiModels,
+  modelStatus,
   isAsking,
-  ollamaModels,
   onAnswerModeChange,
   onSelectedModelChange,
+  onReloadModelStatus,
 }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -372,10 +542,10 @@ function BottomControls({
       <div className="min-w-0 flex-1" />
       <ModelMenu
         activeModel={activeModel}
-        geminiModels={geminiModels}
+        modelStatus={modelStatus}
         isAsking={isAsking}
-        ollamaModels={ollamaModels}
         onSelectedModelChange={onSelectedModelChange}
+        onReloadModelStatus={onReloadModelStatus}
       />
     </div>
   );
@@ -384,15 +554,15 @@ function BottomControls({
 function CompactInput({
   activeModel,
   answerMode,
-  geminiModels,
+  modelStatus,
   isAsking,
   isAttachmentQueueBlocking,
   isLoadingMessages,
-  ollamaModels,
   onAnswerModeChange,
   onAsk,
   onQuestionChange,
   onSelectedModelChange,
+  onReloadModelStatus,
   question,
   selectedDocument,
   onDropFiles,
@@ -454,11 +624,11 @@ function CompactInput({
           <BottomControls
             activeModel={activeModel}
             answerMode={answerMode}
-            geminiModels={geminiModels}
+            modelStatus={modelStatus}
             isAsking={isAsking}
-            ollamaModels={ollamaModels}
             onAnswerModeChange={onAnswerModeChange}
             onSelectedModelChange={onSelectedModelChange}
+            onReloadModelStatus={onReloadModelStatus}
           />
           <button
             aria-label="Send question"
@@ -485,14 +655,14 @@ export default function AIChatPanel({
   chatScrollRef,
   className = "",
   error,
-  geminiModels,
+  modelStatus,
+  onReloadModelStatus,
   isAsking,
   isAttachmentQueueBlocking,
   isLoadingMessages,
   isLoadingUsage,
   isOllamaModel,
   messages,
-  ollamaModels,
   onAnswerModeChange,
   onAttachDocument,
   onCancelAttachmentUpload,
@@ -531,6 +701,26 @@ export default function AIChatPanel({
   const activeModel = selectedModel || usage?.model || "gemini-2.5-flash";
   const [dragDepth, setDragDepth] = useState(0);
   const isDropActive = dragDropAttachmentsEnabled && dragDepth > 0;
+
+  const handleCitationClick = React.useCallback((citationNumber, source) => {
+    if (!source) return;
+    const targetDocId = Number(source.documentId);
+    if (!targetDocId) return;
+
+    window.dispatchEvent(
+      new CustomEvent("workspace-highlight-citation", {
+        detail: {
+          documentId: targetDocId,
+          pageNumber: source.pageStart ?? source.pageNumber,
+          chunkIndex: source.chunkIndex,
+          content: source.content,
+          startChar: source.startChar ?? source.metadata?.startChar,
+          endChar: source.endChar ?? source.metadata?.endChar,
+          source,
+        },
+      })
+    );
+  }, []);
 
   function hasFiles(event) {
     return Array.from(event.dataTransfer?.types || []).includes("Files");
@@ -638,7 +828,9 @@ export default function AIChatPanel({
             <div className="ml-auto h-11 w-2/3 animate-pulse rounded-2xl bg-indigo-100" />
           </div>
         ) : messages.length ? (
-          messages.map((message) => <MessageBubble key={message.id} message={message} />)
+          messages.map((message) => (
+            <MessageBubble key={message.id} message={message} onCitationClick={handleCitationClick} />
+          ))
         ) : selectedDocument ? (
           <SuggestionChips onQuestionChange={onQuestionChange} selectedDocument={selectedDocument} />
         ) : (
@@ -650,13 +842,13 @@ export default function AIChatPanel({
       </div>
 
       <CompactInput
-        activeModel={activeModel}
+        activeModel={selectedModel}
         answerMode={answerMode}
-        geminiModels={geminiModels}
+        modelStatus={modelStatus}
+        onReloadModelStatus={onReloadModelStatus}
         isAsking={isAsking}
         isAttachmentQueueBlocking={isAttachmentQueueBlocking}
         isLoadingMessages={isLoadingMessages}
-        ollamaModels={ollamaModels}
         onAnswerModeChange={onAnswerModeChange}
         onAsk={onAsk}
         onQuestionChange={onQuestionChange}

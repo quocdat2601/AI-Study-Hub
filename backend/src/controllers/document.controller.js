@@ -59,23 +59,21 @@ async function updateDocument(req, res, next) {
   }
 }
 
-/**
- * Xóa mềm tài liệu (chủ/admin) — chuyển vào thùng rác, file vẫn trên cloud
- */
+
 async function deleteDocument(req, res, next) {
   try {
     res.json(await documentService.softDeleteDocument({
       document: req.document,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
+      reason: req.body.reason,
     }));
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Danh sách thùng rác của user
- */
+
 async function listTrash(req, res, next) {
   try {
     res.json(await documentService.listTrash({ userId: req.user.id }));
@@ -84,37 +82,33 @@ async function listTrash(req, res, next) {
   }
 }
 
-/**
- * Khôi phục tài liệu từ thùng rác (chủ/admin)
- */
+
 async function restoreDocument(req, res, next) {
   try {
     res.json(await documentService.restoreDocument({
       id: req.params.id,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
     }));
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Xóa cứng vĩnh viễn (chủ sở hữu doc của mình, hoặc admin doc bất kỳ)
- */
+
 async function purgeDocument(req, res, next) {
   try {
     res.json(await documentService.purgeDocument({
       id: req.params.id,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
     }));
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Đổ sạch thùng rác của user (purge toàn bộ)
- */
+
 async function emptyTrash(req, res, next) {
   try {
     res.json(await documentService.emptyTrash({ userId: req.user.id }));
@@ -123,27 +117,25 @@ async function emptyTrash(req, res, next) {
   }
 }
 
-/**
- * Xóa mềm nhiều doc cùng lúc — body: { ids: [..] }
- */
+
 async function bulkSoftDelete(req, res, next) {
   try {
-    const { ids } = req.body;
+    const { ids, reason } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: 'ids must be a non-empty array' });
     }
     res.json(await documentService.bulkSoftDelete({
       ids,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
+      reason,
     }));
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Khôi phục nhiều doc cùng lúc — body: { ids: [..] }
- */
+
 async function bulkRestore(req, res, next) {
   try {
     const { ids } = req.body;
@@ -153,15 +145,14 @@ async function bulkRestore(req, res, next) {
     res.json(await documentService.bulkRestore({
       ids,
       userId: req.user.id,
+      isAdmin: req.user.role === 'admin',
     }));
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * Chạy auto-purge thủ công (chỉ admin) — để test/demo, không cần chờ cron
- */
+
 async function purgeExpiredTrash(req, res, next) {
   try {
     res.json(await documentService.purgeExpiredTrash());
@@ -170,9 +161,7 @@ async function purgeExpiredTrash(req, res, next) {
   }
 }
 
-/**
- * Admin xem lịch sử xóa/khôi phục tài liệu (chỉ metadata)
- */
+
 async function getDeletionLogs(req, res, next) {
   try {
     res.json(await documentService.listDeletionLogs({ limit: req.query.limit }));

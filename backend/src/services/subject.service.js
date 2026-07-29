@@ -24,7 +24,32 @@ function handleUniqueCodeError(err) {
 }
 
 async function listSubjects() {
-  return subjectModel.listSubjects();
+  const supabase = require('../config/supabase');
+  const [subjects, docRowsResult] = await Promise.all([
+    subjectModel.listSubjects(),
+    supabase
+      .from('documents')
+      .select('subject_id')
+      .eq('is_public', true)
+      .eq('document_scope', 'library')
+      .eq('lifecycle_status', 'active')
+      .eq('status', 'indexed')
+      .is('deleted_at', null)
+  ]);
+
+  if (docRowsResult.error) throw docRowsResult.error;
+
+  const docCountsMap = new Map();
+  (docRowsResult.data || []).forEach((row) => {
+    if (row.subject_id) {
+      docCountsMap.set(row.subject_id, (docCountsMap.get(row.subject_id) || 0) + 1);
+    }
+  });
+
+  return (subjects || []).map((subject) => ({
+    ...subject,
+    docCount: Number(docCountsMap.get(subject.id) || 0),
+  }));
 }
 
 async function createSubject({ name, code, description, createdBy }) {

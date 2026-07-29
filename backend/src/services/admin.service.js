@@ -7,26 +7,49 @@ const activityService = require('./activity.service');
 const communityService = require('./community.service');
 const createError = require('../utils/createError');
 const { publicUser } = require('./user.service');
+const aiUsageModel = require('../models/ai-usage.model');
+const aiUsageService = require('./ai-usage.service');
+const aiProvidersConfig = require('../config/ai-providers');
 
-function startOfDay(date) {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
+// =========================================================================
+// SECTION: ADMIN SERVICES & MONITORING
+// Handles administrative operations, user profile moderations, platform-wide
+// storage limit controls, metrics overview, and files monitoring.
+// =========================================================================
+
+/**
+ * Returns the UTC date string (YYYY-MM-DD) for a given date.
+ */
+function utcDateKey(date) {
+  return date.toISOString().slice(0, 10);
 }
 
+
+/**
+ * Generates dates array spanning the last 7 calendar days (UTC).
+ * @returns {Array<object>} Time-series arrays with zero values.
+ */
 function buildLastSevenDays() {
-  const today = startOfDay(new Date());
+  const now = new Date();
+  // Compute today's UTC midnight
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
+    const date = new Date(todayUtc);
+    date.setUTCDate(todayUtc.getUTCDate() - (6 - index));
     return {
-      key: date.toISOString().slice(0, 10),
-      label: date.toLocaleDateString('en', { weekday: 'short' }),
+      key: utcDateKey(date),
+      label: date.toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' }),
       value: 0,
     };
   });
 }
 
+/**
+ * Aggregates logs counters grouped by date key.
+ * @param {Array<object>} rows - Logs datasets.
+ * @param {string} [dateField] - Date key field descriptor (default 'created_at').
+ * @returns {Array<object>} Grouped time-series counters array.
+ */
 function countByDay(rows, dateField = 'created_at') {
   const days = buildLastSevenDays();
   const byKey = new Map(days.map((day) => [day.key, day]));
@@ -40,6 +63,11 @@ function countByDay(rows, dateField = 'created_at') {
   return days;
 }
 
+/**
+ * Formats custom action triggers into user-friendly description messages.
+ * @param {object} log - Raw log database object.
+ * @returns {object} Formatted log.
+ */
 function formatActivity(log) {
   const actionLabels = {
     'admin.user.update': 'User account updated',
@@ -49,6 +77,9 @@ function formatActivity(log) {
     'chat.message': 'AI chat message created',
     'chat.message.send': 'AI chat message created',
     'subject.create': 'Subject created',
+    'admin.document.delete': 'Document moderated (Deleted)',
+    'admin.document.restore': 'Document moderated (Restored)',
+    'admin.document.purge': 'Document moderated (Purged)',
   };
 
   return {
@@ -61,11 +92,19 @@ function formatActivity(log) {
   };
 }
 
+/**
+ * Lists all registered users mapped to public profiles interfaces.
+ * @returns {Promise<Array<object>>} Users list.
+ */
 async function listUsers() {
   const users = await userModel.findAll();
   return users.map(publicUser);
 }
 
+/**
+ * Collects total platform-wide statistics for the admin dashboard overview charts.
+ * @returns {Promise<object>} Merged metrics counts, chart arrays, and popular subjects data.
+ */
 async function getOverview() {
   const since = buildLastSevenDays()[0].key;
   const sinceDate = new Date(`${since}T00:00:00.000Z`);
@@ -128,6 +167,16 @@ async function getOverview() {
   };
 }
 
+/**
+ * Mutates user details (status, storage allocations) with owner validation checks.
+ * @param {object} params
+ * @param {number|string} params.targetUserId - Target user profile ID.
+ * @param {object} params.updates - Fields values to mutate.
+ * @param {string} [params.updates.status] - New profile status (active/disabled).
+ * @param {number} [params.updates.storage_limit_bytes] - New disk storage quota size.
+ * @param {string|number} params.currentUserId - Caller administrator ID reference.
+ * @returns {Promise<object>} Hydrated updated user.
+ */
 async function updateUser({ targetUserId, updates, currentUserId }) {
   const dbUpdates = {};
 
@@ -136,6 +185,7 @@ async function updateUser({ targetUserId, updates, currentUserId }) {
       throw createError(400, 'Status must be active or disabled');
     }
 
+    // Safeguard: prevents administrators from blocking their own session lockouts
     if (String(targetUserId) === String(currentUserId) && updates.status === 'disabled') {
       throw createError(400, 'You cannot disable your own account');
     }
@@ -174,6 +224,14 @@ async function updateUser({ targetUserId, updates, currentUserId }) {
   return publicUser(user);
 }
 
+/**
+ * Searches and lists all platform files matching deletion status, search term queries, and subject codes.
+ * @param {object} [filters]
+ * @param {string} [filters.search] - Search text queries.
+ * @param {number|string} [filters.subjectId] - Subject ID.
+ * @param {boolean|string} [filters.isDeleted] - Filter files by deletion flag.
+ * @returns {Promise<Array<object>>} Filtered documents metadata list.
+ */
 async function listDocuments({ search, subjectId, isDeleted } = {}) {
   const { data, error } = await supabase
     .from('documents')
@@ -184,18 +242,40 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
       subject_id,
       file_id,
       status,
+      is_public,
+      document_scope,
       created_at,
       updated_at,
       deleted_at,
-      users (email),
+      moderation_reason,
+      moderated_by,
       subjects (name, code),
-      cloud_files (storage_path, mime_type, size_bytes)
+      cloud_files (mime_type, size_bytes)
     `)
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Admin document list query failed:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw createError(500, 'Could not load admin documents');
+  }
 
-  let filtered = data || [];
+  const users = await userModel.findAll();
+  const usersById = new Map(users.map((user) => [String(user.id), user]));
+
+  let filtered = (data || []).map((doc) => ({
+    ...doc,
+    users: usersById.has(String(doc.user_id))
+      ? { email: usersById.get(String(doc.user_id)).email }
+      : null,
+    moderator: doc.moderated_by && usersById.has(String(doc.moderated_by))
+      ? { email: usersById.get(String(doc.moderated_by)).email }
+      : null,
+  }));
 
   if (isDeleted !== undefined && isDeleted !== '') {
     const checkDeleted = String(isDeleted) === 'true';
@@ -219,11 +299,42 @@ async function listDocuments({ search, subjectId, isDeleted } = {}) {
   return filtered;
 }
 
+async function getAiUsageOverview() {
+  const now = new Date();
+  const since7d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6));
+
+  const [byModel, topUsers, rawLogs7d] = await Promise.all([
+    aiUsageModel.aggregateByModel({ since: since7d }),
+    aiUsageModel.topUsersToday(10),
+    supabase
+      .from('ai_usage_logs')
+      .select('created_at')
+      .gte('created_at', since7d.toISOString())
+      .then(res => {
+        if (res.error) throw res.error;
+        return res.data || [];
+      })
+  ]);
+
+  const allowedGeminiModels = aiProvidersConfig.gemini.allowedModels || [];
+  const liveQuota = await Promise.all(
+    allowedGeminiModels.map(model => aiUsageService.getUsage({ model }))
+  );
+
+  return {
+    byModel,
+    topUsers,
+    requestsPerDay: countByDay(rawLogs7d),
+    liveQuota,
+  };
+}
+
 module.exports = {
   listUsers,
   getOverview,
   updateUser,
   listDocuments,
+  getAiUsageOverview,
   listSubjects: subjectService.listSubjects,
   createSubject: subjectService.createSubject,
   updateSubject: subjectService.updateSubject,

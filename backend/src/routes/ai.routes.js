@@ -89,6 +89,100 @@ router.post('/documents/:id/overview/retry', aiController.retryDocumentOverview)
 
 /**
  * @swagger
+ * /api/ai/documents/{id}/roadmap:
+ *   get:
+ *     summary: Get the persisted learning roadmap and the caller's step completion progress
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Roadmap (or null) with completed step orders returned }
+ *       401: { description: Unauthorized }
+ *       404: { description: Document not found }
+ */
+router.get('/documents/:id/roadmap', aiController.getDocumentRoadmap);
+
+/**
+ * @swagger
+ * /api/ai/documents/{id}/roadmap/retry:
+ *   post:
+ *     summary: Regenerate a persisted document roadmap from existing chunks
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Roadmap regenerated or failed status persisted }
+ *       400: { description: Document has no existing AI chunks or roadmap is disabled }
+ *       401: { description: Unauthorized }
+ *       404: { description: Document not found }
+ *       409: { description: Roadmap generation is already in progress }
+ */
+router.post('/documents/:id/roadmap/retry', aiController.retryDocumentRoadmap);
+
+/**
+ * @swagger
+ * /api/ai/documents/{id}/roadmap/steps/{stepOrder}:
+ *   patch:
+ *     summary: Mark a roadmap step as completed or not completed for the caller
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: stepOrder
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [completed]
+ *             properties:
+ *               completed: { type: boolean }
+ *     responses:
+ *       200: { description: Updated completed step orders returned }
+ *       400: { description: stepOrder is invalid }
+ *       401: { description: Unauthorized }
+ *       404: { description: Document or roadmap not found }
+ */
+router.patch('/documents/:id/roadmap/steps/:stepOrder', aiController.toggleRoadmapStep);
+
+/**
+ * @swagger
+ * /api/ai/roadmaps/in-progress:
+ *   get:
+ *     summary: List the caller's in-progress roadmaps for the dashboard continue-learning widget
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 3 }
+ *     responses:
+ *       200: { description: Progress summaries sorted by latest activity }
+ *       401: { description: Unauthorized }
+ */
+router.get('/roadmaps/in-progress', aiController.listRoadmapsInProgress);
+
+/**
+ * @swagger
  * /api/ai/documents/{id}/ask:
  *   post:
  *     summary: Ask Gemini a question using retrieved document chunks

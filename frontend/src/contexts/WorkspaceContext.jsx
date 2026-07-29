@@ -122,8 +122,10 @@ export function WorkspaceProvider({ children }) {
       extractedText: detail.extractedText ?? base.extractedText,
       extractionStatus: detail.extractionStatus ?? base.extractionStatus,
       extractionError: detail.extractionError ?? base.extractionError,
+      extractionMetadata: detail.extractionMetadata ?? null,
     };
   }, [documents, selectedDocId, documentDetails]);
+
 
   const loadBootstrap = useCallback(async () => {
     setIsLoading(true);
@@ -200,8 +202,10 @@ export function WorkspaceProvider({ children }) {
           extractedText: doc.extracted_text || "",
           extractionStatus: doc.extraction_status,
           extractionError: doc.extraction_error || "",
+          extractionMetadata: doc.extraction_metadata || null,
         },
       }));
+
 
       setPdfUrl(data.signedUrl || "");
       setSessionId(data.sessionId || null);

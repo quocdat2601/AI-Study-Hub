@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardShell from "../components/dashboard/DashboardShell.jsx";
 import {
   CloudStorageIcon,
@@ -86,15 +87,6 @@ function MailIcon() {
   );
 }
 
-function SunIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-    </svg>
-  );
-}
-
 function GlobeIcon() {
   return (
     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -128,8 +120,9 @@ function languageLabel(code) {
 }
 
 export default function AccountPage() {
+  const navigate = useNavigate();
   const { refreshUser } = useAuth();
-  const { setTheme, setLanguage } = usePreferences();
+  const { setLanguage } = usePreferences();
   const { addToast } = useToast();
   const { t } = useTranslation();
   const avatarInputRef = useRef(null);
@@ -157,20 +150,6 @@ export default function AccountPage() {
   const usedBytes = Number(storage?.used || 0);
   const limitBytes = Number(storage?.limit || 0);
   const usedPercent = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 100)) : 0;
-  const isLightTheme = preferences?.theme !== "dark";
-
-  async function handleThemeToggle() {
-    const nextTheme = isLightTheme ? "dark" : "light";
-    try {
-      await savePreferences({ theme: nextTheme, language: preferences?.language || "en-US" });
-      setTheme(nextTheme);
-      await refreshUser();
-      addToast({ type: "success", message: t("account.themeUpdated") });
-    } catch (err) {
-      addToast({ type: "error", message: err.response?.data?.error || "Could not update theme." });
-    }
-  }
-
   async function handleAvatarChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -302,25 +281,18 @@ export default function AccountPage() {
             <SettingRow action={<ChevronRightIcon />} description={t("account.editProfileDesc")} icon={<UserIcon />} onClick={() => setActiveModal("profile")} title={t("account.editProfile")} />
             <SettingRow action={<ChevronRightIcon />} description={t("account.changePasswordDesc")} icon={<LockIcon />} onClick={() => setActiveModal("password")} title={t("account.changePassword")} />
             <SettingRow action={<ChevronRightIcon />} description={profile?.email} icon={<MailIcon />} onClick={() => setActiveModal("email")} title={t("account.updateEmail")} />
+            {/* /onboarding là route student-only nên admin bấm vào sẽ bị đá về /admin */}
+            {profile?.role === "admin" ? null : (
+              <SettingRow
+                action={<ChevronRightIcon />}
+                description={profile?.major}
+                icon={<GraduationCapIcon className="h-5 w-5" />}
+                onClick={() => navigate("/onboarding?edit=1")}
+                title={t("account.studyPreferences")}
+              />
+            )}
 
             <div className="my-2 border-t border-slate-100 dark:border-slate-800" />
-
-            <SettingRow
-              action={(
-                <button
-                  aria-pressed={isLightTheme}
-                  className={`relative h-6 w-11 rounded-full transition ${isLightTheme ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-600"}`}
-                  onClick={handleThemeToggle}
-                  type="button"
-                >
-                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${isLightTheme ? "left-5" : "left-0.5"}`} />
-                </button>
-              )}
-              asButton={false}
-              description={isLightTheme ? t("account.themeLight") : t("account.themeDark")}
-              icon={<SunIcon />}
-              title={t("account.theme")}
-            />
 
             <SettingRow
               action={<span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">{t("common.edit")}</span>}
@@ -357,7 +329,7 @@ export default function AccountPage() {
 
       {activeModal === "profile" && profile ? (
         <AccountEditProfileModal
-          initialValues={{ displayName: profile.displayName, handle: profile.handle?.replace(/^@/, ""), major: profile.major }}
+          initialValues={{ displayName: profile.displayName, handle: profile.handle?.replace(/^@/, "") }}
           onClose={() => setActiveModal("")}
           onSave={async (payload) => {
             await saveProfile(payload);
@@ -394,7 +366,7 @@ export default function AccountPage() {
           currentLanguage={preferences?.language}
           onClose={() => setActiveModal("")}
           onSave={async (payload) => {
-            await savePreferences({ theme: preferences?.theme || "light", language: payload.language });
+            await savePreferences({ language: payload.language });
             setLanguage(payload.language);
             await refreshUser();
             addToast({ type: "success", message: t("account.languageUpdated") });

@@ -9,6 +9,10 @@ const { buildSafeStorageFileName } = require('../utils/sanitizeFileName');
 
 const SUPPORTED_LANGUAGES = ['en-US', 'vi-VN'];
 
+// Fetch extra logs so hidden actions don't leave the list short after filtering.
+const ACTIVITY_DISPLAY_LIMIT = 8;
+const ACTIVITY_FETCH_LIMIT = 40;
+
 const STORAGE_TIERS = [
   { plan: 'Student Plan', bytes: 524288000 },
   { plan: 'Pro Plan', bytes: 1073741824 },
@@ -32,29 +36,71 @@ function normalizeHandle(handle) {
     .slice(0, 30);
 }
 
+// Only actions listed here surface in Recent Activity; anything else (internal
+// cleanups, cascades, moderation) is hidden instead of leaking its raw slug.
+const ACTIVITY_LABELS = {
+  'document.upload': (meta) => `Uploaded ${meta.title || 'a document'}`,
+  'document.update': (meta) => `Updated ${meta.title || 'a document'}`,
+  'document.soft_delete': (meta) => `Moved ${meta.title || 'a document'} to trash`,
+  'document.restore': (meta) => `Restored ${meta.title || 'a document'}`,
+  'document.delete': 'Deleted a document',
+  'document.purge': 'Permanently deleted a document',
+  'document.share': (meta) => (meta.sharedTo ? `Shared a document with ${meta.sharedTo}` : 'Shared a document'),
+  'bookmark.create': 'Bookmarked a document',
+  'bookmark.delete': 'Removed a bookmark',
+  'chat.session.create': 'Started a new AI chat',
+  'chat.session.rename': 'Renamed a chat',
+  'chat.session.delete': 'Deleted a chat',
+  'chat.message.send': 'AI Chat session',
+  'chat.share.user': 'Shared a chat',
+  'chat.share.user.revoke': 'Stopped sharing a chat',
+  'chat.share.public.revoke': 'Turned off a chat share link',
+  'chat.snapshot.create': 'Created a chat share link',
+  'chat.snapshot.import': 'Imported a shared chat',
+  'chat.attachment.attach': 'Attached a document to a chat',
+  'chat.attachment.upload': 'Uploaded a file to a chat',
+  'chat.attachment.detach': 'Removed a chat attachment',
+  'chat.attachment.restore': 'Restored a chat attachment',
+  'chat.attachment.save_to_library': 'Saved a chat attachment to library',
+  'notebook.create': 'Added a note',
+  'notebook.update': 'Updated a note',
+  'notebook.delete': 'Deleted a note',
+  'subject.create': 'Created a subject',
+  'community.post.create': 'Posted in Community',
+  'community.post.update': 'Edited a community post',
+  'community.post.delete': 'Deleted a community post',
+  'community.reply.create': 'Replied in Community',
+  'community.reply.edit': 'Edited a community reply',
+  'community.reply.delete': 'Deleted a community reply',
+  'community.reply.accept': 'Accepted an answer',
+  'community.report.create': 'Reported community content',
+  'onboarding.complete': 'Completed onboarding',
+  'onboarding.update': 'Updated study preferences',
+  'account.profile.update': 'Updated profile',
+  'account.password.update': 'Changed password',
+  'account.email.update': 'Updated email',
+  'account.preferences.update': 'Updated preferences',
+  'account.avatar.update': 'Updated profile photo',
+  'account.storage.upgrade': 'Upgraded storage plan',
+};
+
 function formatActivityItem(log) {
-  const labels = {
-    'document.upload': `Uploaded ${log.metadata?.title || 'a document'}`,
-    'document.update': 'Updated a document',
-    'document.delete': 'Deleted a document',
-    'document.share': 'Shared a document',
-    'bookmark.create': 'Bookmarked a document',
-    'bookmark.delete': 'Removed a bookmark',
-    'chat.message.send': "AI Chat session",
-    'account.profile.update': 'Updated profile',
-    'account.password.update': 'Changed password',
-    'account.email.update': 'Updated email',
-    'account.preferences.update': 'Updated preferences',
-    'account.avatar.update': 'Updated profile photo',
-    'account.storage.upgrade': 'Upgraded storage plan',
-  };
+  const label = ACTIVITY_LABELS[log.action];
+  if (!label) return null;
 
   return {
     id: log.id,
     action: log.action,
-    title: labels[log.action] || log.action,
+    title: typeof label === 'function' ? label(log.metadata || {}) : label,
     createdAt: log.created_at,
   };
+}
+
+function buildRecentActivity(logs) {
+  return logs
+    .map(formatActivityItem)
+    .filter(Boolean)
+    .slice(0, ACTIVITY_DISPLAY_LIMIT);
 }
 
 function getPlanName(limitBytes) {
@@ -104,7 +150,7 @@ function mapAccount(user, storage, docCount, activities, avatarUrl) {
       theme: user.theme || 'light',
       language: user.language || 'en-US',
     },
-    recentActivity: activities.map(formatActivityItem),
+    recentActivity: buildRecentActivity(activities),
   };
 }
 
@@ -130,7 +176,7 @@ async function getAccount(userId) {
   const [docCount, usedStorage, activities] = await Promise.all([
     documentModel.countByUserId(userId),
     documentModel.sumStorageByUserId(userId),
-    activityService.listByUserId(userId, 8),
+    activityService.listByUserId(userId, ACTIVITY_FETCH_LIMIT),
   ]);
 
   const avatarUrl = await resolveAvatarUrl(user.avatar_path);
@@ -141,7 +187,6 @@ async function getAccount(userId) {
 async function updateProfile(userId, payload) {
   const displayName = String(payload.displayName || '').trim();
   const handle = normalizeHandle(payload.handle);
-  const major = String(payload.major || '').trim();
 
   if (!displayName) {
     throw createError(400, 'Display name is required');
@@ -156,13 +201,15 @@ async function updateProfile(userId, payload) {
     throw createError(409, 'Handle is already taken');
   }
 
+  // major giờ do onboarding quản lý — chỉ ghi khi caller thực sự gửi lên
+  const updates = { display_name: displayName, handle };
+  if (payload.major !== undefined) {
+    updates.major = String(payload.major).trim() || null;
+  }
+
   let user;
   try {
-    user = await accountModel.updateProfile(userId, {
-      display_name: displayName,
-      handle,
-      major: major || null,
-    });
+    user = await accountModel.updateProfile(userId, updates);
   } catch (err) {
     handleAccountError(err);
   }
@@ -179,13 +226,14 @@ async function updateProfile(userId, payload) {
     user,
     await documentModel.sumStorageByUserId(userId),
     await documentModel.countByUserId(userId),
-    await activityService.listByUserId(userId, 8),
+    await activityService.listByUserId(userId, ACTIVITY_FETCH_LIMIT),
     await resolveAvatarUrl(user.avatar_path)
   );
 }
 
 async function updatePreferences(userId, payload) {
-  const theme = payload.theme === 'dark' ? 'dark' : 'light';
+  // Dark mode đã bỏ khỏi UI — cột theme giữ lại nhưng luôn là light
+  const theme = 'light';
   const languageInput = String(payload.language || 'en-US').trim() || 'en-US';
   const language = SUPPORTED_LANGUAGES.includes(languageInput) ? languageInput : 'en-US';
 
@@ -338,7 +386,7 @@ async function upgradeStorage(userId) {
   const [docCount, usedStorage, activities] = await Promise.all([
     documentModel.countByUserId(userId),
     documentModel.sumStorageByUserId(userId),
-    activityService.listByUserId(userId, 8),
+    activityService.listByUserId(userId, ACTIVITY_FETCH_LIMIT),
   ]);
 
   return {

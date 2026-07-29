@@ -148,6 +148,17 @@ function getDocumentType(document) {
   return document?.file_type || document?.type || "DOC";
 }
 
+// =========================================================================
+// SECTION 2: WORKSPACE PAGE COMPONENT
+// Root workspace orchestration component managing documents sidebars,
+// resizers, PDF viewers, RAG session configurations, and the Studio tab.
+// =========================================================================
+
+/**
+ * WorkspacePage root component.
+ * Synchronizes selected document route parameters, manages chat history loads,
+ * SSE chunking updates, drag-and-drop attachments, and tabs toggle hooks.
+ */
 export default function WorkspacePage() {
   const { documentId: urlDocumentId } = useParams();
   const navigate = useNavigate();
@@ -591,45 +602,48 @@ export default function WorkspacePage() {
     }
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadModelStatus() {
-      try {
-        const status = await getAiModelStatus();
-        if (!isMounted) return;
-        setModelStatus(status);
-        const geminiModels = status.gemini?.models || DEFAULT_GEMINI_MODELS;
-        const ollamaModels = status.ollama?.allowedModels || DEFAULT_OLLAMA_MODELS;
-        const nextModels = [...geminiModels, ...ollamaModels];
-        cacheWorkspaceState({ availableModels: nextModels, modelStatus: status });
-        setAvailableModels(nextModels);
-        setSelectedModel((current) => {
-          const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
-          const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-2.5-flash";
-          cacheWorkspaceState({ selectedModel: nextModel });
-          return nextModel;
-        });
-      } catch {
-        if (isMounted) {
-          setAvailableModels(DEFAULT_MODELS);
-          cacheWorkspaceState({ availableModels: DEFAULT_MODELS });
-          setSelectedModel((current) => {
-            const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
-            const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || "gemini-2.5-flash";
-            cacheWorkspaceState({ selectedModel: nextModel });
-            return nextModel;
-          });
+  const loadModelStatus = useCallback(async () => {
+    try {
+      const status = await getAiModelStatus();
+      setModelStatus(status);
+      const geminiModels = status.gemini?.models || DEFAULT_GEMINI_MODELS;
+      const ollamaModels = status.ollama?.allowedModels || DEFAULT_OLLAMA_MODELS;
+      const nextModels = [
+        ...geminiModels,
+        ...ollamaModels,
+        ...(status.openai?.models || []),
+        ...(status.anthropic?.models || []),
+        ...(status.grok?.models || []),
+        ...(status.groq?.models || []),
+      ];
+      cacheWorkspaceState({ availableModels: nextModels, modelStatus: status });
+      setAvailableModels(nextModels);
+      setSelectedModel((current) => {
+        const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
+        let nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || status.defaultModel || "gemini-2.5-flash";
+        if (!nextModels.includes(nextModel)) {
+          nextModel = status.defaultModel || "gemini-2.5-flash";
         }
-      }
+        cacheWorkspaceState({ selectedModel: nextModel });
+        return nextModel;
+      });
+    } catch {
+      setAvailableModels(DEFAULT_MODELS);
+      cacheWorkspaceState({ availableModels: DEFAULT_MODELS });
+      setSelectedModel((current) => {
+        const cachedDocumentModel = getCachedDocumentChat(getWorkspaceCache().selectedId).selectedModel;
+        const nextModel = current || cachedDocumentModel || getWorkspaceCache().selectedModel || "gemini-2.5-flash";
+        cacheWorkspaceState({ selectedModel: nextModel });
+        return nextModel;
+      });
     }
-
-    loadModelStatus();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    loadModelStatus();
+  }, [loadModelStatus]);
+
+
 
   const initializeChatSessions = useCallback(async (docId) => {
     cancelActiveChatWork();
@@ -1526,14 +1540,23 @@ export default function WorkspacePage() {
           cacheWorkspaceState({ usage: responseData.usage });
           setUsage(responseData.usage);
         }
+        const errMsg = responseData?.error || responseData?.message || requestError?.publicMessage || requestError?.message || "Could not ask AI about this document";
         setMessages((current) => {
-          const nextMessages = current.filter((message) => (
-            message.id !== streamAssistantId || message.content
+          const nextMessages = current.map((message) => (
+            message.id === streamAssistantId
+              ? {
+                  ...message,
+                  isStreaming: false,
+                  isError: true,
+                  content: errMsg,
+                  streamStatus: "",
+                }
+              : message
           ));
           cacheSessionMessages(targetSessionId, nextMessages);
           return nextMessages;
         });
-        setError(responseData?.message || responseData?.error || "Could not ask AI about this document");
+        setError(errMsg);
       }
     } finally {
       if (requestId === askRequestRef.current) {
@@ -1642,6 +1665,8 @@ export default function WorkspacePage() {
                 chatScrollRef={chatScrollRef}
                 className="flex-1 min-h-0 w-full"
                 dragDropAttachmentsEnabled={dragDropAttachmentsEnabled}
+                modelStatus={modelStatus}
+                onReloadModelStatus={loadModelStatus}
                 error={error}
                 geminiModels={geminiModels}
                 isAsking={isAsking}
@@ -1691,6 +1716,10 @@ export default function WorkspacePage() {
                 selectedModel={selectedModel}
                 className="flex-1 min-h-0 w-full"
                 width={null}
+                onPrepareQuestion={(questionText) => {
+                  setRightActiveTab("chat");
+                  setQuestion(questionText);
+                }}
                 onAskQuestion={(questionText) => {
                   setRightActiveTab("chat");
                   handleAsk(null, questionText);

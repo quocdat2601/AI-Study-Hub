@@ -275,12 +275,14 @@ class DocumentModel {
   }
 
   // Xóa mềm: đánh dấu deleted_at = now()
-  static async softDelete(id) {
+  static async softDelete(id, { moderationReason, moderatedBy } = {}) {
     const { data, error } = await supabase
       .from('documents')
       .update({
         deleted_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        moderation_reason: moderationReason || null,
+        moderated_by: moderatedBy || null,
       })
       .eq('id', id)
       .select()
@@ -303,6 +305,8 @@ class DocumentModel {
         purge_claim_token: null,
         purge_claimed_at: null,
         last_cleanup_error: null,
+        moderation_reason: null,
+        moderated_by: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -786,7 +790,7 @@ class DocumentModel {
         *,
         subjects (id, name, code),
         cloud_files (storage_path, mime_type, size_bytes),
-        users (id, email)
+        users!fk_documents_users (id, email)
       `)
       .eq('id', id)
       .eq('is_public', true)
