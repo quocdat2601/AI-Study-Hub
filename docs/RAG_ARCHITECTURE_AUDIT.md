@@ -249,3 +249,86 @@ flowchart TD
 | **Verification** | `verification.service.js` | `verifyEvidenceSafe` | Gọi LLM Verifier kiểm chứng tính đầy đủ của chứng cứ trước khi sinh câu trả lời. |
 | **LLM Provider** | `ai-provider.service.js` | `streamAnswer`, `sanitizeAnswerCitationAttribution` | Dựng prompt hoàn chỉnh, gọi Gemini/Ollama stream câu trả lời và chuẩn hóa trích dẫn. |
 | **Usage Tracking** | `aiUsageService.js` | `logGeminiRequest` | Ghi log token tiêu tốn (promptTokens, completionTokens) vào database. |
+
+---
+
+## V. XỬ LÝ GỌI API AI BÊN NGOÀI (EXTERNAL PROVIDERS & BYOK)
+
+Hệ thống hỗ trợ đa mô hình AI (Google Gemini, Local Ollama, OpenAI, Anthropic, Grok, Groq) thông qua mô-đun trung gian `ai-provider.service.js`:
+
+```mermaid
+flowchart LR
+    A[ai-provider.service.js] --> B{Provider Type?}
+    B -- Default / BYOK --> C["gemini.service.js (Google Gemini API @google/genai)"]
+    B -- Local Engine --> D["ollama.service.js (Local Ollama REST API)"]
+    B -- BYOK Custom Key --> E["openai.service.js / anthropic.service.js (OpenAI/Claude/Grok/Groq)"]
+```
+
+1. **Google Gemini API (`gemini.service.js`)**:
+   - Sử dụng thư viện chính thức `@google/genai`.
+   - Các model hỗ trợ: `gemini-1.5-flash` (mặc định), `gemini-1.5-pro`, `gemini-2.0-flash`.
+   - Hàm `streamDocumentChunks()` thực thi `ai.models.generateContentStream()` để stream câu trả lời token theo từng chunk.
+2. **Local Ollama API (`ollama.service.js`)**:
+   - Gọi trực tiếp REST API tới instance Ollama địa phương (`http://localhost:11434/api/chat`).
+   - Hỗ trợ các model chạy offline (Llama 3, Qwen 2.5, Mistral...).
+   - Bổ sung Prompt Constraint ép trả lời 100% bằng tiếng Việt khi dùng Ollama.
+3. **BYOK (Bring Your Own Key)**:
+   - Cho phép người dùng nhập API Key cá nhân (OpenAI, Anthropic, Grok, Groq, Gemini) lưu trong DB.
+   - Hàm `resolveUserKey()` lấy và giải mã khóa AES (`crypto.utils.js`) trong bộ nhớ cho riêng request đó.
+
+---
+
+## VI. LUỒNG TRÍCH DẪN (CITATION), HIGHLIGHT & ĐIỀU HƯỚNG TÀI LIỆU (NAVIGATION)
+
+```mermaid
+sequenceDiagram
+    participant B as Backend (ai.service / rag.service)
+    participant C as AIChatPanel.jsx
+    participant E as Event Bus (window)
+    participant V as DocumentViewer / PDFViewer / TextView
+
+    B->>C: Trả về `sources` array (chứa docId, pageNumber, chunkIndex, content)
+    C->>C: Render Markdown câu trả lời + Component `<SourceList />`
+    Note over C: User nhấp vào thẻ trích dẫn hoặc 1 source item
+    C->>E: dispatchEvent("workspace-highlight-citation", { detail: source })
+    E->>V: Event Listener `onHighlightCitation` nhận detail
+    V->>V: 1. Đổi tài liệu active (nếu trích dẫn nằm ở file khác)
+    V->>V: 2. Nhảy đến số trang tương ứng (setCurrentPage)
+    V->>V: 3. Tìm các span chữ khớp nội dung chunk & thêm class `.citation-highlight-active`
+    V->>V: 4. Scroll mượt (smooth scroll) đoạn văn bản ra giữa màn hình
+```
+
+### 1. Backend Đóng Gói Trích Dẫn (`sources`)
+Hàm `ragService.buildValidatedEvidence()` tạo danh sách `sources` với cấu trúc:
+```json
+{
+  "id": 101,
+  "documentId": 12,
+  "documentTitle": "SRS_Specification.pdf",
+  "chunkIndex": 3,
+  "pageStart": 5,
+  "pageEnd": 5,
+  "content": "Nội dung trích đoạn văn bản...",
+  "score": 0.85
+}
+```
+Danh sách `sources` này được gửi về Frontend trong SSE `done` payload và lưu trữ lâu dài trong cột `metadata.sources` của bảng `chat_messages`.
+
+### 2. Frontend Render Trích Dẫn (`AIChatPanel.jsx`)
+- **Trong câu trả lời AI**: Các mã trích dẫn dạng `[Doc: SRS_Specification.pdf | Page 5]` được tự động bắt regex và render thành thẻ bấm.
+- **Component `<SourceList />`**: Hiển thị danh sách các nguồn được dùng bên dưới câu trả lời, phân nhóm theo tài liệu, hiển thị % relevance badge và trích đoạn văn bản.
+
+### 3. Điều Hướng & Tô Sáng Visual (Highlight & Jump to Page)
+Khi người dùng nhấp vào trích dẫn:
+1. **Phát Event**: `AIChatPanel.jsx` phát một Browser Custom Event:
+   ```javascript
+   window.dispatchEvent(new CustomEvent("workspace-highlight-citation", {
+     detail: { documentId, pageNumber, chunkIndex, content }
+   }));
+   ```
+2. **Lắng Nghe & Xử Lý (`WorkspacePDFViewer.jsx` / `WorkspaceTextView.jsx`)**:
+   - **Tự động chuyển tài liệu**: Nếu trích dẫn thuộc tài liệu khác tài liệu đang mở, Viewer tự chuyển sang tài liệu đó.
+   - **Nhảy trang**: Gọi `setCurrentPage(pageNumber)` để PDF Viewer nhảy trực tiếp đến trang chứa bằng chứng.
+   - **Tô sáng chữ**: Tìm các thẻ span trong PDF Text Layer khớp với `content`, gắn class CSS `.citation-highlight-active` (hiệu ứng nền màu vàng/xanh neon phát sáng).
+   - **Cuộn mượt**: Gọi `scrollIntoView({ behavior: 'smooth', block: 'center' })` đưa vị trí trích dẫn ra chính giữa tầm mắt người dùng.
+

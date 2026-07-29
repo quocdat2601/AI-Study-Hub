@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import useTranslation from "../hooks/useTranslation.js";
 
 export default function AccountEmailModal({ initialEmail, onClose, onSave }) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState(initialEmail || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -14,7 +16,7 @@ export default function AccountEmailModal({ initialEmail, onClose, onSave }) {
       await onSave({ email: email.trim() });
       onClose();
     } catch (err) {
-      setError(err.response?.data?.error || "Could not update email.");
+      setError(err.response?.data?.error || t("common.error"));
     } finally {
       setIsSaving(false);
     }
@@ -26,11 +28,11 @@ export default function AccountEmailModal({ initialEmail, onClose, onSave }) {
         className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
         onSubmit={handleSubmit}
       >
-        <h2 className="m-0 text-lg font-bold text-slate-900 dark:text-slate-100">Update Email</h2>
-        <p className="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">Change the email linked to your account.</p>
+        <h2 className="m-0 text-lg font-bold text-slate-900 dark:text-slate-100">{t("account.updateEmail")}</h2>
+        <p className="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">{t("account.newEmail")}</p>
 
         <label className="mt-5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Email address
+          {t("account.newEmail")}
           <input
             className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             onChange={(event) => setEmail(event.target.value)}
@@ -48,14 +50,14 @@ export default function AccountEmailModal({ initialEmail, onClose, onSave }) {
             onClick={onClose}
             type="button"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             disabled={isSaving}
             type="submit"
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </form>

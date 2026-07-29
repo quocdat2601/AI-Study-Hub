@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useWorkspace } from "../../contexts/WorkspaceContext.jsx";
 import WorkspaceAccountFooter from "./WorkspaceAccountFooter.jsx";
 import WorkspaceDocumentListItem from "./WorkspaceDocumentListItem.jsx";
+import useTranslation from "../../hooks/useTranslation.js";
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -13,10 +14,10 @@ import {
 } from "./WorkspaceIcons.jsx";
 
 const TABS = [
-  { id: "all", label: "All" },
-  { id: "recent", label: "Recent" },
-  { id: "bookmarked", label: "Bookmarked" },
-  { id: "shared", label: "Shared" },
+  { id: "all", labelKey: "workspace.filterAll", defaultLabel: "All" },
+  { id: "recent", labelKey: "workspace.filterRecent", defaultLabel: "Recent" },
+  { id: "bookmarked", labelKey: "workspace.filterBookmarked", defaultLabel: "Bookmarked" },
+  { id: "shared", labelKey: "workspace.filterShared", defaultLabel: "Shared" },
 ];
 
 function hasActiveFilters({ subjectFilter, fileTypeFilter, search }) {
@@ -30,6 +31,7 @@ export default function WorkspaceSidebar({
   collapsed = false,
   onToggleCollapse,
 }) {
+  const { t } = useTranslation();
   const {
     user,
     search,
@@ -103,7 +105,7 @@ export default function WorkspaceSidebar({
           type="button"
         >
           <PlusIcon size={16} />
-          + New Document
+          {t("nav.newDocument")}
         </button>
       </div>
 
@@ -114,7 +116,7 @@ export default function WorkspaceSidebar({
             <input
               className="h-10 flex-1 min-w-0 border-0 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400 py-0"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search documents..."
+              placeholder={t("workspace.searchPlaceholder")}
               value={search}
             />
           </div>
@@ -143,7 +145,7 @@ export default function WorkspaceSidebar({
               onClick={() => setActiveTab(tab.id)}
               type="button"
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </div>
@@ -168,7 +170,7 @@ export default function WorkspaceSidebar({
               onChange={(event) => setSubjectFilter(event.target.value)}
               value={subjectFilter}
             >
-              <option value="">Subject</option>
+              <option value="">{t("workspace.subject")}</option>
               {subjects.map((subject) => (
                 <option key={subject.id} value={subject.id}>
                   {subject.name}
@@ -187,7 +189,7 @@ export default function WorkspaceSidebar({
               onChange={(event) => setFileTypeFilter(event.target.value)}
               value={fileTypeFilter}
             >
-              <option value="">File Type</option>
+              <option value="">{t("workspace.fileType")}</option>
               <option value="PDF">PDF</option>
               <option value="DOCX">DOCX</option>
             </select>
@@ -199,27 +201,32 @@ export default function WorkspaceSidebar({
         </div>
       </div>
 
-      <div className="workspace-scrollbar min-h-0 flex-1 overflow-y-auto border-t border-slate-100 py-1">
-        {loadError ? (
-          <p className="px-4 py-4 text-sm text-red-600">{loadError}</p>
-        ) : null}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
         {isLoading ? (
-          <p className="px-4 py-4 text-sm text-slate-500">Loading documents...</p>
-        ) : documents.length ? (
-          documents.map((document) => (
-            <WorkspaceDocumentListItem
-              document={document}
-              isBookmarked={bookmarkedDocIds.has(document.id)}
-              isSelected={selectedDocId === document.id}
-              key={document.id}
-              onSelect={selectDocument}
-              onToggleBookmark={toggleBookmark}
-            />
-          ))
-        ) : (
-          <p className="px-4 py-4 text-sm leading-relaxed text-slate-500">
-            No documents found. Upload a PDF to start studying with AI.
+          <div className="space-y-2 py-4">
+            <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+            <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+            <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+          </div>
+        ) : loadError ? (
+          <p className="py-4 text-center text-xs text-red-500">{loadError}</p>
+        ) : documents.length === 0 ? (
+          <p className="py-6 text-center text-xs text-slate-400">
+            {t("doc.noDocsFound")}
           </p>
+        ) : (
+          <div className="space-y-1">
+            {documents.map((doc) => (
+              <WorkspaceDocumentListItem
+                document={doc}
+                isBookmarked={bookmarkedDocIds.has(doc.id)}
+                isSelected={Number(doc.id) === Number(selectedDocId)}
+                key={doc.id}
+                onSelect={() => selectDocument(doc.id)}
+                onToggleBookmark={() => toggleBookmark(doc.id)}
+              />
+            ))}
+          </div>
         )}
       </div>
 

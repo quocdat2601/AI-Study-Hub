@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { getStudyMaterials, generateStudyMaterial, deleteStudyMaterial } from "../../services/aiApi.js";
 import { SparklesIcon, ClockIcon } from "./WorkspaceIcons.jsx";
 import WorkspaceRoadmapView from "./WorkspaceRoadmapView.jsx";
+import useTranslation from "../../hooks/useTranslation.js";
 
 // =========================================================================
 // SECTION 1: CUSTOM SVGS & ICON COMPONENTS
@@ -240,6 +241,7 @@ Gợi ý đáp án: ${back}`;
  * @param {string} [props.className] - CSS classes.
  */
 export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, width, onAskQuestion, onPrepareQuestion, className = "" }) {
+  const { t } = useTranslation();
   const [materials, setMaterials] = useState([]);
   const [activeMaterial, setActiveMaterial] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1132,8 +1134,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
               <FlashcardIcon size={18} />
             </div>
             <div className="mt-4">
-              <p className="m-0 text-xs font-bold text-slate-800">Thẻ ghi nhớ</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{STUDIO_MATERIAL_COUNTS.flashcard} cặp thẻ Front/Back</p>
+              <p className="m-0 text-xs font-bold text-slate-800">{t("studio.flashcardsTitle")}</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{t("studio.flashcardsSub")}</p>
             </div>
           </button>
 
@@ -1147,8 +1149,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
               <QuizIcon size={18} />
             </div>
             <div className="mt-4">
-              <p className="m-0 text-xs font-bold text-slate-800">Bài kiểm tra</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{STUDIO_MATERIAL_COUNTS.quiz} câu hỏi MCQ tự ôn</p>
+              <p className="m-0 text-xs font-bold text-slate-800">{t("studio.quizTitle")}</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{t("studio.quizSub")}</p>
             </div>
           </button>
 
@@ -1161,15 +1163,15 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
               <LockIcon className="text-slate-400" />
             </div>
             <div className="mt-4">
-              <p className="m-0 text-xs font-bold text-slate-500">Bản đồ tư duy</p>
-              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">Sơ đồ tóm tắt cấu trúc</p>
+              <p className="m-0 text-xs font-bold text-slate-500">{t("studio.mindmapTitle")}</p>
+              <p className="m-0 mt-0.5 text-[9.5px] text-slate-400">{t("studio.mindmapSub")}</p>
             </div>
           </div>
         </div>
 
         {/* Generated materials list */}
         <div className="min-h-0 flex-1 overflow-y-auto mt-6">
-          <h4 className="m-0 text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Tài liệu học tập đã tạo</h4>
+          <h4 className="m-0 text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t("studio.createdMaterials")}</h4>
 
           {isLoading ? (
             <div className="space-y-2 py-4">
@@ -1221,8 +1223,8 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
           ) : (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs text-slate-400 leading-relaxed">
               {selectedDocument
-                ? "Chưa có tài liệu ôn tập nào được tạo. Hãy nhấn vào các thẻ công cụ ở trên để tạo!"
-                : "Chọn một tài liệu trong thư viện để khám phá Studio."}
+                ? t("studio.emptyMaterials")
+                : t("studio.emptyNoDoc")}
             </div>
           )}
         </div>
@@ -1269,7 +1271,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                 : "bg-transparent text-slate-500 hover:text-slate-800"
                 }`}
             >
-              Học liệu
+              {t("studio.tabMaterials")}
             </button>
             <button
               onClick={() => setStudioTab("roadmap")}
@@ -1278,7 +1280,7 @@ export default function WorkspaceStudioPanel({ selectedDocument, selectedModel, 
                 : "bg-transparent text-slate-500 hover:text-slate-800"
                 }`}
             >
-              Lộ trình học
+              {t("studio.tabRoadmap")}
             </button>
           </div>
         </div>

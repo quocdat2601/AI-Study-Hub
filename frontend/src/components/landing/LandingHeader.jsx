@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import NotificationBell from "../NotificationBell.jsx";
+import useTranslation from "../../hooks/useTranslation.js";
 
 function NavLink({ to, href, children, isActive = false }) {
   const className = `no-caret whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-semibold no-underline transition ${
@@ -25,6 +26,7 @@ function NavLink({ to, href, children, isActive = false }) {
 }
 
 export default function LandingHeader({ isAuthenticated, isLoading = false, onLogout, role, workspacePath }) {
+  const { t } = useTranslation();
   const location = useLocation();
   const libraryPath = workspacePath || "/dashboard";
   const isAdmin = role === "admin" || libraryPath === "/admin";
@@ -44,10 +46,10 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
           {isAuthenticated && isAdmin ? (
             <>
               <NavLink isActive={location.pathname === "/community" || location.pathname.startsWith("/community/")} to="/community">
-                Community
+                {t("nav.community")}
               </NavLink>
               <NavLink isActive={location.pathname === coursePath} to={coursePath}>
-                Courses
+                {t("nav.courses")}
               </NavLink>
               <NavLink isActive={location.pathname.startsWith("/admin")} to="/admin">
                 Admin Console
@@ -57,14 +59,14 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
             <>
               {isAuthenticated ? (
                 <NavLink isActive={location.pathname === libraryPath} to={libraryPath}>
-                  My library
+                  {t("nav.myLibrary")}
                 </NavLink>
               ) : null}
               <NavLink isActive={location.pathname === "/community" || location.pathname.startsWith("/community/")} to="/community">
-                Community
+                {t("nav.community")}
               </NavLink>
               <NavLink isActive={location.pathname === coursePath} to={coursePath}>
-                Courses
+                {t("nav.courses")}
               </NavLink>
             </>
           )}
@@ -83,7 +85,7 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
               onClick={onLogout}
               type="button"
             >
-              Log out
+              {t("nav.logout")}
             </button>
           ) : (
             <>
@@ -91,13 +93,13 @@ export default function LandingHeader({ isAuthenticated, isLoading = false, onLo
                 className="no-caret hidden h-10 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 no-underline transition hover:bg-slate-50 sm:inline-flex"
                 to="/login"
               >
-                Log in
+                {t("nav.login")}
               </Link>
               <Link
                 className="no-caret inline-flex h-10 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white no-underline shadow-[0_4px_14px_rgba(79,70,229,0.28)] transition hover:bg-indigo-700"
                 to="/login?mode=register"
               >
-                Sign up
+                {t("nav.signUp")}
               </Link>
             </>
           )}

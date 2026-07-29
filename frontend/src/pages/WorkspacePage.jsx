@@ -9,6 +9,7 @@ import WorkspaceResizeHandle from "../components/workspace/WorkspaceResizeHandle
 import useWorkspaceLayout from "../hooks/useWorkspaceLayout.js";
 import useChatAttachmentQueue from "../hooks/useChatAttachmentQueue.js";
 import useUploadDoc from "../hooks/useUploadDoc.js";
+import useTranslation from "../hooks/useTranslation.js";
 import {
   attachChatDocument,
   createChatSession,
@@ -160,6 +161,7 @@ function getDocumentType(document) {
  * SSE chunking updates, drag-and-drop attachments, and tabs toggle hooks.
  */
 export default function WorkspacePage() {
+  const { t } = useTranslation();
   const { documentId: urlDocumentId } = useParams();
   const navigate = useNavigate();
   const cachedWorkspace = getWorkspaceCache();
@@ -1639,7 +1641,7 @@ export default function WorkspacePage() {
                   : "bg-transparent text-slate-500 hover:text-slate-800"
                 }`}
             >
-              Trò chuyện AI
+              {t("workspace.tabAIChat")}
             </button>
             <button
               onClick={() => setRightActiveTab("studio")}
@@ -1648,7 +1650,7 @@ export default function WorkspacePage() {
                   : "bg-transparent text-slate-500 hover:text-slate-800"
                 }`}
             >
-              Studio
+              {t("workspace.tabStudio")}
             </button>
           </div>
 

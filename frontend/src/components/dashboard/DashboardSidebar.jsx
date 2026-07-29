@@ -375,7 +375,7 @@ function ControlledSidebar({
             <span className="flex h-5 w-5 flex-none items-center justify-center text-[#4648d4]">
               <SidebarIcon name="logout" />
             </span>
-            {!isCollapsed ? <b className="truncate">Log out</b> : null}
+            {!isCollapsed ? <b className="truncate">{t("nav.logout")}</b> : null}
           </button>
         ) : null}
       </div>

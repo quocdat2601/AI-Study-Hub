@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { getDocumentRoadmap, retryDocumentRoadmap, toggleRoadmapStep } from "../../services/aiApi.js";
+import useTranslation from "../../hooks/useTranslation.js";
 
 function RoadmapIcon({ className, size = 20 }) {
   return (
@@ -67,6 +68,7 @@ function friendlyGenerationError(raw) {
 const PENDING_POLL_INTERVAL_MS = 5000;
 
 export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion, onPrepareQuestion }) {
+  const { t } = useTranslation();
   const [roadmap, setRoadmap] = useState(null);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -278,18 +280,16 @@ export default function WorkspaceRoadmapView({ selectedDocument, onAskQuestion, 
 
         {isAllCompleted && (
           <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center animate-fadeIn">
-            <p className="m-0 text-sm font-bold text-emerald-800">🎉 Chúc mừng! Bạn đã hoàn thành toàn bộ lộ trình.</p>
+            <p className="m-0 text-sm font-bold text-emerald-800">{t("roadmap.congrats")}</p>
             <p className="m-0 mt-1 text-[11px] leading-relaxed text-emerald-700">
-              Hãy sang tab Học liệu tạo bài kiểm tra hoặc thẻ ghi nhớ để củng cố lại toàn bộ kiến thức.
+              {t("roadmap.congratsSub")}
             </p>
           </div>
         )}
 
         {!isAllCompleted && (
           <p className="m-0 mb-3 px-1 text-[10px] leading-relaxed text-slate-400">
-            Cách học: đi lần lượt từng bước — đọc phần tương ứng trong tài liệu bên trái, dùng câu
-            hỏi gợi ý hoặc &quot;Học bước này với AI&quot; khi chưa rõ, tự đánh giá theo mục tiêu rồi
-            bấm vòng tròn số để đánh dấu hoàn thành.
+            {t("roadmap.howToLearn")}
           </p>
         )}
 

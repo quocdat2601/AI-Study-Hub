@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext.jsx";
 import useDocuments from "../hooks/useDocuments.js";
 import useUploadDoc from "../hooks/useUploadDoc.js";
+import useTranslation from "../hooks/useTranslation.js";
 import { formatFileSize } from "../lib/formatFileSize.js";
 import { cacheWorkspaceState } from "../utils/workspaceCache.js";
 import {
@@ -408,6 +409,7 @@ const MAJOR_LABELS = {
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();

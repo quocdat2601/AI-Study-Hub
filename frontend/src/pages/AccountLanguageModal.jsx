@@ -30,7 +30,7 @@ export default function AccountLanguageModal({ currentLanguage, onClose, onSave 
         onSubmit={handleSubmit}
       >
         <h2 className="m-0 text-lg font-bold text-slate-900 dark:text-slate-100">{t("account.language")}</h2>
-        <p className="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">{t("account.subtitle")}</p>
+        <p className="m-0 mt-1 text-sm text-slate-500 dark:text-slate-400">{t("account.selectLanguageDesc")}</p>
 
         <div className="mt-5 grid gap-2">
           {SUPPORTED_LANGUAGES.map((option) => (
