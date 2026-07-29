@@ -3,7 +3,6 @@ import React, { useState } from "react";
 export default function AccountEditProfileModal({ initialValues, onClose, onSave }) {
   const [displayName, setDisplayName] = useState(initialValues.displayName || "");
   const [handle, setHandle] = useState(initialValues.handle || "");
-  const [major, setMajor] = useState(initialValues.major || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -16,7 +15,6 @@ export default function AccountEditProfileModal({ initialValues, onClose, onSave
       await onSave({
         displayName: displayName.trim(),
         handle: handle.trim().replace(/^@/, ""),
-        major: major.trim(),
       });
       onClose();
     } catch (err) {
@@ -56,17 +54,7 @@ export default function AccountEditProfileModal({ initialValues, onClose, onSave
           />
         </label>
 
-        <label className="mt-4 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Major / bio
-          <input
-            className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            onChange={(event) => setMajor(event.target.value)}
-            placeholder="Student · AI Study Hub"
-            value={major}
-          />
-        </label>
-
-        {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+        {error ?<p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
         <div className="mt-6 flex justify-end gap-2">
           <button
