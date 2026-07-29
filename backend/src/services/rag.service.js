@@ -49,6 +49,85 @@ function estimateTokens(text) {
   return Math.ceil(String(text || '').length / 4);
 }
 
+function findCleanStart(text, candidateStart, prevStart, prevEnd) {
+  if (candidateStart <= 0) return 0;
+  if (candidateStart >= text.length) return text.length;
+
+  const minSearch = Math.max(prevStart + 1, candidateStart - 60);
+  const maxSearch = Math.min(prevEnd - 30, candidateStart + 60);
+
+  if (minSearch < maxSearch) {
+    const searchSlice = text.slice(minSearch, maxSearch);
+    const sentenceMatches = [...searchSlice.matchAll(/(?:[.!?](?:\s+|\n)|(?:\r?\n)+)/g)];
+    if (sentenceMatches.length > 0) {
+      let bestMatch = null;
+      let minDistance = Infinity;
+      for (const match of sentenceMatches) {
+        const matchPos = minSearch + match.index + match[0].length;
+        const dist = Math.abs(matchPos - candidateStart);
+        if (dist < minDistance) {
+          minDistance = dist;
+          bestMatch = matchPos;
+        }
+      }
+      if (bestMatch !== null) {
+        return bestMatch;
+      }
+    }
+  }
+
+  let pos = candidateStart;
+  if (pos > 0 && /\S/.test(text[pos - 1]) && /\S/.test(text[pos])) {
+    while (pos > prevStart + 1 && /\S/.test(text[pos - 1])) {
+      pos--;
+    }
+  }
+  return pos;
+}
+
+function findCleanEnd(text, start, idealEnd) {
+  if (idealEnd >= text.length) return text.length;
+
+  const windowStart = Math.max(start + Math.floor(CHUNK_SIZE * 0.5), start + 1);
+  const windowText = text.slice(windowStart, idealEnd);
+
+  const paragraphBreak = windowText.lastIndexOf('\n\n');
+  if (paragraphBreak !== -1) {
+    return windowStart + paragraphBreak + 2;
+  }
+
+  const sentenceMatches = [...windowText.matchAll(/(?:[.!?](?:\s+|\n)|(?:\r?\n)+)/g)];
+  if (sentenceMatches.length > 0) {
+    const lastMatch = sentenceMatches[sentenceMatches.length - 1];
+    const breakPos = windowStart + lastMatch.index + lastMatch[0].length;
+    if (breakPos > start + 50) {
+      return breakPos;
+    }
+  }
+
+  const clauseMatches = [...windowText.matchAll(/[:;]\s+/g)];
+  if (clauseMatches.length > 0) {
+    const lastMatch = clauseMatches[clauseMatches.length - 1];
+    const breakPos = windowStart + lastMatch.index + lastMatch[0].length;
+    if (breakPos > start + 50) {
+      return breakPos;
+    }
+  }
+
+  const lastSpace = windowText.lastIndexOf(' ');
+  if (lastSpace !== -1) {
+    return windowStart + lastSpace + 1;
+  }
+
+  const lookahead = text.slice(idealEnd, Math.min(idealEnd + 50, text.length));
+  const spaceMatch = lookahead.search(/\s/);
+  if (spaceMatch !== -1) {
+    return idealEnd + spaceMatch + 1;
+  }
+
+  return idealEnd;
+}
+
 function splitTextIntoChunks(text, metadata = {}) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
@@ -57,14 +136,8 @@ function splitTextIntoChunks(text, metadata = {}) {
   let start = 0;
 
   while (start < normalized.length) {
-    let end = Math.min(start + CHUNK_SIZE, normalized.length);
-    const nextBreak = normalized.lastIndexOf('\n', end);
-    const nextSentence = normalized.lastIndexOf('. ', end);
-    const breakPoint = Math.max(nextBreak, nextSentence);
-
-    if (breakPoint > start + CHUNK_SIZE * 0.6) {
-      end = breakPoint + (breakPoint === nextSentence ? 1 : 0);
-    }
+    const idealEnd = Math.min(start + CHUNK_SIZE, normalized.length);
+    const end = findCleanEnd(normalized, start, idealEnd);
 
     const content = normalized.slice(start, end).trim();
     if (content) {
@@ -97,7 +170,14 @@ function splitTextIntoChunks(text, metadata = {}) {
     }
 
     if (end >= normalized.length) break;
-    start = Math.max(end - CHUNK_OVERLAP, start + 1);
+
+    const prevStart = start;
+    const candidateStart = Math.max(end - CHUNK_OVERLAP, prevStart + 1);
+    start = findCleanStart(normalized, candidateStart, prevStart, end);
+
+    if (start <= prevStart) {
+      start = end;
+    }
   }
 
   return chunks;
