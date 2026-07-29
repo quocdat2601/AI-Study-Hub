@@ -7,10 +7,12 @@ import WorkspaceTextView from "./WorkspaceTextView.jsx";
 import WorkspaceDocxViewer from "./WorkspaceDocxViewer.jsx";
 import WorkspaceNotebook from "./WorkspaceNotebook.jsx";
 import WorkspaceNotesPopover from "./WorkspaceNotesPopover.jsx";
+import WorkspaceResizeHandle from "./WorkspaceResizeHandle.jsx";
 import { loadNotebookNotes, removeNotebookNote } from "../../utils/workspaceNotebook.js";
 import { DownloadIcon, FileTextIcon } from "./WorkspaceIcons.jsx";
 import { getStatusLabel, getSubjectLabel } from "./workspaceDisplay.js";
 import { formatFileSize } from "../../lib/formatFileSize.js";
+
 
 function getDocumentType(document) {
   const mime = document?.cloud_files?.mime_type || document?.mime_type || "";
@@ -43,16 +45,18 @@ function mapTextDocument(document) {
     extractedText: document.extractedText || document.extracted_text || "",
     extractionStatus: document.extractionStatus || document.extraction_status,
     extractionError: document.extractionError || document.extraction_error,
+    extractionMetadata: document.extractionMetadata || null,
   };
 }
 
+
 function ViewToggle({ disabledPdf, setViewMode, viewMode, isPdf, isDocx }) {
+  const activeClass = "cursor-pointer rounded-md border-0 bg-white px-3 py-1.5 text-[12px] font-semibold text-indigo-700 shadow-sm";
+  const inactiveClass = "cursor-pointer rounded-md border-0 bg-transparent px-3 py-1.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40";
   return (
     <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
       <button
-        className={viewMode === "pdf"
-          ? "cursor-pointer rounded-md border-0 bg-white px-3 py-1.5 text-[12px] font-semibold text-indigo-700 shadow-sm"
-          : "cursor-pointer rounded-md border-0 bg-transparent px-3 py-1.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"}
+        className={viewMode === "pdf" ? activeClass : inactiveClass}
         disabled={disabledPdf}
         onClick={() => setViewMode("pdf")}
         type="button"
@@ -60,17 +64,28 @@ function ViewToggle({ disabledPdf, setViewMode, viewMode, isPdf, isDocx }) {
         {isPdf ? "PDF" : (isDocx ? "Document" : "Viewer")}
       </button>
       <button
-        className={viewMode === "text"
-          ? "cursor-pointer rounded-md border-0 bg-white px-3 py-1.5 text-[12px] font-semibold text-indigo-700 shadow-sm"
-          : "cursor-pointer rounded-md border-0 bg-transparent px-3 py-1.5 text-[12px] font-semibold text-slate-500 transition hover:text-slate-800"}
+        className={viewMode === "text" ? activeClass : inactiveClass}
         onClick={() => setViewMode("text")}
         type="button"
       >
         Text
       </button>
+      {/* Split view: available for both PDF and DOCX */}
+      {(isPdf || isDocx) ? (
+        <button
+          className={viewMode === "split" ? activeClass : inactiveClass}
+          disabled={disabledPdf && !isDocx}
+          onClick={() => setViewMode("split")}
+          title="Show document and text side-by-side with synchronized scrolling"
+          type="button"
+        >
+          Split
+        </button>
+      ) : null}
     </div>
   );
 }
+
 
 function jumpToPage(page) {
   window.dispatchEvent(new CustomEvent("workspace-jump-to-page", { detail: { page } }));
@@ -93,10 +108,72 @@ function PdfBody({
   const [numPages, setNumPages] = useState(0);
   const [pagesReady, setPagesReady] = useState(false);
   const isJumpingRef = useRef(false);
+  const isSyncScrollingRef = useRef(false);
+  const textScrollRef = useRef(null);
+  const splitContainerRef = useRef(null);  // outer flex container for drag calc
+  const [splitRatio, setSplitRatio] = useState(50); // percent for left panel
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const textDocument = mapTextDocument(selectedDocument);
   const documentType = getDocumentType(selectedDocument);
-  const pageWidth = Math.round(620 * (zoom / 100));
+
+  // Auto-scale PDF to fit its container area perfectly
+  const pdfAreaWidth = viewMode === "split" && containerWidth > 0
+    ? Math.round(containerWidth * splitRatio / 100)
+    : containerWidth;
+
+  const pageWidth = pdfAreaWidth > 0
+    ? Math.max(280, pdfAreaWidth - (viewMode === "split" ? 32 : 80)) * (zoom / 100)
+    : Math.round(620 * (zoom / 100));
+
   const pdfFile = useMemo(() => (pdfBlobUrl ? { url: pdfBlobUrl } : null), [pdfBlobUrl]);
+
+  // Track container width so pageWidth stays accurate after drag / window resize
+  useEffect(() => {
+    const el = splitContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setContainerWidth(el.offsetWidth);
+    });
+    ro.observe(el);
+    setContainerWidth(el.offsetWidth); // initial value
+    return () => ro.disconnect();
+  }, [viewMode]); // Re-observe when switching modes
+
+  // ── Draggable split handle ──────────────────────────────────────────────
+  const handleSplitDragStart = useCallback((e) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+
+    setIsDragging(true);
+
+    const onMove = (moveEvent) => {
+      const rect = container.getBoundingClientRect();
+      const clientX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
+      const ratio = Math.min(80, Math.max(20, ((clientX - rect.left) / rect.width) * 100));
+      setSplitRatio(ratio);
+    };
+    const onUp = () => {
+      setIsDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+      window.document.body.style.cursor = "";
+      window.document.body.style.userSelect = "";
+    };
+
+    window.document.body.style.cursor = "col-resize";
+    window.document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: true });
+    window.addEventListener("touchend", onUp);
+  }, []);
+
+
+
 
   useEffect(() => {
     setPdfError(false);
@@ -114,7 +191,39 @@ function PdfBody({
   const handlePageVisible = useCallback((pageNumber) => {
     if (isJumpingRef.current) return;
     setCurrentPage(pageNumber);
-  }, [setCurrentPage]);
+    // In split mode, notify the text panel to scroll to the matching page marker
+    if (viewMode === "split" && !isSyncScrollingRef.current) {
+      isSyncScrollingRef.current = true;
+      window.dispatchEvent(
+        new CustomEvent("workspace-sync-scroll", { detail: { page: pageNumber, from: "pdf" } })
+      );
+      window.setTimeout(() => { isSyncScrollingRef.current = false; }, 600);
+    }
+  }, [setCurrentPage, viewMode]);
+
+  // Listen for text-side scroll sync → jump PDF to that page
+  useEffect(() => {
+    if (viewMode !== "split") return;
+
+    function onSyncScroll(event) {
+      const { page, from } = event.detail || {};
+      if (from === "pdf") return; // avoid loop
+      if (!page || isSyncScrollingRef.current) return;
+
+      isSyncScrollingRef.current = true;
+      isJumpingRef.current = true;
+      setCurrentPage(page);
+      window.document.getElementById(`workspace-pdf-page-${page}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        isJumpingRef.current = false;
+        isSyncScrollingRef.current = false;
+      }, 600);
+    }
+
+    window.addEventListener("workspace-sync-scroll", onSyncScroll);
+    return () => window.removeEventListener("workspace-sync-scroll", onSyncScroll);
+  }, [viewMode, setCurrentPage]);
+
 
   useEffect(() => {
     function onJump(event) {
@@ -132,6 +241,7 @@ function PdfBody({
     window.addEventListener("workspace-jump-to-page", onJump);
     return () => window.removeEventListener("workspace-jump-to-page", onJump);
   }, [setCurrentPage]);
+
 
   useEffect(() => {
     function onHighlightCitation(event) {
@@ -300,6 +410,116 @@ function PdfBody({
     return <WorkspaceTextView document={textDocument} />;
   }
 
+  // ── Split view with draggable resize ─────────────────────────────────
+  if (viewMode === "split") {
+    const textDoc = mapTextDocument(selectedDocument);
+
+    // DOCX split: left = Office 365 iframe, right = text
+    if (documentType === "DOCX") {
+      return (
+        <div className="flex h-full w-full min-h-0 mx-auto max-w-[1400px]" ref={splitContainerRef}>
+          {/* Left: DOCX iframe */}
+          <div
+            className="min-w-0 overflow-hidden"
+            style={{ width: `${splitRatio}%`, pointerEvents: isDragging ? "none" : "auto" }}
+          >
+            {docxSignedUrl ? (
+              <iframe
+                title="Document Preview"
+                className="h-full w-full border-0 bg-white"
+                src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docxSignedUrl)}`}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                Loading document...
+              </div>
+            )}
+          </div>
+
+          <WorkspaceResizeHandle
+            label="Drag to resize panels"
+            onMouseDown={handleSplitDragStart}
+          />
+
+          {/* Right: Text panel */}
+          <div
+            className="min-w-0 overflow-y-auto workspace-scrollbar"
+            ref={textScrollRef}
+            style={{ width: `${100 - splitRatio}%`, pointerEvents: isDragging ? "none" : "auto" }}
+          >
+            <WorkspaceTextView
+              document={textDoc}
+              isSplit
+              scrollContainerRef={textScrollRef}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // PDF split
+    return (
+      <div className="flex h-full w-full min-h-0 mx-auto max-w-[1400px]" ref={splitContainerRef}>
+        {/* Left: PDF panel */}
+        <div
+          className="min-w-0 overflow-y-auto workspace-scrollbar bg-[#eef0f2]"
+          id="workspace-split-pdf"
+          style={{ width: `${splitRatio}%`, pointerEvents: isDragging ? "none" : "auto" }}
+        >
+          {isPdfLoading || !pdfFile ? (
+            <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 text-sm text-slate-500">
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+              <p className="m-0 font-medium">Loading PDF...</p>
+            </div>
+          ) : (
+            <div className="px-4 py-8 pr-6">
+              <div className="mx-auto flex w-full flex-col gap-5" style={{ maxWidth: pageWidth + 32 }}>
+                <Document
+                  file={pdfFile}
+                  key={selectedDocument.id}
+                  loading={<div className="flex items-center justify-center py-24 text-sm text-slate-500">Reading PDF...</div>}
+                  onLoadError={() => setPdfError(true)}
+                  onLoadSuccess={handleLoadSuccess}
+                  options={PDF_DOCUMENT_OPTIONS}
+                >
+                  {pagesReady && numPages > 0
+                    ? Array.from({ length: numPages }, (_, index) => (
+                        <WorkspaceLazyPdfPage
+                          key={`pdf-page-split-${index + 1}`}
+                          onPageVisible={handlePageVisible}
+                          pageNumber={index + 1}
+                          width={pageWidth}
+                        />
+                      ))
+                    : null}
+                </Document>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Draggable divider */}
+        <WorkspaceResizeHandle
+          label="Drag to resize panels"
+          onMouseDown={handleSplitDragStart}
+        />
+
+        {/* Right: Text panel */}
+        <div
+          className="min-w-0 overflow-y-auto workspace-scrollbar"
+          ref={textScrollRef}
+          style={{ width: `${100 - splitRatio}%`, pointerEvents: isDragging ? "none" : "auto" }}
+        >
+          <WorkspaceTextView
+            document={textDoc}
+            isSplit
+            scrollContainerRef={textScrollRef}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (documentType === "DOCX" && docxSignedUrl) {
     return (
       <iframe
@@ -341,8 +561,8 @@ function PdfBody({
   }
 
   return (
-    <div className="workspace-selectable min-h-full bg-[#eef0f2] px-4 py-8 pr-6 sm:px-8 sm:pr-10">
-      <div className="mx-auto flex w-full max-w-[680px] flex-col gap-5">
+    <div className="workspace-selectable min-h-full bg-[#eef0f2] px-4 py-8 pr-6 sm:px-8 sm:pr-10" ref={splitContainerRef}>
+      <div className="mx-auto flex w-full flex-col gap-5" style={{ maxWidth: pageWidth > 0 ? pageWidth + 32 : 680 }}>
         <Document
           error={<div className="rounded-sm bg-white p-10 text-center text-sm text-red-600 shadow-md">Could not display PDF.</div>}
           file={pdfFile}
@@ -417,7 +637,7 @@ export default function DocumentViewer({
       isMounted = false;
     };
   }, [selectedDocument?.id]);
-  const showPdfControls = viewMode === "pdf" && documentType === "PDF" && selectedDocument;
+  const showPdfControls = (viewMode === "pdf" || viewMode === "split") && documentType === "PDF" && selectedDocument;
   const status = processResult?.status || selectedDocument?.extraction_status || selectedDocument?.status;
 
   const handleDeleteNote = useCallback(async (noteId) => {
@@ -665,7 +885,10 @@ export default function DocumentViewer({
       </header>
 
 
-      <div className="workspace-scrollbar workspace-selectable relative min-h-0 flex-1 overflow-y-auto bg-[#eef0f2]" id="workspace-viewer-area">
+      <div
+        className={`workspace-selectable relative min-h-0 flex-1 bg-[#eef0f2] ${viewMode === "split" ? "overflow-hidden flex" : "workspace-scrollbar overflow-y-auto"}`}
+        id="workspace-viewer-area"
+      >
         <WorkspaceNotebook
           docId={selectedDocument?.id}
           onNotesChange={setNotebookNotes}

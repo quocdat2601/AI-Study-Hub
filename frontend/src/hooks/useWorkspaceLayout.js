@@ -1,28 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
 
-const SIDEBAR_MIN = 260;
-const SIDEBAR_MAX = 340;
-const SIDEBAR_DEFAULT = 304;
-const CHAT_MIN = 380;
-const CHAT_MAX = 520;
-const CHAT_DEFAULT = 420;
+const SIDEBAR_MIN_VW = 15;
+const SIDEBAR_MAX_VW = 40;
+const SIDEBAR_DEFAULT_VW = 20;
+
+const CHAT_MIN_VW = 20;
+const CHAT_MAX_VW = 50;
+const CHAT_DEFAULT_VW = 30;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
 export default function useWorkspaceLayout() {
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
-  const [chatWidth, setChatWidth] = useState(CHAT_DEFAULT);
+  const [sidebarVw, setSidebarVw] = useState(SIDEBAR_DEFAULT_VW);
+  const [chatVw, setChatVw] = useState(CHAT_DEFAULT_VW);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const onResizeSidebar = useCallback((event) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = sidebarWidth;
+    const startVw = sidebarVw;
 
     function onMouseMove(moveEvent) {
-      setSidebarWidth(clamp(startWidth + (moveEvent.clientX - startX), SIDEBAR_MIN, SIDEBAR_MAX));
+      const vw = window.innerWidth;
+      const deltaPx = moveEvent.clientX - startX;
+      const deltaVw = (deltaPx / vw) * 100;
+      setSidebarVw(clamp(startVw + deltaVw, SIDEBAR_MIN_VW, SIDEBAR_MAX_VW));
     }
 
     function onMouseUp() {
@@ -36,15 +40,19 @@ export default function useWorkspaceLayout() {
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-  }, [sidebarWidth]);
+  }, [sidebarVw]);
 
   const onResizeChat = useCallback((event) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = chatWidth;
+    const startVw = chatVw;
 
     function onMouseMove(moveEvent) {
-      setChatWidth(clamp(startWidth - (moveEvent.clientX - startX), CHAT_MIN, CHAT_MAX));
+      const vw = window.innerWidth;
+      const deltaPx = moveEvent.clientX - startX;
+      const deltaVw = (deltaPx / vw) * 100;
+      // Chat is on the right, so moving left (negative deltaPx) increases width
+      setChatVw(clamp(startVw - deltaVw, CHAT_MIN_VW, CHAT_MAX_VW));
     }
 
     function onMouseUp() {
@@ -58,7 +66,7 @@ export default function useWorkspaceLayout() {
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-  }, [chatWidth]);
+  }, [chatVw]);
 
   useEffect(() => {
     return () => {
@@ -72,8 +80,8 @@ export default function useWorkspaceLayout() {
   }, []);
 
   return {
-    sidebarWidth,
-    chatWidth,
+    sidebarWidth: `${sidebarVw}vw`,
+    chatWidth: `${chatVw}vw`,
     sidebarCollapsed,
     toggleSidebarCollapsed,
     onResizeSidebar,

@@ -258,7 +258,7 @@ export default function WorkspaceNotebook({
 
   return (
     <WorkspaceNotebookContext.Provider value={contextValue}>
-      <div className="relative min-h-full" onMouseUp={handleMouseUp} ref={containerRef}>
+      <div className="relative h-full w-full flex-1 min-w-0 flex flex-col" onMouseUp={handleMouseUp} ref={containerRef}>
         {children}
 
         {pendingSelection && !draft ? (
