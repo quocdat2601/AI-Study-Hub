@@ -1,59 +1,79 @@
-# AI Study Hub Starter
+# AI Study Hub
 
-Starter codebase for SWP391 AI Study Hub.
+AI Study Hub is a comprehensive, intelligent learning platform designed to elevate the studying experience. By leveraging advanced Retrieval-Augmented Generation (RAG) and modern web technologies, the platform allows users to manage, read, and interact with their educational materials through an AI-powered conversational interface.
 
-## Structure
+## Key Features
 
-```txt
-ai-study-hub/
-  backend/   Express MVC API
-  frontend/  React + Vite app
-  docs/      project documents
-```
+- **Intelligent Document Workspace:** A highly responsive, split-view workspace allowing users to read documents (PDF, DOCX, TXT) side-by-side with an AI assistant or extracted text views.
+- **RAG-Powered AI Chatbot:** Talk directly to your documents. The system chunks, embeds (using pgvector), and retrieves document context to provide highly accurate, contextual answers using Gemini and Ollama models.
+- **Community & Collaboration:** Share documents, notes, and study materials with the community. Discover resources uploaded by other users.
+- **Course & Subject Management:** Organized content structures allowing users to browse and manage materials categorized by subjects and courses.
+- **Role-Based Access Control:** Secure authentication with distinct roles (Admin, User) for robust platform moderation and access management.
+- **Cloud Storage Integration:** Seamlessly handles document uploads and serving via Supabase Storage.
 
-## First setup
+## Tech Stack
 
-### 1. Backend
+### Frontend
+- **Framework:** React (Vite)
+- **Styling:** Tailwind CSS
+- **State Management & Routing:** React Context, React Router
+- **PDF/Doc Viewers:** Custom integrated iframes and canvas-based viewers
+
+### Backend
+- **Framework:** Node.js with Express.js (MVC Architecture)
+- **Database:** Supabase (PostgreSQL)
+- **Vector Search:** `pgvector` for semantic document retrieval
+- **AI Integration:** Google Gemini API & Ollama for local LLM inference
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or higher recommended)
+- [npm](https://www.npmjs.com/)
+- A [Supabase](https://supabase.com/) account and project
+- Google Gemini API Key
+
+## Getting Started
+
+### 1. Backend Setup
+
+Navigate to the backend directory, configure your environment variables, and start the server:
 
 ```bash
 cd backend
 cp .env.example .env
+# Edit the .env file with your Supabase credentials and Gemini API Key
 npm install
 npm run dev
 ```
 
-Then open:
+The API will be available at `http://localhost:5000/api/health`.
 
-```txt
-http://localhost:5000/api/health
-```
+### 2. Frontend Setup
 
-### 2. Frontend
+Navigate to the frontend directory, configure the environment, and start the development server:
 
 ```bash
 cd frontend
 cp .env.example .env
+# Edit the .env file with your Backend API URL
 npm install
 npm run dev
 ```
 
-Then open the Vite URL shown in terminal.
+Open the Vite local URL shown in your terminal to view the application.
 
-## Supabase
+## Database Migrations
 
-Use Supabase SQL Editor to run:
+The database schema and RLS policies are managed via Supabase SQL Editor. Execute the migrations in the following order:
 
-```txt
-backend/db/migrations/001_initial_schema.sql
-backend/db/migrations/002_enable_rls.sql
-```
+1. `backend/db/migrations/001_initial_schema.sql`
+2. `backend/db/migrations/002_enable_rls.sql`
 
-Admin seeding is separate. Generate a bcrypt hash first, then edit and run:
+To seed the initial Admin account, first generate a bcrypt hash for the password, update the script, and then run:
 
-```txt
-backend/db/migrations/003_seed_admin.sql
-```
+3. `backend/db/migrations/003_seed_admin.sql`
 
-## Important security rule
+## Security Notes
 
-Never commit `.env` files. Only commit `.env.example`.
+- **Environment Variables:** Never commit `.env` files to version control. Always use `.env.example` to document required variables.
+- **Row Level Security (RLS):** Ensure RLS policies in Supabase remain enabled to protect user data.
