@@ -10,6 +10,7 @@ import {
 import { formatFileSize } from "../lib/formatFileSize.js";
 import { searchTags } from "../services/onboardingApi.js";
 import useTranslation from "../hooks/useTranslation.js";
+import { useToast } from "../contexts/ToastContext.jsx";
 
 function VisibilityOption({ active, disabled, label, description, onClick, tone }) {
   const activeClass = tone === "public"
@@ -42,6 +43,14 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   const inputRef = useRef(null);
   const abortRef = useRef(null);
 
+  let addToast = () => {};
+  try {
+    const toastContext = useToast();
+    if (toastContext?.addToast) addToast = toastContext.addToast;
+  } catch {
+    // Fallback if rendered outside ToastProvider in unit tests
+  }
+
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
   const [subjectId, setSubjectId] = useState("");
@@ -51,7 +60,6 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState("");
 
   function resetForm() {
     setFile(null);
@@ -63,7 +71,6 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
     setProgress(0);
     setIsUploading(false);
     setIsProcessing(false);
-    setError("");
     abortRef.current = null;
   }
 
@@ -108,11 +115,14 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   function pickFile(nextFile) {
     const validationError = validateUploadDocFile(nextFile);
     if (validationError) {
-      setError(validationError);
+      addToast({
+        type: "error",
+        title: t("upload.errorTitle"),
+        message: validationError,
+      });
       return;
     }
 
-    setError("");
     setFile(nextFile);
 
     if (!title.trim()) {
@@ -134,7 +144,6 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
   async function handleUpload() {
     if (!file || isUploading) return;
 
-    setError("");
     setIsUploading(true);
     setIsProcessing(false);
     setProgress(0);
@@ -157,17 +166,22 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
       onSuccess(result);
       onClose();
     } catch (err) {
+      let message = "";
       if (err.code === "ERR_CANCELED") {
-        setError(t("upload.cancelUpload"));
+        message = t("upload.cancelUpload");
       } else if (isUploadDocTimeoutError(err)) {
-        const message = t("upload.processingSub");
-        setError(message);
-        onError?.(message);
+        message = t("upload.processingSub");
       } else {
-        const message = err.response?.data?.error || t("common.error");
-        setError(message);
-        onError?.(message);
+        message = err.response?.data?.error || t("common.error");
       }
+
+      addToast({
+        type: "error",
+        title: t("upload.errorTitle"),
+        message,
+      });
+      onError?.(message);
+
       setProgress(0);
       setIsProcessing(false);
     } finally {
@@ -396,32 +410,6 @@ export default function UploadDocModal({ isOpen, subjects, onClose, onSuccess, o
               </div>
             </div>
           </div>
-
-          {error ? (
-            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-200/90 bg-gradient-to-r from-rose-50/90 to-red-50/90 p-3.5 text-rose-950 shadow-sm dark:border-rose-900/60 dark:from-rose-950/40 dark:to-red-950/30 dark:text-rose-200">
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-900/60 dark:text-rose-400">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">
-                  {t("upload.errorTitle")}
-                </h4>
-                <p className="mt-0.5 text-sm font-medium leading-relaxed">
-                  {error}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setError("")}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg text-rose-400 hover:bg-rose-200/60 hover:text-rose-700 dark:hover:bg-rose-900/60 dark:hover:text-rose-200 transition-colors"
-                aria-label={t("common.close")}
-              >
-                ✕
-              </button>
-            </div>
-          ) : null}
         </div>
 
         <footer className="flex justify-end gap-3 border-t border-[#e5e9ef] bg-[#fafbff] px-5 py-3 dark:border-slate-700 dark:bg-slate-800/60">
