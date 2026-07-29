@@ -86,7 +86,7 @@ function UsagePopover({ activeModel, isLoadingUsage, isOllamaModel, selectedMode
   );
 }
 
-function SourceList({ sources }) {
+function SourceList({ sources, onCitationClick }) {
   if (!sources?.length) return null;
   const validSources = sources.filter((source) => (
     source.chunkDocumentId == null
@@ -150,22 +150,106 @@ function SourceList({ sources }) {
               </summary>
               <div className="mt-1.5 grid gap-1 border-l-2 border-slate-100 pl-2.5">
                 {group.chunks.map((source) => {
-                  const sourceIndex = (sources.indexOf(source) >= 0 ? sources.indexOf(source) : validSources.indexOf(source)) + 1;
                   const pageStart = source.pageStart ?? source.pageNumber;
                   const pageEnd = source.pageEnd ?? source.pageNumber;
                   const pageLabel = pageStart == null
                     ? ""
-                    : pageStart === pageEnd ? ` · Page ${pageStart}` : ` · Pages ${pageStart}-${pageEnd}`;
-                  const scoreLabel = source.score ? ` · ${Number(source.score).toFixed(2)}` : "";
+                    : pageStart === pageEnd ? `Page ${pageStart}` : `Pages ${pageStart}–${pageEnd}`;
+
+                  // Build a readable excerpt from the chunk text
+                  const rawText = (source.content || "").replace(/\s+/g, " ").trim();
+
+                  // If the chunk starts mid-word (lowercase 1st char = continuation
+                  // of a word from the previous chunk), skip the broken fragment and
+                  // prepend "…" so the citation always starts at a clean word boundary.
+                  let cleanText = rawText;
+                  if (rawText.length > 0 && /^[a-z]/.test(rawText)) {
+                    const firstSpace = rawText.indexOf(" ");
+                    cleanText = firstSpace !== -1
+                      ? "…" + rawText.slice(firstSpace + 1)
+                      : "—"; // entire chunk was one broken word — fallback
+                  }
+
+                  // Try to grab the first meaningful sentence (up to ~80 chars)
+                  const sentenceMatch = cleanText.match(/^.{10,80}[.!?…]/);
+                  const excerpt = sentenceMatch
+                    ? sentenceMatch[0]
+                    : cleanText.length > 72
+                      ? cleanText.slice(0, 72).trimEnd() + "…"
+                      : cleanText || "—";
+
+                  // Relevance badge colour based on score
+                  const score = source.score != null ? Number(source.score) : null;
+                  const scorePct = score != null ? Math.round(score * 100) : null;
+                  const badgeStyle = score == null
+                    ? "bg-slate-100 text-slate-400"
+                    : score >= 0.6
+                      ? "bg-emerald-100 text-emerald-700"
+                      : score >= 0.4
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-500";
+
+                  // Dispatch the same event as inline citation clicks so the
+                  // document viewer scrolls to and highlights this chunk.
+                  function handleSourceClick(e) {
+                    // Only navigate on the summary row click, not expand toggle
+                    // We stop propagation so the <details> still toggles via the
+                    // native summary mechanism; we dispatch separately.
+                    const targetDocId = Number(source.documentId);
+                    if (!targetDocId) return;
+                    window.dispatchEvent(
+                      new CustomEvent("workspace-highlight-citation", {
+                        detail: {
+                          documentId: targetDocId,
+                          pageNumber: source.pageStart ?? source.pageNumber,
+                          chunkIndex: source.chunkIndex,
+                          content: source.content,
+                          startChar: source.startChar ?? source.metadata?.startChar,
+                          endChar: source.endChar ?? source.metadata?.endChar,
+                          source,
+                        },
+                      })
+                    );
+                    if (onCitationClick) onCitationClick(null, source);
+                  }
 
                   return (
-                    <details className="group/chunk rounded border border-transparent hover:bg-slate-100 px-1 py-0.5" key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}>
-                      <summary className="cursor-pointer list-none font-medium text-slate-600 marker:hidden">
-                        <span className="mr-1 text-slate-300 group-open/chunk:hidden">+</span>
-                        <span className="mr-1 hidden text-slate-300 group-open/chunk:inline">-</span>
-                        Source [{sourceIndex}]{pageLabel}{scoreLabel}
+                    <details
+                      className="group/chunk rounded-lg border border-slate-100 bg-white hover:border-indigo-200 hover:bg-indigo-50/30 px-2 py-1.5 transition-colors"
+                      key={`${source.documentId}-${source.chunkId ?? source.id ?? source.chunkIndex}`}
+                    >
+                      <summary
+                        className="cursor-pointer list-none marker:hidden"
+                        onClick={handleSourceClick}
+                      >
+                        <div className="flex items-start gap-1.5">
+                          <span className="mt-0.5 shrink-0 text-slate-300 group-open/chunk:hidden select-none">+</span>
+                          <span className="mt-0.5 shrink-0 hidden text-slate-300 group-open/chunk:inline select-none">−</span>
+                          <span className="flex-1 min-w-0">
+                            {/* Main excerpt acting as the citation label */}
+                            <span className="font-medium text-slate-700 leading-snug line-clamp-2 break-words">
+                              "{excerpt}"
+                            </span>
+                            {/* Meta row: page + relevance + navigate hint */}
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              {pageLabel && (
+                                <span className="text-[10px] text-slate-400">{pageLabel}</span>
+                              )}
+                              {scorePct != null && (
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${badgeStyle}`}>
+                                  {scorePct}% relevant
+                                </span>
+                              )}
+                              <span className="text-[9px] text-indigo-400 opacity-0 group-open/chunk:opacity-0 group-hover/chunk:opacity-100 transition-opacity">
+                                ↗ Jump to passage
+                              </span>
+                            </span>
+                          </span>
+                        </div>
                       </summary>
-                      <p className="mt-1 line-clamp-4 select-text whitespace-pre-wrap text-slate-500">{source.content}</p>
+                      <p className="mt-1.5 line-clamp-5 select-text whitespace-pre-wrap text-[11px] leading-relaxed text-slate-500 border-t border-slate-100 pt-1.5">
+                        {source.content}
+                      </p>
                     </details>
                   );
                 })}
@@ -288,7 +372,7 @@ function MessageBubble({ message, onCitationClick }) {
           <div className="m-0 select-text break-words">
             {renderMarkdownBody(content, React, null, onCitationClick, message.sources)}
           </div>
-          <SourceList sources={message.sources} />
+          <SourceList sources={message.sources} onCitationClick={onCitationClick} />
         </div>
         <div className="mt-1 flex items-center gap-2 px-1">
           {formatMessageTime(message.createdAt) ? (
